@@ -97,9 +97,9 @@ export default function MissionDetailPage() {
             <div className="lg:col-span-2">
               <ErrorBoundary>
                 <MissionMap
-                  centerLat={mission.center_lat}
-                  centerLon={mission.center_lon}
-                  zoom={mission.zoom}
+                  centerLat={mission.center_lat ?? 48.8566}
+                  centerLon={mission.center_lon ?? 2.3522}
+                  zoom={mission.zoom ?? 15}
                   zones={zones}
                   events={eventList}
                   className="h-[450px]"

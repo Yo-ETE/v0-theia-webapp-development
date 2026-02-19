@@ -14,13 +14,17 @@ interface MapInnerProps {
 }
 
 export default function MapInner({
-  centerLat,
-  centerLon,
-  zoom,
+  centerLat: rawLat,
+  centerLon: rawLon,
+  zoom: rawZoom,
   zones = [],
   events = [],
   className,
 }: MapInnerProps) {
+  // Safe defaults - Paris if coords missing
+  const centerLat = Number.isFinite(rawLat) ? rawLat : 48.8566
+  const centerLon = Number.isFinite(rawLon) ? rawLon : 2.3522
+  const zoom = Number.isFinite(rawZoom) ? rawZoom : 15
   const [mounted, setMounted] = useState(false)
   const [MapComponents, setMapComponents] = useState<{
     MapContainer: React.ComponentType<Record<string, unknown>>
@@ -125,7 +129,7 @@ export default function MapInner({
       {/* Map overlay info */}
       <div className="absolute bottom-2 left-2 z-[1000] rounded bg-background/80 backdrop-blur px-2 py-1">
         <span className="font-mono text-[10px] text-muted-foreground">
-          {centerLat.toFixed(4)}, {centerLon.toFixed(4)} z{zoom}
+          {(centerLat ?? 0).toFixed(4)}, {(centerLon ?? 0).toFixed(4)} z{zoom ?? 0}
         </span>
       </div>
     </div>

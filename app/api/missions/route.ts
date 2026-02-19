@@ -22,13 +22,19 @@ export async function POST(request: NextRequest) {
     const body = await request.json()
     const newMission = {
       id: `mission-${Date.now()}`,
+      name: "New Mission",
+      description: "",
+      location: "",
+      center_lat: 48.8566,
+      center_lon: 2.3522,
+      zoom: 15,
       ...body,
       status: "draft",
       created_at: new Date().toISOString(),
       updated_at: new Date().toISOString(),
       started_at: null,
       ended_at: null,
-      zones: [],
+      zones: body.zones ?? [],
       device_count: 0,
       event_count: 0,
     }
