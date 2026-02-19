@@ -1,10 +1,12 @@
 import { NextResponse } from "next/server"
-import { isPreview, proxyGet } from "@/lib/api-mode"
-import { mockGps } from "@/lib/mock-data"
+import { isPreviewMode, proxyToBackend } from "@/lib/api-mode"
+import { mockHubStatus } from "@/lib/mock-data"
 
 export async function GET() {
-  if (isPreview()) {
-    return NextResponse.json(mockGps)
+  if (isPreviewMode()) {
+    return NextResponse.json(mockHubStatus.gps)
   }
-  return proxyGet("/api/gps")
+  const res = await proxyToBackend("/api/gps")
+  const data = await res.json()
+  return NextResponse.json(data)
 }
