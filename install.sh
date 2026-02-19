@@ -162,9 +162,9 @@ setup_nodejs() {
     info "Installing Node.js dependencies..."
     cd "$APP_DIR"
 
-    # Install deps
-    sudo -u "$SERVICE_USER" npm ci --prefer-offline --no-audit 2>/dev/null || \
-    sudo -u "$SERVICE_USER" npm install --prefer-offline --no-audit
+    # Install deps (--legacy-peer-deps for react-leaflet React 19 compat)
+    sudo -u "$SERVICE_USER" npm ci --legacy-peer-deps --prefer-offline --no-audit 2>/dev/null || \
+    sudo -u "$SERVICE_USER" npm install --legacy-peer-deps --prefer-offline --no-audit
 
     info "Building Next.js application..."
     sudo -u "$SERVICE_USER" npm run build
