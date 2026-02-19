@@ -72,7 +72,7 @@ export default function SensorsPage() {
                   </TableHeader>
                   <TableBody>
                     {missionDevices.map((device) => {
-                      const sCfg = deviceStatusConfig[device.status]
+                      const sCfg = deviceStatusConfig[device.status] ?? deviceStatusConfig.unknown
                       return (
                         <TableRow key={device.id} className="border-border/30">
                           <TableCell className="font-mono text-xs font-medium text-foreground">
@@ -149,7 +149,7 @@ export default function SensorsPage() {
                   </TableHeader>
                   <TableBody>
                     {unassigned.map((device) => {
-                      const sCfg = deviceStatusConfig[device.status]
+                      const sCfg = deviceStatusConfig[device.status] ?? deviceStatusConfig.unknown
                       return (
                         <TableRow key={device.id} className="border-border/30">
                           <TableCell className="font-mono text-xs font-medium text-foreground">

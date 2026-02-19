@@ -43,7 +43,7 @@ export default function MissionsPage() {
           ) : (
             <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
               {missions?.map((mission) => {
-                const statusCfg = missionStatusConfig[mission.status]
+                const statusCfg = missionStatusConfig[mission.status] ?? missionStatusConfig.draft
                 return (
                   <Link key={mission.id} href={`/missions/${mission.id}`}>
                     <Card className="border-border/50 bg-card transition-colors hover:border-primary/30 hover:bg-card/80 cursor-pointer">

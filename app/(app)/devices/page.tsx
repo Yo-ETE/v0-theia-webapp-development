@@ -81,7 +81,7 @@ export default function DevicesPage() {
                   </TableHeader>
                   <TableBody>
                     {devices?.map((device) => {
-                      const sCfg = deviceStatusConfig[device.status]
+                      const sCfg = deviceStatusConfig[device.status] ?? deviceStatusConfig.unknown
                       return (
                         <TableRow key={device.id} className="border-border/30">
                           <TableCell className="font-mono text-xs font-medium text-foreground">

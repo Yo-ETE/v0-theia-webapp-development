@@ -112,7 +112,7 @@ export default function LogsPage() {
                 <ScrollArea className="h-[calc(100vh-280px)]">
                   <div className="font-mono text-[12px] leading-relaxed">
                     {logs?.map((log) => {
-                      const lvlCfg = logLevelConfig[log.level]
+                      const lvlCfg = logLevelConfig[log.level] ?? logLevelConfig.info
                       return (
                         <div
                           key={log.id}
