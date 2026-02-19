@@ -205,12 +205,28 @@ curl http://localhost:8000/api/health
 
 ```bash
 cd ~/theia
+git stash
 git pull
 sudo ./install.sh
 ```
 
+> **`git stash`** permet d'eviter les conflits si `install.sh` ou d'autres fichiers
+> ont ete modifies localement (ex: `chmod +x`). Le `install.sh` recopie tout dans
+> `/opt/theia/app` donc les changements locaux ne sont pas perdus.
+
 Le script detecte les fichiers deja en place, ne reinstalle que le necessaire,
 rebuild le frontend, et redemarre les services.
+
+### En cas d'erreur git pull
+
+Si `git pull` echoue avec "Your local changes would be overwritten" :
+
+```bash
+cd ~/theia
+git checkout -- .
+git pull
+sudo ./install.sh
+```
 
 ## Carte offline (optionnel)
 
@@ -259,6 +275,67 @@ l'adresse Tailscale (100.x.x.x).
 | Monitoring | psutil (CPU, RAM, disk, temperature) |
 | Deploiement | systemd (2 services) |
 | Preview | Vercel (mock data statique) |
+
+## Troubleshooting
+
+### `npm ERESOLVE unable to resolve dependency tree` (react-leaflet)
+
+`react-leaflet@4.x` demande `react@^18` mais le projet utilise React 19.
+Le fichier `.npmrc` a la racine contient `legacy-peer-deps=true` pour resoudre cela.
+
+Si l'erreur persiste, verifier que le `.npmrc` est bien present :
+```bash
+cat ~/theia/.npmrc
+# Doit afficher : legacy-peer-deps=true
+```
+
+Ou forcer manuellement :
+```bash
+cd /opt/theia/app
+npm install --legacy-peer-deps
+```
+
+### `git pull` echoue "Your local changes would be overwritten"
+
+```bash
+cd ~/theia
+git checkout -- .
+git pull
+sudo ./install.sh
+```
+
+### Un service ne demarre pas
+
+```bash
+# Voir les logs detailles
+sudo journalctl -u theia-api -n 50 --no-pager
+sudo journalctl -u theia-web -n 50 --no-pager
+
+# Redemarrer manuellement
+sudo systemctl restart theia-api
+sudo systemctl restart theia-web
+```
+
+### Le GPS n'est pas detecte
+
+```bash
+# Verifier le device
+ls -la /dev/ttyUSB*
+# Tester gpsd
+gpsmon
+# Reconfigurer
+sudo dpkg-reconfigure gpsd
+```
+
+### L'API ne repond pas sur /health
+
+```bash
+# Tester directement
+curl -v http://localhost:8000/api/health
+
+# Verifier que le port 8000 est ecoute
+ss -tlnp | grep 8000
+```
 
 ## Licence
 
