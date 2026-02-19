@@ -169,6 +169,17 @@ setup_nodejs() {
     info "Building Next.js application..."
     sudo -u "$SERVICE_USER" npm run build
 
+    # Standalone build requires manual copy of static assets + public
+    # See: https://nextjs.org/docs/app/api-reference/config/next-config-js/output#automatically-copying-traced-files
+    if [[ -d "$APP_DIR/.next/standalone" ]]; then
+        info "Copying static assets to standalone output..."
+        cp -r "$APP_DIR/.next/static" "$APP_DIR/.next/standalone/.next/static"
+        if [[ -d "$APP_DIR/public" ]]; then
+            cp -r "$APP_DIR/public" "$APP_DIR/.next/standalone/public"
+        fi
+        ok "Static assets copied to standalone"
+    fi
+
     ok "Next.js built successfully"
 }
 
