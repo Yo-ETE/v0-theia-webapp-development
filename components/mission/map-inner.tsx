@@ -4,13 +4,15 @@ import { useEffect } from "react"
 import { MapContainer, TileLayer, Polygon, Tooltip, CircleMarker, useMap } from "react-leaflet"
 import type { Zone, DetectionEvent } from "@/lib/types"
 import { cn } from "@/lib/utils"
+
+// Import Leaflet CSS via side-effect (only runs client-side thanks to dynamic ssr:false)
 import "leaflet/dist/leaflet.css"
 
 interface MapInnerProps {
   centerLat: number
   centerLon: number
   zoom: number
-  zones: Zone[]
+  zones?: Zone[]
   events?: DetectionEvent[]
   className?: string
 }
@@ -27,11 +29,11 @@ export default function MapInner({
   centerLat,
   centerLon,
   zoom,
-  zones,
+  zones = [],
   events = [],
   className,
 }: MapInnerProps) {
-  const recentDetections = events
+  const recentDetections = (events ?? [])
     .filter((e) => e.type === "detection")
     .slice(0, 10)
 
@@ -50,7 +52,7 @@ export default function MapInner({
           url="https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png"
         />
 
-        {zones.map((zone) => (
+        {(zones ?? []).map((zone) => (
           <Polygon
             key={zone.id}
             positions={zone.polygon}
@@ -68,7 +70,7 @@ export default function MapInner({
         ))}
 
         {recentDetections.map((evt) => {
-          const zone = zones.find((z) => z.id === evt.zone_id)
+          const zone = (zones ?? []).find((z) => z.id === evt.zone_id)
           if (!zone || zone.polygon.length === 0) return null
           // Place marker at centroid of zone
           const lat = zone.polygon.reduce((s, p) => s + p[0], 0) / zone.polygon.length

@@ -1,7 +1,7 @@
 "use client"
 
-import { use } from "react"
 import Link from "next/link"
+import { useParams } from "next/navigation"
 import { ArrowLeft, Download } from "lucide-react"
 import { TopHeader } from "@/components/top-header"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
@@ -19,8 +19,8 @@ import { useMission, useEvents } from "@/hooks/use-api"
 import { eventTypeConfig, formatDateTime } from "@/lib/format"
 import { cn } from "@/lib/utils"
 
-export default function HistoryPage({ params }: { params: Promise<{ id: string }> }) {
-  const { id } = use(params)
+export default function HistoryPage() {
+  const { id } = useParams<{ id: string }>()
   const { data: mission } = useMission(id)
   const { data: events, isLoading } = useEvents({ mission_id: id })
 
@@ -98,7 +98,7 @@ export default function HistoryPage({ params }: { params: Promise<{ id: string }
                   </TableHeader>
                   <TableBody>
                     {events.map((evt) => {
-                      const evtCfg = eventTypeConfig[evt.type]
+                      const evtCfg = eventTypeConfig[evt.type] ?? eventTypeConfig.system
                       return (
                         <TableRow key={evt.id} className="border-border/30">
                           <TableCell className="font-mono text-[11px] text-muted-foreground">

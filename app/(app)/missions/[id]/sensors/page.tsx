@@ -1,7 +1,7 @@
 "use client"
 
-import { use } from "react"
 import Link from "next/link"
+import { useParams } from "next/navigation"
 import { ArrowLeft, Radio, Signal, Battery, Wifi } from "lucide-react"
 import { TopHeader } from "@/components/top-header"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
@@ -19,8 +19,8 @@ import { useMission, useDevices } from "@/hooks/use-api"
 import { deviceStatusConfig, formatRelative } from "@/lib/format"
 import { cn } from "@/lib/utils"
 
-export default function SensorsPage({ params }: { params: Promise<{ id: string }> }) {
-  const { id } = use(params)
+export default function SensorsPage() {
+  const { id } = useParams<{ id: string }>()
   const { data: mission } = useMission(id)
   const { data: allDevices, isLoading } = useDevices()
 

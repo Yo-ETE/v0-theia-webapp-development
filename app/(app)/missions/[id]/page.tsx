@@ -1,7 +1,7 @@
 "use client"
 
-import { use } from "react"
 import Link from "next/link"
+import { useParams } from "next/navigation"
 import { ArrowLeft, Radio, MapPin, Clock, Users, BarChart3 } from "lucide-react"
 import { TopHeader } from "@/components/top-header"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
@@ -12,8 +12,8 @@ import { useMission, useEvents } from "@/hooks/use-api"
 import { missionStatusConfig, eventTypeConfig, formatRelative, formatTime } from "@/lib/format"
 import { cn } from "@/lib/utils"
 
-export default function MissionDetailPage({ params }: { params: Promise<{ id: string }> }) {
-  const { id } = use(params)
+export default function MissionDetailPage() {
+  const { id } = useParams<{ id: string }>()
   const { data: mission, isLoading } = useMission(id)
   const { data: events } = useEvents({ mission_id: id })
 
@@ -31,7 +31,9 @@ export default function MissionDetailPage({ params }: { params: Promise<{ id: st
     )
   }
 
-  const statusCfg = missionStatusConfig[mission.status]
+  const statusCfg = missionStatusConfig[mission.status] ?? missionStatusConfig.draft
+  const zones = mission.zones ?? []
+  const eventList = events ?? []
 
   return (
     <>
@@ -96,8 +98,8 @@ export default function MissionDetailPage({ params }: { params: Promise<{ id: st
                 centerLat={mission.center_lat}
                 centerLon={mission.center_lon}
                 zoom={mission.zoom}
-                zones={mission.zones}
-                events={events}
+                zones={zones}
+                events={eventList}
                 className="h-[450px]"
               />
             </div>
@@ -106,15 +108,15 @@ export default function MissionDetailPage({ params }: { params: Promise<{ id: st
               {/* Zones panel */}
               <Card className="border-border/50 bg-card">
                 <CardHeader className="pb-2">
-                  <CardTitle className="text-xs">Zones ({mission.zones.length})</CardTitle>
+                  <CardTitle className="text-xs">Zones ({zones.length})</CardTitle>
                 </CardHeader>
                 <CardContent className="flex flex-col gap-2">
-                  {mission.zones.length === 0 ? (
+                  {zones.length === 0 ? (
                     <p className="text-xs text-muted-foreground py-2 text-center">
                       No zones configured
                     </p>
                   ) : (
-                    mission.zones.map((zone) => (
+                    zones.map((zone) => (
                       <div
                         key={zone.id}
                         className="flex items-center gap-2 rounded border border-border/50 p-2"
@@ -146,13 +148,13 @@ export default function MissionDetailPage({ params }: { params: Promise<{ id: st
                   </CardTitle>
                 </CardHeader>
                 <CardContent className="flex flex-col gap-1.5 max-h-60 overflow-y-auto">
-                  {!events || events.length === 0 ? (
+                  {eventList.length === 0 ? (
                     <p className="text-xs text-muted-foreground py-2 text-center">
                       No events yet
                     </p>
                   ) : (
-                    events.slice(0, 8).map((evt) => {
-                      const evtCfg = eventTypeConfig[evt.type]
+                    eventList.slice(0, 8).map((evt) => {
+                      const evtCfg = eventTypeConfig[evt.type] ?? eventTypeConfig.system
                       return (
                         <div
                           key={evt.id}
