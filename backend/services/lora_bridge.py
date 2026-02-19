@@ -28,8 +28,8 @@ class LoRaBridge:
             "baud_rate": LORA_BAUD_RATE,
             "rssi": 0,
             "snr": 0,
-            "packets_rx": 0,
-            "errors": 0,
+            "packets_received": 0,
+            "packets_errors": 0,
             "last_message": None,
         }
 
@@ -49,7 +49,7 @@ class LoRaBridge:
         try:
             frame = json.loads(raw.strip())
         except json.JSONDecodeError:
-            self._data["errors"] += 1
+            self._data["packets_errors"] += 1
             return
 
         dev_eui = frame.get("dev_eui", "")
@@ -60,7 +60,7 @@ class LoRaBridge:
 
         self._data["rssi"] = rssi
         self._data["snr"] = snr
-        self._data["packets_rx"] += 1
+        self._data["packets_received"] += 1
         self._data["last_message"] = datetime.now(timezone.utc).isoformat()
 
         # Update device last_seen + RSSI
@@ -129,7 +129,7 @@ class LoRaBridge:
 
             except Exception as e:
                 self._data["connected"] = False
-                self._data["errors"] += 1
+                self._data["packets_errors"] += 1
                 print(f"[THEIA] LoRa bridge error: {e}")
                 await asyncio.sleep(5)
 

@@ -90,9 +90,9 @@ export default function DashboardPage() {
               />
               <StatusCard
                 title="Temperature"
-                value={`${hub.temperature}C`}
+                value={hub.temperature != null ? `${hub.temperature}C` : "---"}
                 icon={Thermometer}
-                status={statusFor(hub.temperature, 65, 80)}
+                status={hub.temperature != null ? statusFor(hub.temperature, 65, 80) : "info"}
               />
               <StatusCard
                 title="Uptime"

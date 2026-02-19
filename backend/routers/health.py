@@ -24,10 +24,31 @@ async def health():
 
 @router.get("/status")
 async def status():
+    sys_data = system_monitor.data or {}
+    net_data = sys_data.pop("network", {}) if isinstance(sys_data, dict) else {}
+    import socket
+
     return {
-        "system": system_monitor.data,
+        "hub": {
+            "cpu_percent": sys_data.get("cpu_percent", 0),
+            "ram_percent": sys_data.get("ram_percent", 0),
+            "ram_used_mb": sys_data.get("ram_used_mb", 0),
+            "ram_total_mb": sys_data.get("ram_total_mb", 0),
+            "disk_percent": sys_data.get("disk_percent", 0),
+            "disk_used_gb": sys_data.get("disk_used_gb", 0),
+            "disk_total_gb": sys_data.get("disk_total_gb", 0),
+            "temperature": sys_data.get("temperature"),
+            "uptime_seconds": sys_data.get("uptime_seconds", 0),
+        },
         "gps": gps_reader.data,
         "lora": lora_bridge.data,
+        "network": {
+            "hostname": socket.gethostname(),
+            "lan_ip": next(iter(net_data.get("interfaces", {}).values()), "---"),
+            "tailscale_ip": net_data.get("tailscale_ip"),
+            "interfaces": net_data.get("interfaces", {}),
+        },
+        "alerts": [],
     }
 
 

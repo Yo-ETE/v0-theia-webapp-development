@@ -15,11 +15,8 @@ import { cn } from "@/lib/utils"
 
 export default function MissionDetailPage() {
   const { id } = useParams<{ id: string }>()
-  console.log("[v0] MissionDetailPage rendering with id:", id)
-  const { data: mission, isLoading, error: missionError } = useMission(id)
-  const { data: events, error: eventsError } = useEvents({ mission_id: id })
-  console.log("[v0] mission data:", mission ? "loaded" : "null", "error:", missionError)
-  console.log("[v0] events data:", events ? `${events.length} events` : "null", "error:", eventsError)
+  const { data: mission, isLoading } = useMission(id)
+  const { data: events } = useEvents({ mission_id: id })
 
   if (isLoading || !mission) {
     return (
