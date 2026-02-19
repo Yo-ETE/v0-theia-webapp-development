@@ -6,7 +6,12 @@ export async function GET() {
   if (isPreviewMode()) {
     return NextResponse.json(mockSystemStatus.gps)
   }
-  const res = await proxyToBackend("/api/gps")
-  const data = await res.json()
-  return NextResponse.json(data)
+  try {
+    const res = await proxyToBackend("/api/gps")
+    if (!res.ok) throw new Error(`Backend ${res.status}`)
+    const data = await res.json()
+    return NextResponse.json(data)
+  } catch {
+    return NextResponse.json(mockSystemStatus.gps)
+  }
 }

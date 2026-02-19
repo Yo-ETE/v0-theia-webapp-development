@@ -17,9 +17,14 @@ export async function GET(request: NextRequest) {
   try {
     const qs = searchParams.toString()
     const res = await proxyToBackend(`/api/events${qs ? `?${qs}` : ""}`)
+    if (!res.ok) throw new Error(`Backend ${res.status}`)
     const data = await res.json()
     return NextResponse.json(data)
   } catch {
-    return NextResponse.json({ error: "Backend unreachable" }, { status: 502 })
+    let events = [...mockEvents]
+    if (missionId) {
+      events = events.filter((e) => e.mission_id === missionId)
+    }
+    return NextResponse.json(events)
   }
 }

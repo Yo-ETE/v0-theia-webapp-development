@@ -18,10 +18,12 @@ export async function GET(
 
   try {
     const res = await proxyToBackend(`/api/missions/${id}`)
+    if (!res.ok) throw new Error(`Backend ${res.status}`)
     const data = await res.json()
     return NextResponse.json(data, { status: res.status })
   } catch {
-    return NextResponse.json({ error: "Backend unreachable" }, { status: 502 })
+    const mission = mockMissions.find((m) => m.id === id)
+    return NextResponse.json(mission ?? { error: "Not found" }, { status: mission ? 200 : 404 })
   }
 }
 
@@ -49,6 +51,6 @@ export async function PATCH(
     const data = await res.json()
     return NextResponse.json(data, { status: res.status })
   } catch {
-    return NextResponse.json({ error: "Backend unreachable" }, { status: 502 })
+    return NextResponse.json({ error: "Backend unreachable" }, { status: 503 })
   }
 }

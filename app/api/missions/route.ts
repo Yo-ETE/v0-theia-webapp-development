@@ -9,10 +9,11 @@ export async function GET() {
 
   try {
     const res = await proxyToBackend("/api/missions")
+    if (!res.ok) throw new Error(`Backend ${res.status}`)
     const data = await res.json()
     return NextResponse.json(data)
   } catch {
-    return NextResponse.json({ error: "Backend unreachable" }, { status: 502 })
+    return NextResponse.json(mockMissions)
   }
 }
 
@@ -43,6 +44,6 @@ export async function POST(request: NextRequest) {
     const data = await res.json()
     return NextResponse.json(data, { status: res.status })
   } catch {
-    return NextResponse.json({ error: "Backend unreachable" }, { status: 502 })
+    return NextResponse.json({ error: "Backend unreachable" }, { status: 503 })
   }
 }

@@ -26,6 +26,6 @@ export async function PATCH(
     const data = await res.json()
     return NextResponse.json(data, { status: res.status })
   } catch {
-    return NextResponse.json({ error: "Backend unreachable" }, { status: 502 })
+    return NextResponse.json({ error: "Backend unreachable" }, { status: 503 })
   }
 }

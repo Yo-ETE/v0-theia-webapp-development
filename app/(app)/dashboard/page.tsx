@@ -53,7 +53,11 @@ export default function DashboardPage() {
     )
   }
 
-  const { hub, gps, lora, network, alerts } = status
+  const hub = status.hub ?? { cpu_percent: 0, ram_percent: 0, disk_percent: 0, temperature: 0, uptime_seconds: 0 }
+  const gps = status.gps ?? { fix: false, latitude: null, longitude: null, altitude: null, satellites: 0, hdop: null, timestamp: null }
+  const lora = status.lora ?? { connected: false, port: "---", baud_rate: 0, rssi: null, snr: null, packets_received: 0, packets_errors: 0 }
+  const network = status.network ?? { hostname: "---", lan_ip: "---", tailscale_ip: null, interfaces: {} }
+  const alerts = status.alerts ?? []
 
   return (
     <>

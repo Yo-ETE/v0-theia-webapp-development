@@ -9,9 +9,10 @@ export async function GET() {
 
   try {
     const res = await proxyToBackend("/api/devices")
+    if (!res.ok) throw new Error(`Backend ${res.status}`)
     const data = await res.json()
     return NextResponse.json(data)
   } catch {
-    return NextResponse.json({ error: "Backend unreachable" }, { status: 502 })
+    return NextResponse.json(mockDevices)
   }
 }
