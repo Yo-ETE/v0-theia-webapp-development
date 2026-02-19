@@ -68,9 +68,13 @@ theia/
 
 ```bash
 cd ~
-git clone https://github.com/Yo-ETE/v0-theia-webapp-development.git theia
+git clone -b v0/yo-ete-f9e98eda https://github.com/Yo-ETE/v0-theia-webapp-development.git theia
 cd theia
 ```
+
+> **Note** : la branche de developpement active est `v0/yo-ete-f9e98eda`.
+> Une fois stabilise, le code sera merge sur `main`. Pour cloner `main` :
+> `git clone https://github.com/Yo-ETE/v0-theia-webapp-development.git theia`
 
 ### 2. Lancer l'installation
 
@@ -201,7 +205,7 @@ curl http://localhost:8000/api/health
 
 ```bash
 cd ~/theia
-git pull origin main
+git pull
 sudo ./install.sh
 ```
 
