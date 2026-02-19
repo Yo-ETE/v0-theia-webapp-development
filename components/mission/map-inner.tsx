@@ -1,12 +1,8 @@
 "use client"
 
-import { useEffect } from "react"
-import { MapContainer, TileLayer, Polygon, Tooltip, CircleMarker, useMap } from "react-leaflet"
+import { useEffect, useState } from "react"
 import type { Zone, DetectionEvent } from "@/lib/types"
 import { cn } from "@/lib/utils"
-
-// Import Leaflet CSS via side-effect (only runs client-side thanks to dynamic ssr:false)
-import "leaflet/dist/leaflet.css"
 
 interface MapInnerProps {
   centerLat: number
@@ -17,14 +13,6 @@ interface MapInnerProps {
   className?: string
 }
 
-function SetView({ center, zoom }: { center: [number, number]; zoom: number }) {
-  const map = useMap()
-  useEffect(() => {
-    map.setView(center, zoom)
-  }, [map, center, zoom])
-  return null
-}
-
 export default function MapInner({
   centerLat,
   centerLon,
@@ -33,9 +21,58 @@ export default function MapInner({
   events = [],
   className,
 }: MapInnerProps) {
+  const [mounted, setMounted] = useState(false)
+  const [MapComponents, setMapComponents] = useState<{
+    MapContainer: React.ComponentType<Record<string, unknown>>
+    TileLayer: React.ComponentType<Record<string, unknown>>
+    Polygon: React.ComponentType<Record<string, unknown>>
+    CircleMarker: React.ComponentType<Record<string, unknown>>
+  } | null>(null)
+
+  useEffect(() => {
+    setMounted(true)
+
+    // Load Leaflet CSS via <link> tag (CSS dynamic import not supported in all bundlers)
+    if (!document.querySelector('link[href*="leaflet"]')) {
+      const link = document.createElement("link")
+      link.rel = "stylesheet"
+      link.href = "https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"
+      link.crossOrigin = ""
+      document.head.appendChild(link)
+    }
+
+    // Dynamically import react-leaflet at runtime
+    import("react-leaflet")
+      .then((rl) => {
+        setMapComponents({
+          MapContainer: rl.MapContainer as unknown as React.ComponentType<Record<string, unknown>>,
+          TileLayer: rl.TileLayer as unknown as React.ComponentType<Record<string, unknown>>,
+          Polygon: rl.Polygon as unknown as React.ComponentType<Record<string, unknown>>,
+          CircleMarker: rl.CircleMarker as unknown as React.ComponentType<Record<string, unknown>>,
+        })
+      })
+      .catch((err) => {
+        console.error("[v0] Failed to load react-leaflet:", err)
+      })
+  }, [])
+
   const recentDetections = (events ?? [])
     .filter((e) => e.type === "detection")
     .slice(0, 10)
+
+  if (!mounted || !MapComponents) {
+    return (
+      <div className={cn("relative rounded-lg overflow-hidden border border-border/50 bg-muted/20", className)}>
+        <div className="flex h-full w-full items-center justify-center" style={{ minHeight: "400px" }}>
+          <span className="text-xs text-muted-foreground font-mono animate-pulse">
+            Loading map...
+          </span>
+        </div>
+      </div>
+    )
+  }
+
+  const { MapContainer, TileLayer, Polygon, CircleMarker } = MapComponents
 
   return (
     <div className={cn("relative rounded-lg overflow-hidden border border-border/50", className)}>
@@ -46,9 +83,8 @@ export default function MapInner({
         className="h-full w-full"
         style={{ minHeight: "400px", background: "#0d1117" }}
       >
-        <SetView center={[centerLat, centerLon]} zoom={zoom} />
         <TileLayer
-          attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OSM</a>'
+          attribution={'&copy; <a href="https://www.openstreetmap.org/copyright">OSM</a>'}
           url="https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png"
         />
 
@@ -62,17 +98,12 @@ export default function MapInner({
               fillOpacity: 0.15,
               weight: 2,
             }}
-          >
-            <Tooltip permanent direction="center" className="zone-tooltip">
-              <span className="text-[10px] font-mono">{zone.label}</span>
-            </Tooltip>
-          </Polygon>
+          />
         ))}
 
         {recentDetections.map((evt) => {
           const zone = (zones ?? []).find((z) => z.id === evt.zone_id)
-          if (!zone || zone.polygon.length === 0) return null
-          // Place marker at centroid of zone
+          if (!zone || !zone.polygon || zone.polygon.length === 0) return null
           const lat = zone.polygon.reduce((s, p) => s + p[0], 0) / zone.polygon.length
           const lon = zone.polygon.reduce((s, p) => s + p[1], 0) / zone.polygon.length
           return (
@@ -86,13 +117,7 @@ export default function MapInner({
                 fillOpacity: 0.8,
                 weight: 2,
               }}
-            >
-              <Tooltip>
-                <span className="text-[10px] font-mono">
-                  {evt.device_name} - {evt.zone_label}
-                </span>
-              </Tooltip>
-            </CircleMarker>
+            />
           )
         })}
       </MapContainer>

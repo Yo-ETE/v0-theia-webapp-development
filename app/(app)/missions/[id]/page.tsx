@@ -8,14 +8,18 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { MissionMap } from "@/components/mission/mission-map"
+import { ErrorBoundary } from "@/components/error-boundary"
 import { useMission, useEvents } from "@/hooks/use-api"
 import { missionStatusConfig, eventTypeConfig, formatRelative, formatTime } from "@/lib/format"
 import { cn } from "@/lib/utils"
 
 export default function MissionDetailPage() {
   const { id } = useParams<{ id: string }>()
-  const { data: mission, isLoading } = useMission(id)
-  const { data: events } = useEvents({ mission_id: id })
+  console.log("[v0] MissionDetailPage rendering with id:", id)
+  const { data: mission, isLoading, error: missionError } = useMission(id)
+  const { data: events, error: eventsError } = useEvents({ mission_id: id })
+  console.log("[v0] mission data:", mission ? "loaded" : "null", "error:", missionError)
+  console.log("[v0] events data:", events ? `${events.length} events` : "null", "error:", eventsError)
 
   if (isLoading || !mission) {
     return (
@@ -94,14 +98,16 @@ export default function MissionDetailPage() {
           {/* Map + Live events */}
           <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">
             <div className="lg:col-span-2">
-              <MissionMap
-                centerLat={mission.center_lat}
-                centerLon={mission.center_lon}
-                zoom={mission.zoom}
-                zones={zones}
-                events={eventList}
-                className="h-[450px]"
-              />
+              <ErrorBoundary>
+                <MissionMap
+                  centerLat={mission.center_lat}
+                  centerLon={mission.center_lon}
+                  zoom={mission.zoom}
+                  zones={zones}
+                  events={eventList}
+                  className="h-[450px]"
+                />
+              </ErrorBoundary>
             </div>
 
             <div className="flex flex-col gap-3">

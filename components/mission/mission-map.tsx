@@ -1,17 +1,8 @@
 "use client"
 
-import dynamic from "next/dynamic"
 import type { Zone, DetectionEvent } from "@/lib/types"
 import { cn } from "@/lib/utils"
-
-const MapInner = dynamic(() => import("./map-inner"), {
-  ssr: false,
-  loading: () => (
-    <div className="flex h-full w-full items-center justify-center rounded-lg border border-border/50 bg-muted/30">
-      <span className="text-xs text-muted-foreground font-mono animate-pulse">Loading map...</span>
-    </div>
-  ),
-})
+import MapInner from "./map-inner"
 
 interface MissionMapProps {
   centerLat: number
