@@ -207,7 +207,8 @@ curl http://localhost:8000/api/health
 cd ~/theia
 git stash
 git pull
-sudo ./install.sh
+chmod +x install.sh
+sudo bash install.sh
 ```
 
 > **`git stash`** permet d'eviter les conflits si `install.sh` ou d'autres fichiers
@@ -301,7 +302,16 @@ npm install --legacy-peer-deps
 cd ~/theia
 git checkout -- .
 git pull
-sudo ./install.sh
+chmod +x install.sh
+sudo bash install.sh
+```
+
+### `sudo: ./install.sh: command not found`
+
+Le bit executable n'est pas conserve par git. Toujours utiliser :
+```bash
+chmod +x install.sh
+sudo bash install.sh
 ```
 
 ### Un service ne demarre pas
