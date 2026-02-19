@@ -1,31 +1,28 @@
 import { NextResponse, type NextRequest } from "next/server"
 import { isPreviewMode, proxyToBackend } from "@/lib/api-mode"
-import { mockDevices } from "@/lib/mock-data"
+import { store } from "@/lib/preview-store"
 
 export async function PATCH(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> },
 ) {
   const { id } = await params
+  const body = await request.json()
 
   if (isPreviewMode()) {
-    const body = await request.json()
-    const device = mockDevices.find((d) => d.id === id)
-    if (!device) {
-      return NextResponse.json({ error: "Device not found" }, { status: 404 })
-    }
-    return NextResponse.json({ ...device, ...body })
+    const updated = store.updateDevice(id, body)
+    if (!updated) return NextResponse.json({ error: "Not found" }, { status: 404 })
+    return NextResponse.json(updated)
   }
 
   try {
-    const body = await request.text()
     const res = await proxyToBackend(`/api/devices/${id}`, {
       method: "PATCH",
-      body,
+      body: JSON.stringify(body),
     })
-    const data = await res.json()
-    return NextResponse.json(data, { status: res.status })
+    return NextResponse.json(await res.json(), { status: res.status })
   } catch {
-    return NextResponse.json({ error: "Backend unreachable" }, { status: 503 })
+    const updated = store.updateDevice(id, body)
+    return NextResponse.json(updated ?? { error: "Backend unreachable" }, { status: updated ? 200 : 503 })
   }
 }

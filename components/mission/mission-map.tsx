@@ -11,6 +11,9 @@ interface MissionMapProps {
   zones: Zone[]
   events?: DetectionEvent[]
   className?: string
+  drawingMode?: boolean
+  onPolygonDrawn?: (polygon: [number, number][]) => void
+  onZoneClick?: (zoneId: string) => void
 }
 
 export function MissionMap({ className, ...props }: MissionMapProps) {

@@ -1,6 +1,6 @@
 import { NextResponse, type NextRequest } from "next/server"
 import { isPreviewMode, proxyToBackend } from "@/lib/api-mode"
-import { mockMissions } from "@/lib/mock-data"
+import { store } from "@/lib/preview-store"
 
 export async function GET(
   _request: NextRequest,
@@ -9,20 +9,17 @@ export async function GET(
   const { id } = await params
 
   if (isPreviewMode()) {
-    const mission = mockMissions.find((m) => m.id === id)
-    if (!mission) {
-      return NextResponse.json({ error: "Mission not found" }, { status: 404 })
-    }
+    const mission = store.getMission(id)
+    if (!mission) return NextResponse.json({ error: "Not found" }, { status: 404 })
     return NextResponse.json(mission)
   }
 
   try {
     const res = await proxyToBackend(`/api/missions/${id}`)
     if (!res.ok) throw new Error(`Backend ${res.status}`)
-    const data = await res.json()
-    return NextResponse.json(data, { status: res.status })
+    return NextResponse.json(await res.json())
   } catch {
-    const mission = mockMissions.find((m) => m.id === id)
+    const mission = store.getMission(id)
     return NextResponse.json(mission ?? { error: "Not found" }, { status: mission ? 200 : 404 })
   }
 }
@@ -32,25 +29,22 @@ export async function PATCH(
   { params }: { params: Promise<{ id: string }> },
 ) {
   const { id } = await params
+  const body = await request.json()
 
   if (isPreviewMode()) {
-    const body = await request.json()
-    const mission = mockMissions.find((m) => m.id === id)
-    if (!mission) {
-      return NextResponse.json({ error: "Mission not found" }, { status: 404 })
-    }
-    return NextResponse.json({ ...mission, ...body, updated_at: new Date().toISOString() })
+    const updated = store.updateMission(id, body)
+    if (!updated) return NextResponse.json({ error: "Not found" }, { status: 404 })
+    return NextResponse.json(updated)
   }
 
   try {
-    const body = await request.text()
     const res = await proxyToBackend(`/api/missions/${id}`, {
       method: "PATCH",
-      body,
+      body: JSON.stringify(body),
     })
-    const data = await res.json()
-    return NextResponse.json(data, { status: res.status })
+    return NextResponse.json(await res.json(), { status: res.status })
   } catch {
-    return NextResponse.json({ error: "Backend unreachable" }, { status: 503 })
+    const updated = store.updateMission(id, body)
+    return NextResponse.json(updated ?? { error: "Backend unreachable" }, { status: updated ? 200 : 503 })
   }
 }

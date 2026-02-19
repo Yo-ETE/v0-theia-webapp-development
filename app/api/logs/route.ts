@@ -1,6 +1,6 @@
 import { NextResponse, type NextRequest } from "next/server"
 import { isPreviewMode, proxyToBackend } from "@/lib/api-mode"
-import { mockLogs } from "@/lib/mock-data"
+import { store } from "@/lib/preview-store"
 
 export async function GET(request: NextRequest) {
   const { searchParams } = request.nextUrl
@@ -9,38 +9,27 @@ export async function GET(request: NextRequest) {
   const search = searchParams.get("search")
 
   if (isPreviewMode()) {
-    let logs = [...mockLogs]
-    if (source) {
-      logs = logs.filter((l) => l.source === source)
-    }
-    if (level) {
-      logs = logs.filter((l) => l.level === level)
-    }
-    if (search) {
-      const q = search.toLowerCase()
-      logs = logs.filter(
-        (l) =>
-          l.message.toLowerCase().includes(q) ||
-          (l.details && l.details.toLowerCase().includes(q)),
-      )
-    }
-    return NextResponse.json(logs)
+    return NextResponse.json(
+      store.getLogs({
+        source: source ?? undefined,
+        level: level ?? undefined,
+        search: search ?? undefined,
+      })
+    )
   }
 
   try {
     const qs = searchParams.toString()
     const res = await proxyToBackend(`/api/logs${qs ? `?${qs}` : ""}`)
     if (!res.ok) throw new Error(`Backend ${res.status}`)
-    const data = await res.json()
-    return NextResponse.json(data)
+    return NextResponse.json(await res.json())
   } catch {
-    let logs = [...mockLogs]
-    if (source) logs = logs.filter((l) => l.source === source)
-    if (level) logs = logs.filter((l) => l.level === level)
-    if (search) {
-      const q = search.toLowerCase()
-      logs = logs.filter((l) => l.message.toLowerCase().includes(q) || (l.details && l.details.toLowerCase().includes(q)))
-    }
-    return NextResponse.json(logs)
+    return NextResponse.json(
+      store.getLogs({
+        source: source ?? undefined,
+        level: level ?? undefined,
+        search: search ?? undefined,
+      })
+    )
   }
 }

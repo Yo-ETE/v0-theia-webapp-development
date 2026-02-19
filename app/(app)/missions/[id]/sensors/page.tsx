@@ -1,31 +1,52 @@
 "use client"
 
+import { useCallback } from "react"
 import Link from "next/link"
 import { useParams } from "next/navigation"
-import { ArrowLeft, Radio, Signal, Battery, Wifi } from "lucide-react"
+import { ArrowLeft, Radio, Signal, Battery, Wifi, Unlink } from "lucide-react"
 import { TopHeader } from "@/components/top-header"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
+  Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
 } from "@/components/ui/table"
 import { useMission, useDevices } from "@/hooks/use-api"
+import { updateDevice, updateMission } from "@/lib/api-client"
 import { deviceStatusConfig, formatRelative } from "@/lib/format"
 import { cn } from "@/lib/utils"
 
 export default function SensorsPage() {
   const { id } = useParams<{ id: string }>()
-  const { data: mission } = useMission(id)
-  const { data: allDevices, isLoading } = useDevices()
+  const { data: mission, mutate: mutateMission } = useMission(id)
+  const { data: allDevices, isLoading, mutate: mutateDevices } = useDevices()
 
   const missionDevices = allDevices?.filter((d) => d.mission_id === id) ?? []
   const unassigned = allDevices?.filter((d) => !d.mission_id) ?? []
+
+  const assignToMission = useCallback(async (deviceId: string) => {
+    if (!mission) return
+    await updateDevice(deviceId, { mission_id: id })
+    const updated = await updateMission(id, { device_count: (mission.device_count ?? 0) + 1 })
+    mutateMission(updated, false)
+    mutateDevices()
+  }, [mission, id, mutateMission, mutateDevices])
+
+  const unassignFromMission = useCallback(async (deviceId: string) => {
+    if (!mission) return
+    await updateDevice(deviceId, { mission_id: null as unknown as string, zone_id: null as unknown as string, zone_label: "" })
+    // Remove device from zone devices arrays
+    const zones = (mission.zones ?? []).map((z) => ({
+      ...z,
+      devices: z.devices.filter((did) => did !== deviceId),
+    }))
+    const updated = await updateMission(id, {
+      zones,
+      device_count: Math.max(0, (mission.device_count ?? 1) - 1),
+    })
+    mutateMission(updated, false)
+    mutateDevices()
+  }, [mission, id, mutateMission, mutateDevices])
 
   return (
     <>
@@ -68,6 +89,7 @@ export default function SensorsPage() {
                       <TableHead className="text-[10px]">RSSI</TableHead>
                       <TableHead className="text-[10px]">Battery</TableHead>
                       <TableHead className="text-[10px]">Last Seen</TableHead>
+                      <TableHead className="text-[10px]">Action</TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
@@ -118,6 +140,16 @@ export default function SensorsPage() {
                           <TableCell className="text-[11px] text-muted-foreground">
                             {device.last_seen ? formatRelative(device.last_seen) : "Never"}
                           </TableCell>
+                          <TableCell>
+                            <Button
+                              variant="ghost" size="sm"
+                              className="h-6 text-[10px] px-2 text-destructive hover:text-destructive/80"
+                              onClick={() => unassignFromMission(device.id)}
+                            >
+                              <Unlink className="mr-1 h-3 w-3" />
+                              Remove
+                            </Button>
+                          </TableCell>
                         </TableRow>
                       )
                     })}
@@ -167,7 +199,11 @@ export default function SensorsPage() {
                             {device.firmware}
                           </TableCell>
                           <TableCell>
-                            <Button variant="outline" size="sm" className="h-6 text-[10px] px-2">
+                            <Button
+                              variant="outline" size="sm"
+                              className="h-6 text-[10px] px-2"
+                              onClick={() => assignToMission(device.id)}
+                            >
                               <Signal className="mr-1 h-3 w-3" />
                               Assign
                             </Button>

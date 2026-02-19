@@ -1,6 +1,6 @@
 "use client"
 
-import { useEffect, useState } from "react"
+import { useEffect, useState, useCallback, useRef } from "react"
 import type { Zone, DetectionEvent } from "@/lib/types"
 import { cn } from "@/lib/utils"
 
@@ -11,6 +11,12 @@ interface MapInnerProps {
   zones?: Zone[]
   events?: DetectionEvent[]
   className?: string
+  /** When true, enables polygon drawing mode */
+  drawingMode?: boolean
+  /** Callback when a polygon is drawn */
+  onPolygonDrawn?: (polygon: [number, number][]) => void
+  /** Callback when a zone is clicked */
+  onZoneClick?: (zoneId: string) => void
 }
 
 export default function MapInner({
@@ -20,23 +26,22 @@ export default function MapInner({
   zones = [],
   events = [],
   className,
+  drawingMode = false,
+  onPolygonDrawn,
+  onZoneClick,
 }: MapInnerProps) {
-  // Safe defaults - Paris if coords missing
   const centerLat = Number.isFinite(rawLat) ? rawLat : 48.8566
   const centerLon = Number.isFinite(rawLon) ? rawLon : 2.3522
   const zoom = Number.isFinite(rawZoom) ? rawZoom : 15
+
   const [mounted, setMounted] = useState(false)
-  const [MapComponents, setMapComponents] = useState<{
-    MapContainer: React.ComponentType<Record<string, unknown>>
-    TileLayer: React.ComponentType<Record<string, unknown>>
-    Polygon: React.ComponentType<Record<string, unknown>>
-    CircleMarker: React.ComponentType<Record<string, unknown>>
-  } | null>(null)
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const [RL, setRL] = useState<Record<string, any> | null>(null)
+  const [drawPoints, setDrawPoints] = useState<[number, number][]>([])
+  const mapRef = useRef<unknown>(null)
 
   useEffect(() => {
     setMounted(true)
-
-    // Load Leaflet CSS via <link> tag (CSS dynamic import not supported in all bundlers)
     if (!document.querySelector('link[href*="leaflet"]')) {
       const link = document.createElement("link")
       link.rel = "stylesheet"
@@ -44,54 +49,73 @@ export default function MapInner({
       link.crossOrigin = ""
       document.head.appendChild(link)
     }
-
-    // Dynamically import react-leaflet at runtime
     import("react-leaflet")
-      .then((rl) => {
-        setMapComponents({
-          MapContainer: rl.MapContainer as unknown as React.ComponentType<Record<string, unknown>>,
-          TileLayer: rl.TileLayer as unknown as React.ComponentType<Record<string, unknown>>,
-          Polygon: rl.Polygon as unknown as React.ComponentType<Record<string, unknown>>,
-          CircleMarker: rl.CircleMarker as unknown as React.ComponentType<Record<string, unknown>>,
-        })
-      })
-      .catch((err) => {
-        console.error("[v0] Failed to load react-leaflet:", err)
-      })
+      .then((mod) => setRL(mod))
+      .catch(() => {})
+  }, [])
+
+  // Map click handler for drawing
+  const MapClickHandler = useCallback(() => {
+    if (!RL || !drawingMode) return null
+    const { useMapEvents } = RL
+    // eslint-disable-next-line react-hooks/rules-of-hooks
+    useMapEvents({
+      click(e: { latlng: { lat: number; lng: number } }) {
+        setDrawPoints((prev) => [...prev, [e.latlng.lat, e.latlng.lng]])
+      },
+    })
+    return null
+  }, [RL, drawingMode])
+
+  const finishDrawing = useCallback(() => {
+    if (drawPoints.length >= 3 && onPolygonDrawn) {
+      onPolygonDrawn(drawPoints)
+    }
+    setDrawPoints([])
+  }, [drawPoints, onPolygonDrawn])
+
+  const cancelDrawing = useCallback(() => {
+    setDrawPoints([])
+  }, [])
+
+  const undoLastPoint = useCallback(() => {
+    setDrawPoints((prev) => prev.slice(0, -1))
   }, [])
 
   const recentDetections = (events ?? [])
     .filter((e) => e.type === "detection")
     .slice(0, 10)
 
-  if (!mounted || !MapComponents) {
+  if (!mounted || !RL) {
     return (
       <div className={cn("relative rounded-lg overflow-hidden border border-border/50 bg-muted/20", className)}>
-        <div className="flex h-full w-full items-center justify-center" style={{ minHeight: "400px" }}>
-          <span className="text-xs text-muted-foreground font-mono animate-pulse">
-            Loading map...
-          </span>
+        <div className="flex h-full w-full items-center justify-center" style={{ minHeight: "300px" }}>
+          <span className="text-xs text-muted-foreground font-mono animate-pulse">Loading map...</span>
         </div>
       </div>
     )
   }
 
-  const { MapContainer, TileLayer, Polygon, CircleMarker } = MapComponents
+  const { MapContainer, TileLayer, Polygon, CircleMarker, Polyline } = RL
 
   return (
     <div className={cn("relative rounded-lg overflow-hidden border border-border/50", className)}>
       <MapContainer
+        ref={mapRef}
         center={[centerLat, centerLon]}
         zoom={zoom}
         scrollWheelZoom={true}
         className="h-full w-full"
-        style={{ minHeight: "400px", background: "#0d1117" }}
+        style={{ minHeight: "300px", background: "#0d1117" }}
       >
         <TileLayer
           attribution={'&copy; <a href="https://www.openstreetmap.org/copyright">OSM</a>'}
           url="https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png"
         />
 
+        <MapClickHandler />
+
+        {/* Existing zones */}
         {(zones ?? []).map((zone) => (
           <Polygon
             key={zone.id}
@@ -102,9 +126,33 @@ export default function MapInner({
               fillOpacity: 0.15,
               weight: 2,
             }}
+            eventHandlers={
+              onZoneClick
+                ? { click: () => onZoneClick(zone.id) }
+                : undefined
+            }
           />
         ))}
 
+        {/* Drawing-in-progress polyline */}
+        {drawPoints.length > 0 && (
+          <Polyline
+            positions={drawPoints}
+            pathOptions={{ color: "#22d3ee", weight: 2, dashArray: "6 4" }}
+          />
+        )}
+
+        {/* Drawing points markers */}
+        {drawPoints.map((pt, i) => (
+          <CircleMarker
+            key={`draw-${i}`}
+            center={pt}
+            radius={4}
+            pathOptions={{ color: "#22d3ee", fillColor: "#22d3ee", fillOpacity: 1, weight: 1 }}
+          />
+        ))}
+
+        {/* Detection events */}
         {recentDetections.map((evt) => {
           const zone = (zones ?? []).find((z) => z.id === evt.zone_id)
           if (!zone || !zone.polygon || zone.polygon.length === 0) return null
@@ -115,23 +163,53 @@ export default function MapInner({
               key={evt.id}
               center={[lat, lon]}
               radius={6}
-              pathOptions={{
-                color: "#f59e0b",
-                fillColor: "#f59e0b",
-                fillOpacity: 0.8,
-                weight: 2,
-              }}
+              pathOptions={{ color: "#f59e0b", fillColor: "#f59e0b", fillOpacity: 0.8, weight: 2 }}
             />
           )
         })}
       </MapContainer>
 
-      {/* Map overlay info */}
+      {/* Coords overlay */}
       <div className="absolute bottom-2 left-2 z-[1000] rounded bg-background/80 backdrop-blur px-2 py-1">
         <span className="font-mono text-[10px] text-muted-foreground">
           {(centerLat ?? 0).toFixed(4)}, {(centerLon ?? 0).toFixed(4)} z{zoom ?? 0}
         </span>
       </div>
+
+      {/* Drawing toolbar */}
+      {drawingMode && (
+        <div className="absolute top-2 left-2 z-[1000] flex items-center gap-1.5">
+          <div className="rounded bg-background/90 backdrop-blur px-2 py-1 border border-cyan-500/40">
+            <span className="text-[10px] font-mono text-cyan-400">
+              DRAW MODE {drawPoints.length > 0 ? `(${drawPoints.length} pts)` : "-- click map to add points"}
+            </span>
+          </div>
+          {drawPoints.length > 0 && (
+            <>
+              <button
+                onClick={undoLastPoint}
+                className="rounded bg-background/90 backdrop-blur px-2 py-1 text-[10px] font-mono text-muted-foreground hover:text-foreground border border-border/50 transition-colors"
+              >
+                Undo
+              </button>
+              <button
+                onClick={cancelDrawing}
+                className="rounded bg-background/90 backdrop-blur px-2 py-1 text-[10px] font-mono text-destructive hover:text-destructive/80 border border-border/50 transition-colors"
+              >
+                Cancel
+              </button>
+              {drawPoints.length >= 3 && (
+                <button
+                  onClick={finishDrawing}
+                  className="rounded bg-cyan-600/90 backdrop-blur px-2.5 py-1 text-[10px] font-mono text-white hover:bg-cyan-500/90 border border-cyan-500/40 transition-colors"
+                >
+                  Finish ({drawPoints.length} pts)
+                </button>
+              )}
+            </>
+          )}
+        </div>
+      )}
     </div>
   )
 }
