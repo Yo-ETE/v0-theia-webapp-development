@@ -45,7 +45,7 @@ export default function NewMissionPage() {
     environment: "horizontal" as EnvironmentType,
     center_lat: 48.8566,
     center_lon: 2.3522,
-    zoom: 17,
+    zoom: 19,
   })
 
   // ── Geocoding via Nominatim ───────────────────────────────────
@@ -331,7 +331,7 @@ export default function NewMissionPage() {
                       <Input
                         type="number"
                         min={1}
-                        max={20}
+                        max={22}
                         value={form.zoom}
                         onChange={(e) => setForm({ ...form, zoom: parseInt(e.target.value) || 17 })}
                         className="bg-input/50 border-border font-mono text-xs h-8"
@@ -365,7 +365,6 @@ export default function NewMissionPage() {
                 <CardContent className="p-0">
                   <ErrorBoundary>
                     <MissionMap
-                      key={`${form.center_lat}-${form.center_lon}-${form.zoom}`}
                       centerLat={form.center_lat}
                       centerLon={form.center_lon}
                       zoom={form.zoom}

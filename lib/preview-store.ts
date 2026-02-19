@@ -38,7 +38,7 @@ class PreviewStore {
       environment: "horizontal",
       center_lat: 48.8566,
       center_lon: 2.3522,
-      zoom: 17,
+      zoom: 19,
       zones: [],
       device_count: 0,
       event_count: 0,

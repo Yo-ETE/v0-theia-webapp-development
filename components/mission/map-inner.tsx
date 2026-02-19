@@ -54,6 +54,15 @@ export default function MapInner({
       .catch(() => {})
   }, [])
 
+  // Keep map view synced when center/zoom changes
+  useEffect(() => {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const map = mapRef.current as any
+    if (map && map.setView) {
+      map.setView([centerLat, centerLon], zoom)
+    }
+  }, [centerLat, centerLon, zoom])
+
   // Map click handler for drawing
   const MapClickHandler = useCallback(() => {
     if (!RL || !drawingMode) return null
@@ -104,6 +113,7 @@ export default function MapInner({
         ref={mapRef}
         center={[centerLat, centerLon]}
         zoom={zoom}
+        maxZoom={22}
         scrollWheelZoom={true}
         className="h-full w-full"
         style={{ minHeight: "300px", background: "#0d1117" }}
@@ -111,6 +121,8 @@ export default function MapInner({
         <TileLayer
           attribution={'&copy; <a href="https://www.openstreetmap.org/copyright">OSM</a>'}
           url="https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png"
+          maxZoom={22}
+          maxNativeZoom={20}
         />
 
         <MapClickHandler />

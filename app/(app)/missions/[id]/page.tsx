@@ -17,7 +17,7 @@ import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from "@/components/ui/select"
 import {
-  Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter,
+  Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter,
 } from "@/components/ui/dialog"
 import { MissionMap } from "@/components/mission/mission-map"
 import { ErrorBoundary } from "@/components/error-boundary"
@@ -264,7 +264,7 @@ export default function MissionDetailPage() {
                 <MissionMap
                   centerLat={mission.center_lat ?? 48.8566}
                   centerLon={mission.center_lon ?? 2.3522}
-                  zoom={mission.zoom ?? 17}
+                  zoom={mission.zoom ?? 19}
                   zones={zones}
                   events={eventList}
                   className="h-[450px]"
@@ -405,9 +405,12 @@ export default function MissionDetailPage() {
 
       {/* ── Zone creation dialog ── */}
       <Dialog open={zoneDialog} onOpenChange={setZoneDialog}>
-        <DialogContent className="sm:max-w-md">
+        <DialogContent className="sm:max-w-md z-[10000]">
           <DialogHeader>
             <DialogTitle className="text-sm">New Zone</DialogTitle>
+            <DialogDescription className="text-xs text-muted-foreground">
+              Name and classify the drawn zone. It will appear on the map.
+            </DialogDescription>
           </DialogHeader>
           <div className="flex flex-col gap-4 py-2">
             <div className="flex flex-col gap-2">
@@ -446,11 +449,14 @@ export default function MissionDetailPage() {
 
       {/* ── Device assignment dialog ── */}
       <Dialog open={!!assignDialog} onOpenChange={() => setAssignDialog(null)}>
-        <DialogContent className="sm:max-w-md">
+        <DialogContent className="sm:max-w-md z-[10000]">
           <DialogHeader>
             <DialogTitle className="text-sm">
               Assign TX to {zones.find((z) => z.id === assignDialog)?.label ?? "Zone"}
             </DialogTitle>
+            <DialogDescription className="text-xs text-muted-foreground">
+              Select an unassigned device to place on this zone.
+            </DialogDescription>
           </DialogHeader>
           <div className="flex flex-col gap-2 py-2 max-h-64 overflow-y-auto">
             {unassigned.length === 0 ? (

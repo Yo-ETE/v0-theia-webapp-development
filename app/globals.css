@@ -145,3 +145,15 @@
     @apply bg-background text-foreground;
   }
 }
+
+/* Ensure Leaflet map doesn't cover dialogs/overlays */
+.leaflet-container {
+  z-index: 0 !important;
+}
+.leaflet-pane {
+  z-index: 1 !important;
+}
+.leaflet-top,
+.leaflet-bottom {
+  z-index: 2 !important;
+}
