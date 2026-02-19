@@ -58,6 +58,7 @@ export interface Alert {
 // ─── Missions ────────────────────────────────────────────────────
 
 export type MissionStatus = "draft" | "active" | "paused" | "completed" | "archived"
+export type EnvironmentType = "horizontal" | "vertical"
 
 export interface Mission {
   id: string
@@ -65,6 +66,7 @@ export interface Mission {
   description: string
   status: MissionStatus
   location: string
+  environment: EnvironmentType
   created_at: string
   updated_at: string
   started_at: string | null
@@ -73,6 +75,7 @@ export interface Mission {
   center_lon: number
   zoom: number
   zones: Zone[]
+  floors?: Floor[]
   device_count: number
   event_count: number
 }
@@ -82,9 +85,16 @@ export interface Zone {
   mission_id: string
   name: string
   label: string
-  type: "facade" | "perimeter" | "interior" | "roof" | "custom"
+  type: "facade" | "perimeter" | "interior" | "roof" | "floor" | "custom"
   polygon: [number, number][]
   color: string
+  floor?: number
+  devices: string[]
+}
+
+export interface Floor {
+  level: number
+  label: string
   devices: string[]
 }
 
