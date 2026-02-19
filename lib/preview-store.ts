@@ -48,6 +48,7 @@ class PreviewStore {
       ended_at: null,
       ...data,
     }
+    console.log("[v0] createMission stored:", mission.id, "lat:", mission.center_lat, "lon:", mission.center_lon, "zoom:", mission.zoom)
     this.missions.push(mission)
     return mission
   }
@@ -60,6 +61,7 @@ class PreviewStore {
       ...data,
       updated_at: new Date().toISOString(),
     }
+    console.log("[v0] updateMission:", id, "zones:", this.missions[idx].zones?.length, "lat:", this.missions[idx].center_lat)
     return this.missions[idx]
   }
 
@@ -103,5 +105,7 @@ class PreviewStore {
   }
 }
 
-// Singleton -- survives across route handler calls
-export const store = new PreviewStore()
+// Singleton via globalThis -- survives across route handler calls
+// even in Next.js standalone mode with hot reload
+const globalForStore = globalThis as unknown as { __theiaStore?: PreviewStore }
+export const store = globalForStore.__theiaStore ?? (globalForStore.__theiaStore = new PreviewStore())

@@ -139,7 +139,9 @@ export default function NewMissionPage() {
   async function handleSubmit() {
     setSaving(true)
     try {
+      console.log("[v0] Creating mission with:", JSON.stringify({ lat: form.center_lat, lon: form.center_lon, zoom: form.zoom }))
       const mission = await createMission(form)
+      console.log("[v0] Created mission:", mission.id, "lat:", mission.center_lat, "lon:", mission.center_lon)
       router.push(`/missions/${mission.id}`)
     } catch (err) {
       console.error("Failed to create mission:", err)

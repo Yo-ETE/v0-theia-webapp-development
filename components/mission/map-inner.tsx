@@ -55,26 +55,50 @@ export default function MapInner({
   }, [])
 
   // Keep map view synced when center/zoom changes
+  // Also retries once after mount because mapRef may not be ready on first render
+  const prevCenter = useRef({ lat: centerLat, lon: centerLon, z: zoom })
   useEffect(() => {
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const map = mapRef.current as any
-    if (map && map.setView) {
-      map.setView([centerLat, centerLon], zoom)
+    const setView = () => {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const map = mapRef.current as any
+      if (map && map.setView) {
+        map.setView([centerLat, centerLon], zoom)
+        prevCenter.current = { lat: centerLat, lon: centerLon, z: zoom }
+      }
     }
+    setView()
+    // Retry after short delay if map wasn't ready
+    const timer = setTimeout(setView, 300)
+    return () => clearTimeout(timer)
   }, [centerLat, centerLon, zoom])
 
-  // Map click handler for drawing
-  const MapClickHandler = useCallback(() => {
-    if (!RL || !drawingMode) return null
-    const { useMapEvents } = RL
-    // eslint-disable-next-line react-hooks/rules-of-hooks
-    useMapEvents({
-      click(e: { latlng: { lat: number; lng: number } }) {
-        setDrawPoints((prev) => [...prev, [e.latlng.lat, e.latlng.lng]])
-      },
-    })
-    return null
-  }, [RL, drawingMode])
+  // Map click handler for drawing -- attaches a click listener directly
+  // to avoid hooks-in-callback issues with useMapEvents
+  useEffect(() => {
+    if (!drawingMode) return
+    const handler = (e: { latlng: { lat: number; lng: number } }) => {
+      setDrawPoints((prev) => [...prev, [e.latlng.lat, e.latlng.lng]])
+    }
+    const attach = () => {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const map = mapRef.current as any
+      if (map?.on) {
+        map.on("click", handler)
+        return true
+      }
+      return false
+    }
+    if (!attach()) {
+      // Retry after map init
+      const t = setTimeout(attach, 500)
+      return () => clearTimeout(t)
+    }
+    return () => {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const map = mapRef.current as any
+      map?.off?.("click", handler)
+    }
+  }, [drawingMode])
 
   const finishDrawing = useCallback(() => {
     if (drawPoints.length >= 3 && onPolygonDrawn) {
@@ -124,8 +148,6 @@ export default function MapInner({
           maxZoom={22}
           maxNativeZoom={20}
         />
-
-        <MapClickHandler />
 
         {/* Existing zones */}
         {(zones ?? []).map((zone) => (

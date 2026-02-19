@@ -143,6 +143,7 @@ export default function MissionDetailPage() {
     )
   }
 
+  console.log("[v0] Mission loaded:", mission.id, "lat:", mission.center_lat, "lon:", mission.center_lon, "zoom:", mission.zoom, "zones:", mission.zones?.length)
   const statusCfg = missionStatusConfig[mission.status] ?? missionStatusConfig.draft
   const zones = mission.zones ?? []
   const eventList = events ?? []
@@ -262,8 +263,9 @@ export default function MissionDetailPage() {
             <div className="lg:col-span-2">
               <ErrorBoundary>
                 <MissionMap
-                  centerLat={mission.center_lat ?? 48.8566}
-                  centerLon={mission.center_lon ?? 2.3522}
+                  key={`${mission.id}-${mission.center_lat}-${mission.center_lon}`}
+                  centerLat={mission.center_lat}
+                  centerLon={mission.center_lon}
                   zoom={mission.zoom ?? 19}
                   zones={zones}
                   events={eventList}
