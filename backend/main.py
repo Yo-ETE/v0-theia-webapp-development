@@ -1,0 +1,85 @@
+"""
+THEIA - FastAPI main application
+Hub IoT supervision backend.
+"""
+import asyncio
+import os
+from contextlib import asynccontextmanager
+from dotenv import load_dotenv
+
+load_dotenv()
+
+from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware
+
+from backend.database import get_db, close_db
+from backend.services.system_monitor import system_monitor
+from backend.services.gps_reader import gps_reader
+from backend.services.lora_bridge import lora_bridge
+from backend.routers import health, missions, devices, events, logs, stream, tiles
+
+_tasks: list[asyncio.Task] = []
+
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    # Startup: init DB + start background services
+    await get_db()
+    print("[THEIA] Database initialized")
+
+    _tasks.append(asyncio.create_task(system_monitor.start(interval=5.0)))
+    print("[THEIA] System monitor started")
+
+    # GPS and LoRa are optional - only start if devices exist
+    if os.path.exists(os.getenv("GPS_DEVICE", "/dev/ttyUSB0")):
+        _tasks.append(asyncio.create_task(gps_reader.start(interval=2.0)))
+        print("[THEIA] GPS reader started")
+    else:
+        print("[THEIA] GPS device not found, skipping GPS reader")
+
+    if os.path.exists(os.getenv("LORA_SERIAL_PORT", "/dev/ttyACM0")):
+        _tasks.append(asyncio.create_task(lora_bridge.start()))
+        print("[THEIA] LoRa bridge started")
+    else:
+        print("[THEIA] LoRa serial port not found, skipping LoRa bridge")
+
+    yield
+
+    # Shutdown
+    system_monitor.stop()
+    gps_reader.stop()
+    lora_bridge.stop()
+    for t in _tasks:
+        t.cancel()
+    await close_db()
+    print("[THEIA] Shutdown complete")
+
+
+app = FastAPI(
+    title="THEIA API",
+    description="IoT Hub Surveillance Backend",
+    version="1.0.0",
+    lifespan=lifespan,
+)
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
+# Register all routers under /api prefix
+app.include_router(health.router, prefix="/api")
+app.include_router(missions.router, prefix="/api")
+app.include_router(devices.router, prefix="/api")
+app.include_router(events.router, prefix="/api")
+app.include_router(logs.router, prefix="/api")
+app.include_router(stream.router, prefix="/api")
+app.include_router(tiles.router, prefix="/api")
+
+
+@app.get("/")
+async def root():
+    return {"name": "THEIA API", "version": "1.0.0", "status": "running"}
