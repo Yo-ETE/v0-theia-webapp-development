@@ -30,6 +30,13 @@ interface MissionMapProps {
   drawingMode?: boolean
   onPolygonDrawn?: (polygon: [number, number][]) => void
   onZoneClick?: (zoneId: string) => void
+  sensorPlaceMode?: {
+    zoneId: string
+    side: string
+    deviceId: string
+    deviceName: string
+  } | null
+  onSensorPlace?: (zoneId: string, side: string, position: number) => void
 }
 
 export function MissionMap({ className, ...props }: MissionMapProps) {

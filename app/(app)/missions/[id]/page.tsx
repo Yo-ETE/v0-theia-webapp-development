@@ -6,7 +6,7 @@ import { useParams } from "next/navigation"
 import {
   ArrowLeft, Radio, MapPin, Clock, Users, BarChart3, Plus,
   Pencil, Play, Pause, CheckCircle, Trash2, Building2, Home,
-  Activity, Eye, EyeOff, Zap,
+  Activity, Eye, EyeOff, Zap, Timer,
 } from "lucide-react"
 import { TopHeader } from "@/components/top-header"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
@@ -21,6 +21,7 @@ import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter,
 } from "@/components/ui/dialog"
 import { MissionMap } from "@/components/mission/mission-map"
+import { DetectionTimelapse } from "@/components/mission/detection-timelapse"
 import { ErrorBoundary } from "@/components/error-boundary"
 import { useMission, useEvents, useDevices } from "@/hooks/use-api"
 import { useSSE } from "@/hooks/use-sse"
@@ -71,8 +72,19 @@ export default function MissionDetailPage() {
   const [sideLabels, setSideLabels] = useState<Record<string, string>>({})
   const [assignDialog, setAssignDialog] = useState<string | null>(null)
   const [assignStep, setAssignStep] = useState<{ deviceId: string; deviceName: string; side?: string } | null>(null)
-  const [sensorPos, setSensorPos] = useState(0.5)
+  const [sensorPlaceMode, setSensorPlaceMode] = useState<{
+    zoneId: string
+    side: string
+    deviceId: string
+    deviceName: string
+  } | null>(null)
   const [statusUpdating, setStatusUpdating] = useState(false)
+  const [timelapseMode, setTimelapseMode] = useState(false)
+  const [replayDetections, setReplayDetections] = useState<Record<string, LiveDetection>>({})
+
+  const handleReplayDetection = useCallback((dets: Record<string, LiveDetection>) => {
+    setReplayDetections(dets)
+  }, [])
 
   // ── Live SSE detections ──
   const [liveDetections, setLiveDetections] = useState<LiveDetection[]>([])
@@ -183,7 +195,14 @@ export default function MissionDetailPage() {
     mutateDevices()
     setAssignDialog(null)
     setAssignStep(null)
+    setSensorPlaceMode(null)
   }, [mission, id, mutate, mutateDevices])
+
+  // ── Handle click-to-place sensor on the map side ──
+  const handleSensorPlace = useCallback((zoneId: string, side: string, position: number) => {
+    if (!sensorPlaceMode) return
+    assignDevice(sensorPlaceMode.deviceId, zoneId, side, position)
+  }, [sensorPlaceMode, assignDevice])
 
   // ── Remove device from mission ──
   const unassignDevice = useCallback(async (deviceId: string) => {
@@ -263,8 +282,11 @@ export default function MissionDetailPage() {
       sensor_position: Number(d.sensor_position) || 0.5,
     }))
 
+  // In timelapse mode, use replay detections instead of live data
   // Build liveByZone from polled events if SSE hasn't delivered yet
-  const effectiveLiveByZone: Record<string, LiveDetection> = { ...liveByZone }
+  const effectiveLiveByZone: Record<string, LiveDetection> = timelapseMode
+    ? { ...replayDetections }
+    : { ...liveByZone }
   if (Object.keys(effectiveLiveByZone).length === 0 && eventList.length > 0) {
     for (const evt of eventList.slice(0, 20)) {
       if (!evt.zone_id || effectiveLiveByZone[evt.zone_id]) continue
@@ -325,6 +347,17 @@ export default function MissionDetailPage() {
               </Button>
               <Button variant="outline" size="sm" asChild className="text-xs">
                 <Link href={`/missions/${id}/history`}><BarChart3 className="mr-1.5 h-3 w-3" />History</Link>
+              </Button>
+              <Button
+                variant={timelapseMode ? "secondary" : "outline"}
+                size="sm"
+                className="text-xs"
+                onClick={() => {
+                  setTimelapseMode(!timelapseMode)
+                  if (timelapseMode) setReplayDetections({})
+                }}
+              >
+                <Timer className="mr-1.5 h-3 w-3" />Timelapse
               </Button>
             </div>
           </div>
@@ -399,9 +432,25 @@ export default function MissionDetailPage() {
                   className="h-[500px]"
                   drawingMode={drawingMode}
                   onPolygonDrawn={handlePolygonDrawn}
-                  onZoneClick={(zoneId) => setAssignDialog(zoneId)}
+                  onZoneClick={(zoneId) => !sensorPlaceMode && setAssignDialog(zoneId)}
+                  sensorPlaceMode={sensorPlaceMode}
+                  onSensorPlace={handleSensorPlace}
                 />
               </ErrorBoundary>
+
+              {/* Timelapse panel */}
+              {timelapseMode && (
+                <div className="mt-3">
+                  <DetectionTimelapse
+                    missionId={id}
+                    onDetection={handleReplayDetection}
+                    onClose={() => {
+                      setTimelapseMode(false)
+                      setReplayDetections({})
+                    }}
+                  />
+                </div>
+              )}
             </div>
 
             <div className="flex flex-col gap-3">
@@ -732,7 +781,18 @@ export default function MissionDetailPage() {
                   return Object.entries(sides).filter(([, label]) => Boolean(label)).map(([key, label]) => (
                     <button
                       key={key}
-                      onClick={() => { setAssignStep({ ...assignStep, side: key }); setSensorPos(0.5) }}
+                      onClick={() => {
+                        // Close dialog and activate click-to-place mode on map
+                        const zoneId = assignDialog!
+                        setSensorPlaceMode({
+                          zoneId,
+                          side: key,
+                          deviceId: assignStep.deviceId,
+                          deviceName: assignStep.deviceName,
+                        })
+                        setAssignDialog(null)
+                        setAssignStep(null)
+                      }}
                       className="flex items-center gap-3 rounded border border-border/50 p-3 text-left hover:bg-muted/30 transition-colors"
                     >
                       <span className="text-sm font-mono font-bold text-cyan-500 w-6 text-center">{key}</span>
@@ -750,53 +810,6 @@ export default function MissionDetailPage() {
               </div>
               <DialogFooter>
                 <Button variant="ghost" size="sm" onClick={() => setAssignStep(null)}>Back</Button>
-              </DialogFooter>
-            </>
-          ) : (
-            /* Step 2b: Position sensor on the side */
-            <>
-              <DialogHeader>
-                <DialogTitle className="text-sm">
-                  Position of {assignStep.deviceName} on side [{assignStep.side}]
-                </DialogTitle>
-                <DialogDescription className="text-xs text-muted-foreground">
-                  Slide to set where the sensor is placed along this side. 0% = start, 100% = end.
-                </DialogDescription>
-              </DialogHeader>
-              <div className="flex flex-col gap-4 py-4">
-                {/* Visual side representation */}
-                <div className="relative h-10 rounded border border-border/50 bg-muted/30 mx-2">
-                  {/* Side line */}
-                  <div className="absolute top-1/2 left-4 right-4 h-0.5 bg-cyan-500 -translate-y-1/2" />
-                  {/* Start label */}
-                  <span className="absolute left-1 top-1/2 -translate-y-1/2 text-[9px] font-mono text-muted-foreground">0%</span>
-                  {/* End label */}
-                  <span className="absolute right-1 top-1/2 -translate-y-1/2 text-[9px] font-mono text-muted-foreground">100%</span>
-                  {/* Sensor marker */}
-                  <div
-                    className="absolute top-1/2 -translate-y-1/2 -translate-x-1/2 h-5 w-5 rounded-full bg-primary border-2 border-background shadow-md transition-all"
-                    style={{ left: `${4 + sensorPos * (100 - 8)}%` }}
-                  >
-                    <span className="absolute -top-5 left-1/2 -translate-x-1/2 text-[9px] font-mono font-bold text-primary whitespace-nowrap">
-                      TX {Math.round(sensorPos * 100)}%
-                    </span>
-                  </div>
-                </div>
-                <input
-                  type="range" min="0" max="1" step="0.01"
-                  value={sensorPos}
-                  onChange={(e) => setSensorPos(parseFloat(e.target.value))}
-                  className="w-full accent-primary mx-2"
-                />
-                <p className="text-[10px] text-muted-foreground text-center font-mono">
-                  Sensor at {Math.round(sensorPos * 100)}% along side [{assignStep.side}]
-                </p>
-              </div>
-              <DialogFooter>
-                <Button variant="ghost" size="sm" onClick={() => setAssignStep({ ...assignStep, side: undefined })}>Back</Button>
-                <Button size="sm" onClick={() => assignDialog && assignDevice(assignStep.deviceId, assignDialog, assignStep.side, sensorPos)}>
-                  Confirm Position
-                </Button>
               </DialogFooter>
             </>
           )}

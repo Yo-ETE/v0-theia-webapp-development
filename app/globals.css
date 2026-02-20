@@ -183,9 +183,19 @@
   }
 }
 
-.detection-pulse {
+  .detection-pulse {
   animation: detection-pulse 1.2s ease-in-out infinite;
-}
+  }
+  
+  /* Sensor placement mode - highlighted side */
+  @keyframes sensor-place-dash {
+    0% { stroke-dashoffset: 0; }
+    100% { stroke-dashoffset: 24; }
+  }
+  
+  .sensor-place-side {
+    animation: sensor-place-dash 0.8s linear infinite;
+  }
 
 /* Zone label tooltip with transparent background */
 .zone-label-tip {
