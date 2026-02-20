@@ -62,6 +62,7 @@ async def init_tables(db: aiosqlite.Connection):
             zone_id TEXT DEFAULT '',
             zone_label TEXT DEFAULT '',
             side TEXT DEFAULT '',
+            sensor_position REAL DEFAULT 0.5,
             floor INTEGER,
             position TEXT DEFAULT '',
             enabled INTEGER DEFAULT 1,
@@ -139,7 +140,7 @@ async def init_tables(db: aiosqlite.Connection):
     # Device columns
     for col, dflt in [
         ("serial_port", "''"), ("zone_id", "''"), ("zone_label", "''"),
-        ("side", "''"), ("floor", "NULL"),
+        ("side", "''"), ("sensor_position", "0.5"), ("floor", "NULL"),
     ]:
         try:
             await db.execute(f"ALTER TABLE devices ADD COLUMN {col} TEXT DEFAULT {dflt}")

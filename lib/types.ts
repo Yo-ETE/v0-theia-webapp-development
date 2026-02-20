@@ -115,6 +115,7 @@ export interface Device {
   zone_id: string | null
   zone_label: string | null
   side?: string | null
+  sensor_position?: number | null  // 0..1 along the assigned side
   floor?: number | null
   rssi: number | null
   snr: number | null

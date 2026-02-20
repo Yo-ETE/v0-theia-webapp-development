@@ -12,6 +12,16 @@ interface LiveDetection {
   side: string
   rssi: number | null
   timestamp: string
+  device_id?: string
+  sensor_position?: number
+}
+
+interface SensorPlacement {
+  device_id: string
+  device_name: string
+  zone_id: string
+  side: string
+  sensor_position: number // 0..1 along the side
 }
 
 interface MapInnerProps {
@@ -21,6 +31,7 @@ interface MapInnerProps {
   zones?: Zone[]
   events?: DetectionEvent[]
   liveDetections?: Record<string, LiveDetection>
+  sensorPlacements?: SensorPlacement[]
   className?: string
   drawingMode?: boolean
   onPolygonDrawn?: (polygon: [number, number][]) => void
@@ -33,6 +44,7 @@ export default function MapInner({
   zoom: rawZoom,
   zones = [],
   liveDetections = {},
+  sensorPlacements = [],
   className,
   drawingMode = false,
   onPolygonDrawn,
@@ -119,7 +131,7 @@ export default function MapInner({
 
   const { MapContainer, TileLayer, Polygon, Polyline, CircleMarker, Tooltip } = RL
 
-  // Compute zone centroids for detection markers
+  // Compute zone centroids
   const zoneCentroids: Record<string, [number, number]> = {}
   for (const zone of zones) {
     if (zone.polygon?.length) {
@@ -128,6 +140,78 @@ export default function MapInner({
       zoneCentroids[zone.id] = [lat, lon]
     }
   }
+
+  // Geometry: compute sensor and detection positions on the map
+  // 1cm ~ 0.000009 degrees latitude (approximate at ~48N)
+  const CM_TO_DEG_LAT = 0.000009
+  const CM_TO_DEG_LON = 0.0000135 // wider at 48N
+
+  function getSideEdge(zone: Zone, sideKey: string): [[number, number], [number, number]] | null {
+    const idx = sideKey.charCodeAt(0) - 65
+    if (idx < 0 || idx >= zone.polygon.length) return null
+    const nextIdx = (idx + 1) % zone.polygon.length
+    return [zone.polygon[idx], zone.polygon[nextIdx]]
+  }
+
+  function pointAlongSide(p1: [number, number], p2: [number, number], t: number): [number, number] {
+    return [p1[0] + (p2[0] - p1[0]) * t, p1[1] + (p2[1] - p1[1]) * t]
+  }
+
+  function inwardNormal(p1: [number, number], p2: [number, number], centroid: [number, number]): [number, number] {
+    // Normal perpendicular to the side, pointing inward (toward centroid)
+    const dx = p2[1] - p1[1]
+    const dy = -(p2[0] - p1[0])
+    const len = Math.sqrt(dx * dx + dy * dy)
+    if (len === 0) return [0, 0]
+    const nx = dx / len
+    const ny = dy / len
+    // Check if normal points toward centroid
+    const mid = pointAlongSide(p1, p2, 0.5)
+    const toCx = centroid[1] - mid[1]
+    const toCy = centroid[0] - mid[0]
+    const dot = nx * toCx + ny * toCy
+    return dot >= 0 ? [ny, nx] : [-ny, -nx] // [dlat, dlon]
+  }
+
+  // Build sensor markers and detection projections
+  type SensorMarkerData = {
+    id: string
+    sensorPos: [number, number]
+    detectionPos: [number, number] | null
+    deviceName: string
+    side: string
+    detection: LiveDetection | null
+    zoneColor: string
+  }
+
+  const sensorMarkers: SensorMarkerData[] = sensorPlacements.map((sp) => {
+    const zone = zones.find((z) => z.id === sp.zone_id)
+    if (!zone || !sp.side) return null
+    const edge = getSideEdge(zone, sp.side)
+    if (!edge) return null
+    const centroid = zoneCentroids[zone.id]
+    if (!centroid) return null
+    const sensorLatLon = pointAlongSide(edge[0], edge[1], sp.sensor_position)
+    const normal = inwardNormal(edge[0], edge[1], centroid)
+
+    // Check if there's a live detection for this zone
+    const det = liveDetections[zone.id]
+    let detectionLatLon: [number, number] | null = null
+    if (det?.presence && det.distance > 0) {
+      const dLat = det.distance * CM_TO_DEG_LAT * normal[0]
+      const dLon = det.distance * CM_TO_DEG_LON * normal[1]
+      detectionLatLon = [sensorLatLon[0] + dLat, sensorLatLon[1] + dLon]
+    }
+    return {
+      id: sp.device_id,
+      sensorPos: sensorLatLon,
+      detectionPos: detectionLatLon,
+      deviceName: sp.device_name,
+      side: sp.side,
+      detection: det ?? null,
+      zoneColor: zone.color,
+    }
+  }).filter(Boolean) as SensorMarkerData[]
 
   return (
     <div className={cn("relative rounded-lg overflow-hidden border border-border/50", className)}>
@@ -156,10 +240,10 @@ export default function MapInner({
               key={zone.id}
               positions={zone.polygon}
               pathOptions={{
-                color: hasPresence ? "#f59e0b" : zone.color,
-                fillColor: hasPresence ? "#f59e0b" : zone.color,
-                fillOpacity: hasPresence ? 0.35 : 0.15,
-                weight: hasPresence ? 3 : 2,
+                color: zone.color,
+                fillColor: zone.color,
+                fillOpacity: hasPresence ? 0.08 : 0.12,
+                weight: hasPresence ? 2 : 1.5,
               }}
               eventHandlers={onZoneClick ? { click: () => onZoneClick(zone.id) } : undefined}
             >
@@ -208,38 +292,91 @@ export default function MapInner({
             : null
         )}
 
-        {/* ── Live detection pulsing markers at zone centroids ── */}
+        {/* ── Sensor position markers (triangles on the side) ── */}
+        {sensorMarkers.map((sm) => (
+          <CircleMarker
+            key={`sensor-${sm.id}`}
+            center={sm.sensorPos}
+            radius={5}
+            pathOptions={{
+              color: sm.zoneColor,
+              fillColor: sm.zoneColor,
+              fillOpacity: 1,
+              weight: 2,
+            }}
+          >
+            <Tooltip permanent direction="bottom" offset={[0, 8]}>
+              <span style={{
+                fontSize: 9, fontWeight: 700, color: sm.zoneColor,
+                background: "rgba(255,255,255,0.92)", padding: "1px 4px",
+                borderRadius: 3, border: `1px solid ${sm.zoneColor}`,
+              }}>
+                TX [{sm.side}]
+              </span>
+            </Tooltip>
+          </CircleMarker>
+        ))}
+
+        {/* ── Detection projection lines + points ── */}
+        {sensorMarkers.filter(sm => sm.detectionPos).map((sm) => (
+          <Polyline
+            key={`det-line-${sm.id}`}
+            positions={[sm.sensorPos, sm.detectionPos!]}
+            pathOptions={{
+              color: "#f59e0b",
+              weight: 2,
+              dashArray: "4 3",
+              opacity: 0.8,
+            }}
+          />
+        ))}
+        {sensorMarkers.filter(sm => sm.detectionPos).map((sm) => (
+          <CircleMarker
+            key={`det-pt-${sm.id}`}
+            center={sm.detectionPos!}
+            radius={10}
+            pathOptions={{
+              color: "#f59e0b",
+              fillColor: "#f59e0b",
+              fillOpacity: 0.5,
+              weight: 3,
+              className: "detection-pulse",
+            }}
+          >
+            <Tooltip permanent direction="top" offset={[0, -12]}>
+              <div style={{ fontSize: 10, fontWeight: 700, textAlign: "center", lineHeight: 1.3, color: "#f59e0b" }}>
+                {sm.detection!.distance}cm
+                {sm.detection!.direction === "G" ? " Gauche" : sm.detection!.direction === "D" ? " Droite" : " Centre"}
+                <br />
+                <span style={{ fontSize: 8, color: "#888" }}>{sm.deviceName} [{sm.side}]</span>
+              </div>
+            </Tooltip>
+          </CircleMarker>
+        ))}
+
+        {/* ── Fallback: zone-level detection if no sensor placement ── */}
         {Object.entries(liveDetections).map(([zoneId, det]) => {
+          // Skip if there are already specific sensor markers for this zone
+          if (sensorMarkers.some(sm => sm.detection && zones.find(z => z.id === zoneId)?.devices.includes(sm.id))) return null
           const centroid = zoneCentroids[zoneId]
           if (!centroid) return null
           const zone = zones.find(z => z.id === zoneId)
+          if (!det.presence) return null
           return (
             <CircleMarker
-              key={`det-${zoneId}`}
+              key={`det-fallback-${zoneId}`}
               center={centroid}
-              radius={det.presence ? 12 : 6}
+              radius={10}
               pathOptions={{
-                color: det.presence ? "#f59e0b" : "#22c55e",
-                fillColor: det.presence ? "#f59e0b" : "#22c55e",
-                fillOpacity: det.presence ? 0.6 : 0.3,
-                weight: det.presence ? 3 : 1,
-                className: det.presence ? "detection-pulse" : "",
+                color: "#f59e0b", fillColor: "#f59e0b",
+                fillOpacity: 0.5, weight: 3,
+                className: "detection-pulse",
               }}
             >
-              <Tooltip permanent direction="top" offset={[0, -14]}>
-                <div style={{ fontSize: 10, fontWeight: 600, textAlign: "center", lineHeight: 1.3 }}>
-                  {det.presence ? (
-                    <span style={{ color: "#f59e0b" }}>
-                      DETECTION {det.distance}cm<br />
-                      {det.direction === "G" ? "Gauche" : det.direction === "D" ? "Droite" : "Centre"}
-                      {det.side && ` [${det.side}]`}
-                    </span>
-                  ) : (
-                    <span style={{ color: "#22c55e" }}>
-                      {zone?.label ?? "Zone"} - RAS
-                    </span>
-                  )}
-                </div>
+              <Tooltip permanent direction="top" offset={[0, -12]}>
+                <span style={{ fontSize: 10, fontWeight: 700, color: "#f59e0b" }}>
+                  {zone?.label} {det.distance}cm {det.direction === "G" ? "G" : det.direction === "D" ? "D" : "C"}
+                </span>
               </Tooltip>
             </CircleMarker>
           )

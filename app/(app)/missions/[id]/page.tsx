@@ -70,7 +70,8 @@ export default function MissionDetailPage() {
   const [zoneType, setZoneType] = useState<string>("facade")
   const [sideLabels, setSideLabels] = useState<Record<string, string>>({})
   const [assignDialog, setAssignDialog] = useState<string | null>(null)
-  const [assignStep, setAssignStep] = useState<{ deviceId: string; deviceName: string } | null>(null)
+  const [assignStep, setAssignStep] = useState<{ deviceId: string; deviceName: string; side?: string } | null>(null)
+  const [sensorPos, setSensorPos] = useState(0.5)
   const [statusUpdating, setStatusUpdating] = useState(false)
 
   // ── Live SSE detections ──
@@ -139,7 +140,7 @@ export default function MissionDetailPage() {
   }, [mission, id, mutate])
 
   // ── Device assignment ──
-  const assignDevice = useCallback(async (deviceId: string, zoneId: string, side?: string) => {
+  const assignDevice = useCallback(async (deviceId: string, zoneId: string, side?: string, sensorPos?: number) => {
     if (!mission) return
     const zone = (mission.zones ?? []).find((z) => z.id === zoneId)
     await updateDevice(deviceId, {
@@ -147,7 +148,8 @@ export default function MissionDetailPage() {
       zone_id: zoneId,
       zone_label: zone?.label ?? "",
       side: side ?? "",
-    })
+      sensor_position: sensorPos ?? 0.5,
+    } as Partial<import("@/lib/types").Device>)
     const zones = (mission.zones ?? []).map((z) =>
       z.id === zoneId && !z.devices.includes(deviceId)
         ? { ...z, devices: [...z.devices, deviceId] }
@@ -158,6 +160,25 @@ export default function MissionDetailPage() {
     mutateDevices()
     setAssignDialog(null)
     setAssignStep(null)
+  }, [mission, id, mutate, mutateDevices])
+
+  // ── Remove device from mission ──
+  const unassignDevice = useCallback(async (deviceId: string) => {
+    if (!mission) return
+    await updateDevice(deviceId, {
+      mission_id: null,
+      zone_id: null,
+      zone_label: null,
+      side: null,
+      sensor_position: null,
+    } as Partial<import("@/lib/types").Device>)
+    const zones = (mission.zones ?? []).map((z) => ({
+      ...z,
+      devices: z.devices.filter((did) => did !== deviceId),
+    }))
+    const updated = await updateMission(id, { zones, device_count: Math.max(0, (mission.device_count ?? 1) - 1) })
+    mutate(updated, false)
+    mutateDevices()
   }, [mission, id, mutate, mutateDevices])
 
   // ── Status transitions ──
@@ -194,6 +215,17 @@ export default function MissionDetailPage() {
   const eventList = events ?? []
   const missionDevices = allDevices?.filter((d) => d.mission_id === id) ?? []
   const unassigned = allDevices?.filter((d) => !d.mission_id) ?? []
+
+  // Build sensor placements for map
+  const sensorPlacements = missionDevices
+    .filter((d) => d.zone_id && d.side)
+    .map((d) => ({
+      device_id: d.id,
+      device_name: d.name,
+      zone_id: d.zone_id!,
+      side: d.side!,
+      sensor_position: d.sensor_position ?? 0.5,
+    }))
 
   // Merge SSE live detections into display-ready format
   const displayDetections: LiveDetection[] = liveDetections.length > 0
@@ -302,6 +334,7 @@ export default function MissionDetailPage() {
                   zones={zones}
                   events={eventList}
                   liveDetections={liveByZone}
+                  sensorPlacements={sensorPlacements}
                   className="h-[500px]"
                   drawingMode={drawingMode}
                   onPolygonDrawn={handlePolygonDrawn}
@@ -394,19 +427,31 @@ export default function MissionDetailPage() {
                   ) : missionDevices.map((d) => {
                     const det = liveByZone[d.zone_id ?? ""]
                     return (
-                      <div key={d.id} className="flex items-center gap-2 text-xs">
+                      <div key={d.id} className="flex items-center gap-2 text-xs group">
                         <Radio className={cn("h-3 w-3 shrink-0", det?.presence ? "text-warning" : "text-primary")} />
-                        <span className="font-mono text-foreground">{d.name}</span>
-                        <span className="text-[10px] text-muted-foreground truncate">
-                          {d.zone_label || "---"}
-                          {d.side && <span className="text-primary ml-0.5">[{d.side}]</span>}
-                        </span>
+                        <div className="flex-1 min-w-0">
+                          <span className="font-mono text-foreground">{d.name}</span>
+                          <span className="text-[10px] text-muted-foreground ml-1.5 truncate">
+                            {d.zone_label || "---"}
+                            {d.side && <span className="text-primary ml-0.5">[{d.side}]</span>}
+                            {d.sensor_position != null && d.sensor_position !== 0.5 && (
+                              <span className="text-muted-foreground/50 ml-0.5">@{Math.round((d.sensor_position ?? 0.5) * 100)}%</span>
+                            )}
+                          </span>
+                        </div>
                         {det && (
-                          <span className={cn("ml-auto text-[9px] font-mono font-semibold",
+                          <span className={cn("text-[9px] font-mono font-semibold shrink-0",
                             det.presence ? "text-warning" : "text-success")}>
                             {det.presence ? `${det.distance}cm` : "RAS"}
                           </span>
                         )}
+                        <button
+                          onClick={() => unassignDevice(d.id)}
+                          className="opacity-0 group-hover:opacity-100 transition-opacity text-destructive hover:text-destructive/80 shrink-0"
+                          title="Remove from mission"
+                        >
+                          <Trash2 className="h-3 w-3" />
+                        </button>
                       </div>
                     )
                   })}
@@ -599,12 +644,13 @@ export default function MissionDetailPage() {
                 })}
               </div>
             </>
-          ) : (
+          ) : !assignStep.side ? (
+            /* Step 2a: Pick which side */
             <>
               <DialogHeader>
-                <DialogTitle className="text-sm">Side assignment: {assignStep.deviceName}</DialogTitle>
+                <DialogTitle className="text-sm">Side: {assignStep.deviceName}</DialogTitle>
                 <DialogDescription className="text-xs text-muted-foreground">
-                  Select which facade/side this TX covers (for triangulation).
+                  Select which facade/side this TX covers.
                 </DialogDescription>
               </DialogHeader>
               <div className="flex flex-col gap-2 py-2">
@@ -614,7 +660,7 @@ export default function MissionDetailPage() {
                   return Object.entries(sides).filter(([, label]) => Boolean(label)).map(([key, label]) => (
                     <button
                       key={key}
-                      onClick={() => assignDialog && assignDevice(assignStep.deviceId, assignDialog, key)}
+                      onClick={() => { setAssignStep({ ...assignStep, side: key }); setSensorPos(0.5) }}
                       className="flex items-center gap-3 rounded border border-border/50 p-3 text-left hover:bg-muted/30 transition-colors"
                     >
                       <span className="text-sm font-mono font-bold text-cyan-500 w-6 text-center">{key}</span>
@@ -632,6 +678,53 @@ export default function MissionDetailPage() {
               </div>
               <DialogFooter>
                 <Button variant="ghost" size="sm" onClick={() => setAssignStep(null)}>Back</Button>
+              </DialogFooter>
+            </>
+          ) : (
+            /* Step 2b: Position sensor on the side */
+            <>
+              <DialogHeader>
+                <DialogTitle className="text-sm">
+                  Position of {assignStep.deviceName} on side [{assignStep.side}]
+                </DialogTitle>
+                <DialogDescription className="text-xs text-muted-foreground">
+                  Slide to set where the sensor is placed along this side. 0% = start, 100% = end.
+                </DialogDescription>
+              </DialogHeader>
+              <div className="flex flex-col gap-4 py-4">
+                {/* Visual side representation */}
+                <div className="relative h-10 rounded border border-border/50 bg-muted/30 mx-2">
+                  {/* Side line */}
+                  <div className="absolute top-1/2 left-4 right-4 h-0.5 bg-cyan-500 -translate-y-1/2" />
+                  {/* Start label */}
+                  <span className="absolute left-1 top-1/2 -translate-y-1/2 text-[9px] font-mono text-muted-foreground">0%</span>
+                  {/* End label */}
+                  <span className="absolute right-1 top-1/2 -translate-y-1/2 text-[9px] font-mono text-muted-foreground">100%</span>
+                  {/* Sensor marker */}
+                  <div
+                    className="absolute top-1/2 -translate-y-1/2 -translate-x-1/2 h-5 w-5 rounded-full bg-primary border-2 border-background shadow-md transition-all"
+                    style={{ left: `${4 + sensorPos * (100 - 8)}%` }}
+                  >
+                    <span className="absolute -top-5 left-1/2 -translate-x-1/2 text-[9px] font-mono font-bold text-primary whitespace-nowrap">
+                      TX {Math.round(sensorPos * 100)}%
+                    </span>
+                  </div>
+                </div>
+                <input
+                  type="range" min="0" max="1" step="0.01"
+                  value={sensorPos}
+                  onChange={(e) => setSensorPos(parseFloat(e.target.value))}
+                  className="w-full accent-primary mx-2"
+                />
+                <p className="text-[10px] text-muted-foreground text-center font-mono">
+                  Sensor at {Math.round(sensorPos * 100)}% along side [{assignStep.side}]
+                </p>
+              </div>
+              <DialogFooter>
+                <Button variant="ghost" size="sm" onClick={() => setAssignStep({ ...assignStep, side: undefined })}>Back</Button>
+                <Button size="sm" onClick={() => assignDialog && assignDevice(assignStep.deviceId, assignDialog, assignStep.side, sensorPos)}>
+                  Confirm Position
+                </Button>
               </DialogFooter>
             </>
           )}

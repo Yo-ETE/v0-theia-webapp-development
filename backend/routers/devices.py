@@ -28,6 +28,7 @@ class DeviceUpdate(BaseModel):
     zone_id: str | None = None
     zone_label: str | None = None
     side: str | None = None
+    sensor_position: float | None = None
     floor: int | None = None
     position: str | None = None
     enabled: bool | None = None

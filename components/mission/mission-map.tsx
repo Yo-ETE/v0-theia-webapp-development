@@ -19,6 +19,13 @@ interface MissionMapProps {
     rssi: number | null
     timestamp: string
   }>
+  sensorPlacements?: {
+    device_id: string
+    device_name: string
+    zone_id: string
+    side: string
+    sensor_position: number
+  }[]
   className?: string
   drawingMode?: boolean
   onPolygonDrawn?: (polygon: [number, number][]) => void
