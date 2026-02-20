@@ -340,7 +340,10 @@ export default function MissionDetailPage() {
       if (seenTs.has(evt.timestamp)) continue
       const p = evt.payload ?? {}
       const distance = Number(p.distance ?? 0)
-      if (!distance) continue
+      // Skip ghost events: no real distance or presence was false
+      if (distance < 15) continue
+      const pres = p.presence
+      if (pres === false || pres === "false" || pres === 0 || pres === "0") continue
       feed.push({
         device_id: evt.device_id ?? "",
         device_name: evt.device_name ?? evt.device_id ?? "",
