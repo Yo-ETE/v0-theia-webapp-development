@@ -305,53 +305,15 @@ export default function MissionDetailPage() {
     }))
 
   // In timelapse mode, use replay detections instead of live data
-  // Build liveByZone from polled events if SSE hasn't delivered yet
+  // Live detections come ONLY from SSE -- never from polled DB events
+  // (DB events are history, not current state)
   const effectiveLiveByZone: Record<string, LiveDetection> = timelapseMode
     ? { ...replayDetections }
     : { ...liveByZone }
-  if (Object.keys(effectiveLiveByZone).length === 0 && eventList.length > 0) {
-    for (const evt of eventList.slice(0, 20)) {
-      if (!evt.zone_id || effectiveLiveByZone[evt.zone_id]) continue
-      effectiveLiveByZone[evt.zone_id] = {
-        device_id: evt.device_id,
-        device_name: evt.device_name || evt.device_id,
-        tx_id: (evt.payload?.tx_id as string) ?? null,
-        zone_id: evt.zone_id,
-        zone_label: evt.zone_label ?? "",
-        side: (evt.payload?.side as string) ?? "",
-        presence: (evt.payload?.presence as boolean) ?? false,
-        distance: (evt.payload?.distance as number) ?? 0,
-        speed: (evt.payload?.speed as number) ?? 0,
-        angle: (evt.payload?.angle as number) ?? 0,
-        direction: (evt.payload?.direction as string) ?? "C",
-        vbatt_tx: (evt.payload?.vbatt_tx as number) ?? null,
-        rssi: evt.rssi,
-        sensor_type: (evt.payload?.sensor_type as string) ?? "ld2450",
-        timestamp: evt.timestamp,
-      }
-    }
-  }
 
-  // Merge SSE live detections into display-ready format
-  const displayDetections: LiveDetection[] = liveDetections.length > 0
-    ? liveDetections
-    : eventList.slice(0, 20).map(evt => ({
-        device_id: evt.device_id,
-        device_name: evt.device_name || evt.device_id,
-        tx_id: (evt.payload?.tx_id as string) ?? null,
-        zone_id: evt.zone_id,
-        zone_label: evt.zone_label ?? "",
-        side: (evt.payload?.side as string) ?? "",
-        presence: (evt.payload?.presence as boolean) ?? false,
-        distance: (evt.payload?.distance as number) ?? 0,
-        speed: (evt.payload?.speed as number) ?? 0,
-        angle: (evt.payload?.angle as number) ?? 0,
-        direction: (evt.payload?.direction as string) ?? "C",
-        vbatt_tx: (evt.payload?.vbatt_tx as number) ?? null,
-        rssi: evt.rssi,
-        sensor_type: (evt.payload?.sensor_type as string) ?? "ld2450",
-        timestamp: evt.timestamp,
-      }))
+  // Detection Feed: only shows SSE detections from this session.
+  // DB events are shown in History page, not here as fake "live" detections.
+  const displayDetections: LiveDetection[] = liveDetections
 
   return (
     <>
@@ -498,13 +460,15 @@ export default function MissionDetailPage() {
                       Click &quot;Draw Zone&quot; then click on the map to define zone polygons
                     </p>
                   ) : zones.map((zone) => {
-                    const zoneDetection = effectiveLiveByZone[zone.id]
+                    const zoneDetRaw = effectiveLiveByZone[zone.id]
+                    // Only treat as active if presence + valid distance
+                    const zoneDetection = (zoneDetRaw?.presence && zoneDetRaw?.distance > 0) ? zoneDetRaw : null
                     return (
                       <div
                         key={zone.id}
                         className={cn(
                           "flex items-center gap-2 rounded border p-2 transition-colors group",
-                          zoneDetection?.presence
+                          zoneDetection
                             ? "border-warning/50 bg-warning/5"
                             : "border-border/50 hover:bg-muted/30"
                         )}
@@ -557,10 +521,11 @@ export default function MissionDetailPage() {
                       Click a zone or the + button to assign TX devices
                     </p>
                   ) : missionDevices.map((d) => {
-                    const det = effectiveLiveByZone[d.zone_id ?? ""]
+                    const detRaw = effectiveLiveByZone[d.zone_id ?? ""]
+                    const det = (detRaw?.presence && detRaw?.distance > 0) ? detRaw : null
                     return (
                       <div key={d.id} className="flex items-center gap-2 text-xs group">
-                        <Radio className={cn("h-3 w-3 shrink-0", det?.presence ? "text-warning" : "text-primary")} />
+                        <Radio className={cn("h-3 w-3 shrink-0", det ? "text-warning" : "text-primary")} />
                         <div className="flex-1 min-w-0">
                           <span className="font-mono text-foreground">{d.name}</span>
                           <span className="text-[10px] text-muted-foreground ml-1.5 truncate">
