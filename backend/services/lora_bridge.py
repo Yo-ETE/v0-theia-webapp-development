@@ -262,6 +262,11 @@ class PortReader:
                 (mission_id, device_id, "detection", zone, zone_id, side,
                  self.last_rssi, 0, json.dumps(payload)),
             )
+            print(f"[THEIA-DB] INSERT event: d={d} dir={direction} zone_id={zone_id} mission={mission_id}")
+        elif presence and not mission_id:
+            print(f"[THEIA-DB] SKIP event (no mission_id): device={device_id} d={d} mission_id='{mission_id}'")
+        elif mission_id and not presence:
+            print(f"[THEIA-DB] SKIP event (no presence): x={x} y={y} d={d} presence={presence}")
 
         await db.commit()
 
