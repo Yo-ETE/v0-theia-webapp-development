@@ -688,8 +688,27 @@ export default function MissionDetailPage() {
                     disabled={eventList.length === 0}
                     onClick={async () => {
                       if (!confirm("Purger tous les events de cette mission ?")) return
-                      await fetch(`/api/events?mission_id=${id}`, { method: "DELETE" })
-                      mutateEvents([], false)
+                      try {
+                        // Try proxy first
+                        let res = await fetch(`/api/events?mission_id=${id}`, { method: "DELETE" })
+                        // If proxy fails, try backend directly
+                        if (!res.ok) {
+                          const backendUrl = window.location.protocol + "//" + window.location.hostname + ":8000"
+                          res = await fetch(`${backendUrl}/api/events?mission_id=${id}`, { method: "DELETE" })
+                        }
+                        // Clear local SWR cache immediately, then revalidate after a delay
+                        await mutateEvents([], false)
+                        // Small delay to let backend commit, then revalidate
+                        setTimeout(() => mutateEvents(), 1000)
+                      } catch {
+                        // Last resort: try backend directly
+                        try {
+                          const backendUrl = window.location.protocol + "//" + window.location.hostname + ":8000"
+                          await fetch(`${backendUrl}/api/events?mission_id=${id}`, { method: "DELETE" })
+                          await mutateEvents([], false)
+                          setTimeout(() => mutateEvents(), 1000)
+                        } catch { /* ignore */ }
+                      }
                     }}
                   >
                     <Trash2 className="mr-1.5 h-3.5 w-3.5" />Purger
