@@ -25,7 +25,8 @@ _tasks: list[asyncio.Task] = []
 async def lifespan(app: FastAPI):
     # Startup: init DB + start background services
     await get_db()
-    print("[THEIA] Database initialized")
+    print(f"[THEIA] Database initialized -- BUILD: {THEIA_BUILD}")
+    print(f"[THEIA] Phantom suppression: ACTIVE (require EMPTY validation)")
 
     _tasks.append(asyncio.create_task(system_monitor.start(interval=5.0)))
     print("[THEIA] System monitor started")
@@ -78,6 +79,8 @@ app.include_router(stream.router, prefix="/api")
 app.include_router(tiles.router, prefix="/api")
 
 
+THEIA_BUILD = "2026-02-20-v3-phantom-fix"
+
 @app.get("/")
 async def root():
-    return {"name": "THEIA API", "version": "1.0.0", "status": "running"}
+    return {"name": "THEIA API", "version": "1.0.0", "build": THEIA_BUILD, "status": "running"}

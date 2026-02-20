@@ -204,26 +204,25 @@ class PortReader:
 
         # --- Phantom frame suppression ---
         # The RX LoRa module generates noise/phantom data even when the TX is off.
-        # A REAL TX sends EMPTY frames regularly between presence events.
-        # If we get many consecutive presence frames without ANY EMPTY frame,
-        # the data is phantom noise from the RX and must be suppressed.
+        # A REAL TX sends explicit "EMPTY" frames (handled above, before this code).
+        # Only explicit EMPTY frames validate a TX. Noise frames with x=0/y=0 do NOT
+        # count as EMPTY -- they are just zero-value noise.
+        # If we get presence frames from a TX that was never validated via explicit
+        # EMPTY, or too many presence frames without an EMPTY, suppress as phantom.
         key = tx_id or self.port
         if not presence:
-            # EMPTY frame: this TX is real and active. Reset counter, validate TX.
-            self._last_empty_ts[key] = time.time()
+            # This is NOT a real EMPTY -- it's a computed "no presence" from noise.
+            # Do NOT validate the TX. Just reset the presence counter.
             self._presence_count[key] = 0
-            self._tx_validated[key] = True
         else:
             self._presence_count[key] = self._presence_count.get(key, 0) + 1
-            # If we've never seen an EMPTY from this TX, or too many presence
-            # frames in a row without any EMPTY, suppress as phantom.
             if not self._tx_validated.get(key, False):
-                # TX not validated yet -- need to see at least 1 EMPTY first
+                # TX not validated: never received an explicit "EMPTY" keyword frame
                 presence = False
             elif self._presence_count[key] > self._PRESENCE_WITHOUT_EMPTY_LIMIT:
-                # Too many consecutive presence without any EMPTY = phantom noise
+                # Too many consecutive presence without an explicit EMPTY
                 presence = False
-                if self._presence_count[key] % 20 == 0:  # log occasionally
+                if self._presence_count[key] % 20 == 0:
                     print(f"[THEIA] Phantom suppressed: {key} d={d} ({self._presence_count[key]} presence without EMPTY)")
 
         # Reuse the common device-lookup + event-insert + SSE-broadcast logic
@@ -412,11 +411,12 @@ class PortReader:
         presence = (x != 0 or y != 0) and 15 < d < 600
 
         # Phantom frame suppression (same logic as _parse_rx_frame)
+        # LD45 frames never contain explicit "EMPTY" keyword, so TX validation
+        # can only come from the [RX] parser seeing "EMPTY" in the data.
         key = tx_id or self.port
         if not presence:
-            self._last_empty_ts[key] = time.time()
+            # Zero-value noise, not a real EMPTY. Don't validate TX.
             self._presence_count[key] = 0
-            self._tx_validated[key] = True
         else:
             self._presence_count[key] = self._presence_count.get(key, 0) + 1
             if not self._tx_validated.get(key, False):
