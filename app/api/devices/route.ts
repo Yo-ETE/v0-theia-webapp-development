@@ -10,15 +10,21 @@ export async function GET() {
     const res = await proxyToBackend("/api/devices")
     if (!res.ok) throw new Error(`Backend ${res.status}`)
     const devices = await res.json()
+
     // Sync backend devices into local store for fallback
     for (const dev of devices) {
-      if (!store.getDevice(dev.id)) {
+      const existing = store.getDevice(dev.id)
+      if (existing) {
+        store.updateDevice(dev.id, dev)
+      } else {
         store.createDevice({ ...dev })
       }
     }
     return NextResponse.json(devices)
-  } catch {
-    return NextResponse.json(store.getDevices())
+  } catch (err) {
+    const fallback = store.getDevices()
+
+    return NextResponse.json(fallback)
   }
 }
 

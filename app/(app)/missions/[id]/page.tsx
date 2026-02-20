@@ -245,7 +245,12 @@ export default function MissionDetailPage() {
   const zones = mission.zones ?? []
   const eventList = events ?? []
   const missionDevices = allDevices?.filter((d) => d.mission_id === id) ?? []
-  const unassigned = allDevices?.filter((d) => !d.mission_id) ?? []
+  // Devices available to assign: not currently assigned to THIS mission's zones
+  const unassigned = allDevices?.filter((d) => {
+    // Already assigned to this mission with a zone
+    if (d.mission_id === id && d.zone_id) return false
+    return true
+  }) ?? []
 
   // Build sensor placements for map
   const sensorPlacements = missionDevices
@@ -678,6 +683,7 @@ export default function MissionDetailPage() {
                 ) : unassigned.map((device) => {
                   const assignZone = zones.find((z) => z.id === assignDialog)
                   const hasSides = assignZone?.sides && Object.values(assignZone.sides).some(Boolean)
+                  const isElsewhere = device.mission_id && device.mission_id !== id
                   return (
                     <button
                       key={device.id}
@@ -692,9 +698,19 @@ export default function MissionDetailPage() {
                         <p className="text-xs font-mono font-medium text-foreground">{device.name}</p>
                         <p className="text-[10px] text-muted-foreground">
                           {device.dev_eui || device.serial_port || device.hw_id || "no port"}
+                          {isElsewhere && (
+                            <span className="text-warning ml-1">(other mission)</span>
+                          )}
                         </p>
                       </div>
-                      <Badge variant="outline" className="text-[9px] px-1 py-0">{device.status}</Badge>
+                      <div className="flex items-center gap-1">
+                        {device.battery && (
+                          <span className="text-[9px] text-muted-foreground font-mono">{device.battery}V</span>
+                        )}
+                        <Badge variant="outline" className="text-[9px] px-1 py-0">
+                          {device.last_seen ? "online" : device.status ?? "unknown"}
+                        </Badge>
+                      </div>
                     </button>
                   )
                 })}

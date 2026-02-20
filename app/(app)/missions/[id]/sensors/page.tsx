@@ -22,7 +22,8 @@ export default function SensorsPage() {
   const { data: allDevices, isLoading, mutate: mutateDevices } = useDevices()
 
   const missionDevices = allDevices?.filter((d) => d.mission_id === id) ?? []
-  const unassigned = allDevices?.filter((d) => !d.mission_id) ?? []
+  // Show ALL devices not assigned to THIS mission (including those on other missions)
+  const unassigned = allDevices?.filter((d) => d.mission_id !== id) ?? []
 
   const assignToMission = useCallback(async (deviceId: string) => {
     if (!mission) return
@@ -195,6 +196,7 @@ export default function SensorsPage() {
                   <TableBody>
                     {unassigned.map((device) => {
                       const sCfg = deviceStatusConfig[device.status] ?? deviceStatusConfig.unknown
+                      const isElsewhere = !!device.mission_id
                       return (
                         <TableRow key={device.id} className="border-border/30">
                           <TableCell className="font-mono text-xs font-medium text-foreground">
@@ -205,6 +207,11 @@ export default function SensorsPage() {
                           </TableCell>
                           <TableCell className="text-[11px] text-muted-foreground">
                             {device.type || "TX"}
+                            {isElsewhere && (
+                              <Badge variant="outline" className="ml-1 text-[8px] px-1 py-0 text-warning border-warning/30">
+                                other mission
+                              </Badge>
+                            )}
                           </TableCell>
                           <TableCell>
                             <Badge variant="outline" className={cn("text-[9px] px-1 py-0", sCfg.className)}>
@@ -218,7 +225,7 @@ export default function SensorsPage() {
                               onClick={() => assignToMission(device.id)}
                             >
                               <Signal className="mr-1 h-3 w-3" />
-                              Assign
+                              {isElsewhere ? "Reassign" : "Assign"}
                             </Button>
                           </TableCell>
                         </TableRow>

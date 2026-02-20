@@ -25,7 +25,7 @@ export function useMission(id: string | null) {
 }
 
 export function useDevices() {
-  return useSWR<import("@/lib/types").Device[]>("/api/devices", fetcher)
+  return useSWR<import("@/lib/types").Device[]>("/api/devices", fetcher, { refreshInterval: 5000 })
 }
 
 export function useEvents(params?: { mission_id?: string }) {
