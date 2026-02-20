@@ -403,15 +403,14 @@ export default function MapInner({
     // Unit tangent along the side (A -> B direction)
     const tangentM: [number, number] = tLen > 0 ? [tx / tLen, ty / tLen] : [0, 0]
     // Determine which direction "Gauche" is relative to inward-facing.
-    // If facing inward (normalM), "left" is perpendicular: rotate normal +90 = tangent or -tangent.
-    // Convention: looking from sensor toward centroid, "Gauche" = left = -tangent (A->B reversed)
-    // We verify: cross(normal, tangent) > 0 means tangent is to the right of normal
-    const cross = normalM[0] * tangentM[1] - normalM[1] * tangentM[0]
-    // If cross > 0: tangent is to the RIGHT of inward, so Gauche = -tangent
-    // If cross < 0: tangent is to the LEFT, so Gauche = +tangent
-    const leftM: [number, number] = cross >= 0
-      ? [-tangentM[0], -tangentM[1]]
-      : [tangentM[0], tangentM[1]]
+    // The LD2450 sensor faces inward (normalM direction). Standing behind the sensor
+    // looking toward the zone interior:
+    // - "Gauche" (left) is to the left of that view
+    // - "Droite" (right) is to the right
+    // Cross product of (inward normal) x (up) gives the "right" direction in 2D:
+    //   right = (normalM[1], -normalM[0]) in (east, north) space
+    // So left = (-normalM[1], normalM[0])
+    const leftM: [number, number] = [-normalM[1], normalM[0]]
 
     // Check if there's a live (or stale) detection for this zone
     const det = effectiveDetections[zone.id]

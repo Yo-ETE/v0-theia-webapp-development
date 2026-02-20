@@ -209,6 +209,24 @@ export default function MissionDetailPage() {
   // ── Remove device from mission ──
   const unassignDevice = useCallback(async (deviceId: string) => {
     if (!mission) return
+
+    // Optimistic: immediately remove from device list & zones in UI
+    mutateDevices(
+      (prev) => prev?.map((d) =>
+        d.id === deviceId ? { ...d, mission_id: "", zone_id: "", zone_label: "", side: "" } : d
+      ),
+      false,
+    )
+    const updatedZones = (mission.zones ?? []).map((z) => ({
+      ...z,
+      devices: z.devices.filter((did) => did !== deviceId),
+    }))
+    mutate(
+      { ...mission, zones: updatedZones, device_count: Math.max(0, (mission.device_count ?? 1) - 1) },
+      false,
+    )
+
+    // Persist device unassignment
     try {
       await updateDevice(deviceId, {
         mission_id: "",
@@ -218,18 +236,16 @@ export default function MissionDetailPage() {
         sensor_position: 0.5,
       } as Partial<import("@/lib/types").Device>)
     } catch (err) {
-      console.warn("[THEIA] Failed to update device, continuing:", err)
+      console.warn("[THEIA] Failed to update device:", err)
     }
-    const zones = (mission.zones ?? []).map((z) => ({
-      ...z,
-      devices: z.devices.filter((did) => did !== deviceId),
-    }))
+    // Persist zone update
     try {
-      const updated = await updateMission(id, { zones, device_count: Math.max(0, (mission.device_count ?? 1) - 1) })
-      mutate(updated, false)
+      await updateMission(id, { zones: updatedZones, device_count: Math.max(0, (mission.device_count ?? 1) - 1) })
     } catch (err) {
-      console.warn("[THEIA] Failed to update mission:", err)
+      console.warn("[THEIA] Failed to update mission zones:", err)
     }
+    // Re-fetch both to sync
+    mutate()
     mutateDevices()
   }, [mission, id, mutate, mutateDevices])
 
