@@ -90,5 +90,12 @@ async def list_events(
                 d["payload"] = json.loads(d["payload"])
             except Exception:
                 pass
+        # Filter out ghost events: detection events with no real presence
+        if d.get("type") == "detection":
+            p = d.get("payload", {})
+            if isinstance(p, dict):
+                # Skip events where presence was false or distance is 0
+                if p.get("presence") is False or p.get("distance", 0) == 0:
+                    continue
         result.append(d)
     return result

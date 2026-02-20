@@ -64,7 +64,7 @@ interface LiveDetection {
 export default function MissionDetailPage() {
   const { id } = useParams<{ id: string }>()
   const { data: mission, isLoading, mutate } = useMission(id)
-  const { data: events } = useEvents({ mission_id: id })
+  const { data: events } = useEvents({ mission_id: id, event_type: "detection", limit: 500 })
   const { data: allDevices, mutate: mutateDevices } = useDevices()
 
   const [drawingMode, setDrawingMode] = useState(false)
@@ -82,9 +82,9 @@ export default function MissionDetailPage() {
     deviceName: string
   } | null>(null)
   const [statusUpdating, setStatusUpdating] = useState(false)
-  // ── Sub-view tabs (inline, no navigation) ──
-  type SubTab = "map" | "sensors" | "history" | "timelapse"
-  const [activeTab, setActiveTab] = useState<SubTab>("map")
+  // ── Bottom panel (below the map, inline, no navigation) ──
+  type BottomPanel = null | "history" | "timelapse" | "sensors"
+  const [bottomPanel, setBottomPanel] = useState<BottomPanel>(null)
 
   // ── Save map center/zoom on pan (debounced) ──
   const mapMoveTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
@@ -323,13 +323,44 @@ export default function MissionDetailPage() {
   // In timelapse mode, use replay detections instead of live data
   // Live detections come ONLY from SSE -- never from polled DB events
   // (DB events are history, not current state)
-  const effectiveLiveByZone: Record<string, LiveDetection> = activeTab === "timelapse"
+  const effectiveLiveByZone: Record<string, LiveDetection> = bottomPanel === "timelapse"
     ? { ...replayDetections }
     : { ...liveByZone }
 
-  // Detection Feed: only shows SSE detections from this session.
-  // DB events are shown in History page, not here as fake "live" detections.
-  const displayDetections: LiveDetection[] = liveDetections
+  // Detection Feed: merge SSE live detections + recent DB events.
+  // SSE detections appear first (newest), then DB events fill the rest.
+  // This ensures the feed survives page refresh.
+  const displayDetections: LiveDetection[] = (() => {
+    // Start with SSE detections from this session
+    const feed = [...liveDetections]
+    // Timestamps already in the feed (avoid duplicates)
+    const seenTs = new Set(feed.map(d => d.timestamp))
+    // Add recent DB events that aren't already in the feed
+    for (const evt of eventList) {
+      if (seenTs.has(evt.timestamp)) continue
+      const p = evt.payload ?? {}
+      const distance = Number(p.distance ?? 0)
+      if (!distance) continue
+      feed.push({
+        device_id: evt.device_id ?? "",
+        device_name: evt.device_name ?? evt.device_id ?? "",
+        tx_id: (p.tx_id as string) ?? null,
+        zone_id: evt.zone_id ?? null,
+        zone_label: evt.zone_label ?? "",
+        side: evt.side ?? (p.side as string) ?? "",
+        presence: true, // only presence=true events are stored in DB
+        distance,
+        speed: Number(p.speed ?? 0),
+        angle: Number(p.angle ?? 0),
+        direction: String(p.direction ?? "C"),
+        vbatt_tx: p.vbatt_tx ? Number(p.vbatt_tx) : null,
+        rssi: evt.rssi ?? null,
+        sensor_type: String(p.sensor_type ?? "ld2450"),
+        timestamp: evt.timestamp,
+      })
+    }
+    return feed.slice(0, 50)
+  })()
 
   return (
     <>
@@ -343,11 +374,11 @@ export default function MissionDetailPage() {
             </Button>
             <div className="flex items-center gap-2">
               <Button
-                variant={activeTab === "sensors" ? "secondary" : "outline"}
+                variant={bottomPanel === "sensors" ? "secondary" : "outline"}
                 size="sm"
                 className="text-xs"
                 onClick={() => {
-                  setActiveTab(activeTab === "sensors" ? "map" : "sensors")
+                  setBottomPanel(bottomPanel === "sensors" ? null : "sensors")
                   setTimelapseMode(false)
                   setReplayDetections({})
                 }}
@@ -355,11 +386,11 @@ export default function MissionDetailPage() {
                 <Radio className="mr-1.5 h-3 w-3" />Sensors
               </Button>
               <Button
-                variant={activeTab === "history" ? "secondary" : "outline"}
+                variant={bottomPanel === "history" ? "secondary" : "outline"}
                 size="sm"
                 className="text-xs"
                 onClick={() => {
-                  setActiveTab(activeTab === "history" ? "map" : "history")
+                  setBottomPanel(bottomPanel === "history" ? null : "history")
                   setTimelapseMode(false)
                   setReplayDetections({})
                 }}
@@ -367,12 +398,12 @@ export default function MissionDetailPage() {
                 <BarChart3 className="mr-1.5 h-3 w-3" />History
               </Button>
               <Button
-                variant={activeTab === "timelapse" ? "secondary" : "outline"}
+                variant={bottomPanel === "timelapse" ? "secondary" : "outline"}
                 size="sm"
                 className="text-xs"
                 onClick={() => {
-                  const entering = activeTab !== "timelapse"
-                  setActiveTab(entering ? "timelapse" : "map")
+                  const entering = bottomPanel !== "timelapse"
+                  setBottomPanel(entering ? "timelapse" : null)
                   setTimelapseMode(entering)
                   if (!entering) setReplayDetections({})
                 }}
@@ -436,8 +467,8 @@ export default function MissionDetailPage() {
             </CardContent>
           </Card>
 
-          {/* Map + Sidebar */}
-          {(activeTab === "map" || activeTab === "timelapse") && <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">
+          {/* Map + Sidebar -- always visible */}
+          <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">
             <div className="lg:col-span-2">
               <ErrorBoundary>
                 <MissionMap
@@ -460,13 +491,13 @@ export default function MissionDetailPage() {
               </ErrorBoundary>
 
               {/* Timelapse panel */}
-              {activeTab === "timelapse" && (
+              {bottomPanel === "timelapse" && (
                 <div className="mt-3">
                   <DetectionTimelapse
                     missionId={id}
                     onDetection={handleReplayDetection}
                     onClose={() => {
-                      setActiveTab("map")
+                      setBottomPanel(null)
                       setTimelapseMode(false)
                       setReplayDetections({})
                     }}
@@ -676,10 +707,10 @@ export default function MissionDetailPage() {
                 </CardContent>
               </Card>
             </div>
-          </div>}
+          </div>
 
-          {/* ── Inline History Panel ── */}
-          {activeTab === "history" && (
+          {/* ── Inline History Panel (below map) ── */}
+          {bottomPanel === "history" && (
             <Card className="border-border/50 bg-card">
               <CardHeader className="pb-2">
                 <div className="flex items-center justify-between">
@@ -716,26 +747,29 @@ export default function MissionDetailPage() {
                       <TableHeader>
                         <TableRow className="border-border/50">
                           <TableHead className="text-[10px]">Time</TableHead>
-                          <TableHead className="text-[10px]">Type</TableHead>
                           <TableHead className="text-[10px]">Device</TableHead>
                           <TableHead className="text-[10px]">Zone</TableHead>
+                          <TableHead className="text-[10px]">Distance</TableHead>
+                          <TableHead className="text-[10px]">Direction</TableHead>
+                          <TableHead className="text-[10px]">Speed</TableHead>
                           <TableHead className="text-[10px]">RSSI</TableHead>
-                          <TableHead className="text-[10px]">Payload</TableHead>
                         </TableRow>
                       </TableHeader>
                       <TableBody>
                         {eventList.map((evt) => {
-                          const evtCfg = eventTypeConfig[evt.type] ?? eventTypeConfig.system
+                          const p = evt.payload ?? {}
+                          const dir = String(p.direction ?? "C")
                           return (
                             <TableRow key={evt.id} className="border-border/30">
                               <TableCell className="font-mono text-[11px] text-muted-foreground">{formatDateTime(evt.timestamp)}</TableCell>
-                              <TableCell>
-                                <Badge variant="outline" className={cn("text-[9px] px-1 py-0", evtCfg.className)}>{evtCfg.label}</Badge>
-                              </TableCell>
                               <TableCell className="font-mono text-xs text-foreground">{evt.device_name}</TableCell>
                               <TableCell className="text-xs text-muted-foreground">{evt.zone_label ?? "---"}</TableCell>
-                              <TableCell className="font-mono text-[11px] text-foreground">{evt.rssi !== null ? `${evt.rssi}` : "---"}</TableCell>
-                              <TableCell className="font-mono text-[10px] text-muted-foreground max-w-48 truncate">{JSON.stringify(evt.payload)}</TableCell>
+                              <TableCell className="font-mono text-[11px] text-foreground">{p.distance ? `${p.distance}cm` : "---"}</TableCell>
+                              <TableCell className="font-mono text-[11px] text-foreground">
+                                {dir === "G" ? "Gauche" : dir === "D" ? "Droite" : "Centre"}
+                              </TableCell>
+                              <TableCell className="font-mono text-[11px] text-muted-foreground">{Number(p.speed) > 0 ? `${p.speed}cm/s` : "---"}</TableCell>
+                              <TableCell className="font-mono text-[11px] text-foreground">{evt.rssi !== null ? `${evt.rssi}dBm` : "---"}</TableCell>
                             </TableRow>
                           )
                         })}
@@ -747,8 +781,8 @@ export default function MissionDetailPage() {
             </Card>
           )}
 
-          {/* ── Inline Sensors Panel ── */}
-          {activeTab === "sensors" && (
+          {/* ── Inline Sensors Panel (below map) ── */}
+          {bottomPanel === "sensors" && (
             <div className="flex flex-col gap-4">
               {/* Assigned Devices */}
               <Card className="border-border/50 bg-card">

@@ -28,14 +28,16 @@ export function useDevices() {
   return useSWR<import("@/lib/types").Device[]>("/api/devices", fetcher, { refreshInterval: 5000 })
 }
 
-export function useEvents(params?: { mission_id?: string }) {
+export function useEvents(params?: { mission_id?: string; limit?: number; event_type?: string }) {
   const qs = new URLSearchParams()
   if (params?.mission_id) qs.set("mission_id", params.mission_id)
+  if (params?.event_type) qs.set("event_type", params.event_type)
+  if (params?.limit) qs.set("limit", String(params.limit))
   const q = qs.toString()
   return useSWR<import("@/lib/types").DetectionEvent[]>(
     `/api/events${q ? `?${q}` : ""}`,
     fetcher,
-    { refreshInterval: 3000 },
+    { refreshInterval: 5000 },
   )
 }
 
