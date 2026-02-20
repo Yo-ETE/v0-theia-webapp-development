@@ -73,6 +73,32 @@ class PreviewStore {
     return this.devices.find((d) => d.id === id) ?? null
   }
 
+  createDevice(data: Partial<Device> & { name: string }): Device {
+    const device: Device = {
+      id: data.id ?? `dev-${Date.now().toString(36)}`,
+      hw_id: data.hw_id ?? data.dev_eui ?? "",
+      name: data.name,
+      type: data.type ?? "microwave_tx",
+      status: "unknown" as const,
+      mission_id: data.mission_id ?? null,
+      zone_id: data.zone_id ?? null,
+      zone_label: data.zone_label ?? null,
+      rssi: data.rssi ?? null,
+      snr: data.snr ?? null,
+      battery: data.battery ?? null,
+      last_seen: data.last_seen ?? null,
+      enabled: data.enabled ?? true,
+      enrolled_at: new Date().toISOString(),
+      firmware: data.firmware ?? "",
+      dev_eui: data.dev_eui ?? "",
+      serial_port: data.serial_port ?? "",
+      side: data.side ?? null,
+      floor: data.floor ?? null,
+    }
+    this.devices.push(device)
+    return device
+  }
+
   updateDevice(id: string, data: Partial<Device>): Device | null {
     const idx = this.devices.findIndex((d) => d.id === id)
     if (idx === -1) return null

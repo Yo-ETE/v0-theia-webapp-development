@@ -19,31 +19,17 @@ export async function GET() {
 export async function POST(request: NextRequest) {
   const body = await request.json()
 
+  // Always create locally first
+  const localDevice = store.createDevice({
+    name: body.name ?? "New Device",
+    dev_eui: body.dev_eui ?? "",
+    hw_id: body.dev_eui ?? "",
+    type: body.type ?? "microwave_tx",
+    serial_port: body.serial_port ?? "",
+  })
+
   if (isPreviewMode()) {
-    // Create in local store
-    const device = {
-      id: `dev-${Date.now().toString(36)}`,
-      dev_eui: body.dev_eui ?? "",
-      hw_id: body.dev_eui ?? "",
-      name: body.name ?? "New Device",
-      type: body.type ?? "microwave_tx",
-      serial_port: body.serial_port ?? "",
-      status: "unknown",
-      mission_id: null,
-      zone_id: "",
-      zone_label: "",
-      side: "",
-      floor: null,
-      rssi: null,
-      snr: null,
-      battery: null,
-      firmware: "1.0.0",
-      last_seen: null,
-      enabled: true,
-      created_at: new Date().toISOString(),
-    }
-    store.getDevices().push(device)
-    return NextResponse.json(device, { status: 201 })
+    return NextResponse.json(localDevice, { status: 201 })
   }
 
   try {
@@ -54,6 +40,7 @@ export async function POST(request: NextRequest) {
     if (!res.ok) throw new Error(`Backend ${res.status}`)
     return NextResponse.json(await res.json(), { status: 201 })
   } catch {
-    return NextResponse.json({ error: "Failed to create device" }, { status: 503 })
+    // Backend down -- local device already created
+    return NextResponse.json(localDevice, { status: 201 })
   }
 }
