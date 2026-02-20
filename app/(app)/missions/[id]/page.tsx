@@ -134,29 +134,52 @@ export default function MissionDetailPage() {
 
   const deleteZone = useCallback(async (zoneId: string) => {
     if (!mission) return
+    const devicesInZone = (allDevices ?? []).filter((d) => d.mission_id === id && d.zone_id === zoneId)
+    for (const dev of devicesInZone) {
+      try {
+        await updateDevice(dev.id, {
+          zone_id: "", zone_label: "", side: "", sensor_position: 0.5,
+        } as Partial<import("@/lib/types").Device>)
+      } catch (err) {
+        console.warn("[THEIA] Failed to unassign device from zone:", err)
+      }
+    }
     const zones = (mission.zones ?? []).filter((z) => z.id !== zoneId)
-    const updated = await updateMission(id, { zones })
-    mutate(updated, false)
-  }, [mission, id, mutate])
+    try {
+      const updated = await updateMission(id, { zones })
+      mutate(updated, false)
+    } catch (err) {
+      console.warn("[THEIA] Failed to update mission:", err)
+    }
+    if (devicesInZone.length > 0) mutateDevices()
+  }, [mission, id, allDevices, mutate, mutateDevices])
 
   // ── Device assignment ──
   const assignDevice = useCallback(async (deviceId: string, zoneId: string, side?: string, sensorPos?: number) => {
     if (!mission) return
     const zone = (mission.zones ?? []).find((z) => z.id === zoneId)
-    await updateDevice(deviceId, {
-      mission_id: id,
-      zone_id: zoneId,
-      zone_label: zone?.label ?? "",
-      side: side ?? "",
-      sensor_position: sensorPos ?? 0.5,
-    } as Partial<import("@/lib/types").Device>)
+    try {
+      await updateDevice(deviceId, {
+        mission_id: id,
+        zone_id: zoneId,
+        zone_label: zone?.label ?? "",
+        side: side ?? "",
+        sensor_position: sensorPos ?? 0.5,
+      } as Partial<import("@/lib/types").Device>)
+    } catch (err) {
+      console.warn("[THEIA] Failed to update device during assign:", err)
+    }
     const zones = (mission.zones ?? []).map((z) =>
       z.id === zoneId && !z.devices.includes(deviceId)
         ? { ...z, devices: [...z.devices, deviceId] }
         : z
     )
-    const updated = await updateMission(id, { zones, device_count: (mission.device_count ?? 0) + 1 })
-    mutate(updated, false)
+    try {
+      const updated = await updateMission(id, { zones, device_count: (mission.device_count ?? 0) + 1 })
+      mutate(updated, false)
+    } catch (err) {
+      console.warn("[THEIA] Failed to update mission during assign:", err)
+    }
     mutateDevices()
     setAssignDialog(null)
     setAssignStep(null)
@@ -165,19 +188,27 @@ export default function MissionDetailPage() {
   // ── Remove device from mission ──
   const unassignDevice = useCallback(async (deviceId: string) => {
     if (!mission) return
-    await updateDevice(deviceId, {
-      mission_id: null,
-      zone_id: null,
-      zone_label: null,
-      side: null,
-      sensor_position: null,
-    } as Partial<import("@/lib/types").Device>)
+    try {
+      await updateDevice(deviceId, {
+        mission_id: "",
+        zone_id: "",
+        zone_label: "",
+        side: "",
+        sensor_position: 0.5,
+      } as Partial<import("@/lib/types").Device>)
+    } catch (err) {
+      console.warn("[THEIA] Failed to update device, continuing:", err)
+    }
     const zones = (mission.zones ?? []).map((z) => ({
       ...z,
       devices: z.devices.filter((did) => did !== deviceId),
     }))
-    const updated = await updateMission(id, { zones, device_count: Math.max(0, (mission.device_count ?? 1) - 1) })
-    mutate(updated, false)
+    try {
+      const updated = await updateMission(id, { zones, device_count: Math.max(0, (mission.device_count ?? 1) - 1) })
+      mutate(updated, false)
+    } catch (err) {
+      console.warn("[THEIA] Failed to update mission:", err)
+    }
     mutateDevices()
   }, [mission, id, mutate, mutateDevices])
 
@@ -224,8 +255,33 @@ export default function MissionDetailPage() {
       device_name: d.name,
       zone_id: d.zone_id!,
       side: d.side!,
-      sensor_position: d.sensor_position ?? 0.5,
+      sensor_position: Number(d.sensor_position) || 0.5,
     }))
+
+  // Build liveByZone from polled events if SSE hasn't delivered yet
+  const effectiveLiveByZone: Record<string, LiveDetection> = { ...liveByZone }
+  if (Object.keys(effectiveLiveByZone).length === 0 && eventList.length > 0) {
+    for (const evt of eventList.slice(0, 20)) {
+      if (!evt.zone_id || effectiveLiveByZone[evt.zone_id]) continue
+      effectiveLiveByZone[evt.zone_id] = {
+        device_id: evt.device_id,
+        device_name: evt.device_name || evt.device_id,
+        tx_id: (evt.payload?.tx_id as string) ?? null,
+        zone_id: evt.zone_id,
+        zone_label: evt.zone_label ?? "",
+        side: (evt.payload?.side as string) ?? "",
+        presence: (evt.payload?.presence as boolean) ?? false,
+        distance: (evt.payload?.distance as number) ?? 0,
+        speed: (evt.payload?.speed as number) ?? 0,
+        angle: (evt.payload?.angle as number) ?? 0,
+        direction: (evt.payload?.direction as string) ?? "C",
+        vbatt_tx: (evt.payload?.vbatt_tx as number) ?? null,
+        rssi: evt.rssi,
+        sensor_type: (evt.payload?.sensor_type as string) ?? "ld2450",
+        timestamp: evt.timestamp,
+      }
+    }
+  }
 
   // Merge SSE live detections into display-ready format
   const displayDetections: LiveDetection[] = liveDetections.length > 0
@@ -333,7 +389,7 @@ export default function MissionDetailPage() {
                   zoom={mission.zoom ?? 19}
                   zones={zones}
                   events={eventList}
-                  liveDetections={liveByZone}
+                  liveDetections={effectiveLiveByZone}
                   sensorPlacements={sensorPlacements}
                   className="h-[500px]"
                   drawingMode={drawingMode}
@@ -366,7 +422,7 @@ export default function MissionDetailPage() {
                       Click &quot;Draw Zone&quot; then click on the map to define zone polygons
                     </p>
                   ) : zones.map((zone) => {
-                    const zoneDetection = liveByZone[zone.id]
+                    const zoneDetection = effectiveLiveByZone[zone.id]
                     return (
                       <div
                         key={zone.id}
@@ -425,7 +481,7 @@ export default function MissionDetailPage() {
                       Click a zone or the + button to assign TX devices
                     </p>
                   ) : missionDevices.map((d) => {
-                    const det = liveByZone[d.zone_id ?? ""]
+                    const det = effectiveLiveByZone[d.zone_id ?? ""]
                     return (
                       <div key={d.id} className="flex items-center gap-2 text-xs group">
                         <Radio className={cn("h-3 w-3 shrink-0", det?.presence ? "text-warning" : "text-primary")} />

@@ -34,17 +34,25 @@ export default function SensorsPage() {
 
   const unassignFromMission = useCallback(async (deviceId: string) => {
     if (!mission) return
-    await updateDevice(deviceId, { mission_id: null, zone_id: null, zone_label: null, side: null } as Partial<import("@/lib/types").Device>)
+    try {
+      await updateDevice(deviceId, { mission_id: "", zone_id: "", zone_label: "", side: "", sensor_position: 0.5 } as Partial<import("@/lib/types").Device>)
+    } catch (err) {
+      console.warn("[THEIA] Failed to update device, continuing with mission update:", err)
+    }
     // Remove device from zone devices arrays
     const zones = (mission.zones ?? []).map((z) => ({
       ...z,
       devices: z.devices.filter((did) => did !== deviceId),
     }))
-    const updated = await updateMission(id, {
-      zones,
-      device_count: Math.max(0, (mission.device_count ?? 1) - 1),
-    })
-    mutateMission(updated, false)
+    try {
+      const updated = await updateMission(id, {
+        zones,
+        device_count: Math.max(0, (mission.device_count ?? 1) - 1),
+      })
+      mutateMission(updated, false)
+    } catch (err) {
+      console.warn("[THEIA] Failed to update mission:", err)
+    }
     mutateDevices()
   }, [mission, id, mutateMission, mutateDevices])
 

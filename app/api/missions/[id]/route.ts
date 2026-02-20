@@ -20,14 +20,16 @@ export async function GET(
     const res = await proxyToBackend(`/api/missions/${id}`)
     if (!res.ok) throw new Error(`Backend ${res.status}`)
     const backend = await res.json()
-    // Merge: local store has zones/coords that backend might not
+    // Merge: local store always has the freshest zones/coords (drawn in the UI).
+    // Backend zones are only used if the local store has none.
+    const localZones = local?.zones ?? []
     const merged = {
       ...backend,
-      center_lat: backend.center_lat ?? local?.center_lat,
-      center_lon: backend.center_lon ?? local?.center_lon,
-      zoom: backend.zoom ?? local?.zoom,
-      zones: (backend.zones?.length ? backend.zones : null) ?? local?.zones ?? [],
-      environment: backend.environment ?? local?.environment ?? "horizontal",
+      center_lat: local?.center_lat ?? backend.center_lat,
+      center_lon: local?.center_lon ?? backend.center_lon,
+      zoom: local?.zoom ?? backend.zoom,
+      zones: localZones.length > 0 ? localZones : (backend.zones ?? []),
+      environment: local?.environment ?? backend.environment ?? "horizontal",
     }
     if (local) store.updateMission(id, merged)
     return NextResponse.json(merged)

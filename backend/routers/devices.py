@@ -100,6 +100,12 @@ async def patch_device(device_id: str, body: DeviceUpdate):
         if col in updates and updates[col] is None:
             updates[col] = ""
 
+    # Reset numeric columns to their defaults when set to None
+    nullable_num_defaults = {"sensor_position": 0.5, "floor": 0}
+    for col, default in nullable_num_defaults.items():
+        if col in updates and updates[col] is None:
+            updates[col] = default
+
     set_clause = ", ".join(f"{k}=?" for k in updates)
     values = list(updates.values()) + [device_id]
     await db.execute(f"UPDATE devices SET {set_clause} WHERE id=?", values)

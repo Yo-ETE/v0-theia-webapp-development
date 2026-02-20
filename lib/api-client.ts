@@ -16,6 +16,7 @@ async function request<T>(path: string, options?: RequestInit): Promise<T> {
 
   if (!res.ok) {
     const error = await res.json().catch(() => ({ error: res.statusText }))
+    console.error(`[THEIA] API Error ${res.status} on ${url}:`, error)
     throw new Error(error.error || `API Error: ${res.status}`)
   }
 

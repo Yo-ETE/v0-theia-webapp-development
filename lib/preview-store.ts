@@ -93,6 +93,7 @@ class PreviewStore {
       dev_eui: data.dev_eui ?? "",
       serial_port: data.serial_port ?? "",
       side: data.side ?? null,
+      sensor_position: data.sensor_position ?? 0.5,
       floor: data.floor ?? null,
     }
     this.devices.push(device)

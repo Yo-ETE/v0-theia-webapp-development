@@ -137,13 +137,18 @@ async def init_tables(db: aiosqlite.Connection):
         await db.execute("ALTER TABLE missions ADD COLUMN location TEXT DEFAULT ''")
     except Exception:
         pass
-    # Device columns
+    # Device TEXT columns
     for col, dflt in [
         ("serial_port", "''"), ("zone_id", "''"), ("zone_label", "''"),
-        ("side", "''"), ("sensor_position", "0.5"), ("floor", "NULL"),
+        ("side", "''"), ("floor", "NULL"),
     ]:
         try:
             await db.execute(f"ALTER TABLE devices ADD COLUMN {col} TEXT DEFAULT {dflt}")
         except Exception:
             pass
+    # Device REAL columns
+    try:
+        await db.execute("ALTER TABLE devices ADD COLUMN sensor_position REAL DEFAULT 0.5")
+    except Exception:
+        pass
     await db.commit()
