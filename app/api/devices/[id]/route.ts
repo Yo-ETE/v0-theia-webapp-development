@@ -29,3 +29,27 @@ export async function PATCH(
     return NextResponse.json({ error: "Backend unreachable" }, { status: 503 })
   }
 }
+
+export async function DELETE(
+  _request: NextRequest,
+  { params }: { params: Promise<{ id: string }> },
+) {
+  const { id } = await params
+
+  // Remove from local store
+  const devices = store.getDevices()
+  const idx = devices.findIndex((d) => d.id === id)
+  if (idx !== -1) devices.splice(idx, 1)
+
+  if (isPreviewMode()) {
+    return NextResponse.json({ ok: true })
+  }
+
+  try {
+    const res = await proxyToBackend(`/api/devices/${id}`, { method: "DELETE" })
+    if (!res.ok) throw new Error(`Backend ${res.status}`)
+    return NextResponse.json({ ok: true })
+  } catch {
+    return NextResponse.json({ ok: true })
+  }
+}

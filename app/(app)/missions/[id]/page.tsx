@@ -478,41 +478,94 @@ export default function MissionDetailPage() {
         </DialogContent>
       </Dialog>
 
-      {/* ── Device assignment dialog ── */}
-      <Dialog open={!!assignDialog} onOpenChange={() => setAssignDialog(null)}>
+      {/* ── Device assignment dialog (2-step: pick device, then pick side) ── */}
+      <Dialog open={!!assignDialog} onOpenChange={() => { setAssignDialog(null); setAssignStep(null) }}>
         <DialogContent className="sm:max-w-md z-[10000]">
-          <DialogHeader>
-            <DialogTitle className="text-sm">
-              Assign TX to {zones.find((z) => z.id === assignDialog)?.label ?? "Zone"}
-            </DialogTitle>
-            <DialogDescription className="text-xs text-muted-foreground">
-              Select an unassigned device to place on this zone.
-            </DialogDescription>
-          </DialogHeader>
-          <div className="flex flex-col gap-2 py-2 max-h-64 overflow-y-auto">
-            {unassigned.length === 0 ? (
-              <p className="text-xs text-muted-foreground py-4 text-center">
-                No unassigned devices available
-              </p>
-            ) : (
-              unassigned.map((device) => (
+          {!assignStep ? (
+            <>
+              <DialogHeader>
+                <DialogTitle className="text-sm">
+                  Assign TX to {zones.find((z) => z.id === assignDialog)?.label ?? "Zone"}
+                </DialogTitle>
+                <DialogDescription className="text-xs text-muted-foreground">
+                  Select an unassigned device to place on this zone.
+                </DialogDescription>
+              </DialogHeader>
+              <div className="flex flex-col gap-2 py-2 max-h-64 overflow-y-auto">
+                {unassigned.length === 0 ? (
+                  <p className="text-xs text-muted-foreground py-4 text-center">
+                    No unassigned devices available
+                  </p>
+                ) : (
+                  unassigned.map((device) => {
+                    const assignZone = zones.find((z) => z.id === assignDialog)
+                    const hasSides = assignZone?.sides && Object.values(assignZone.sides).some(Boolean)
+                    return (
+                      <button
+                        key={device.id}
+                        onClick={() => {
+                          if (hasSides) {
+                            setAssignStep({ deviceId: device.id, deviceName: device.name })
+                          } else if (assignDialog) {
+                            assignDevice(device.id, assignDialog)
+                          }
+                        }}
+                        className="flex items-center gap-3 rounded border border-border/50 p-3 text-left hover:bg-muted/30 transition-colors"
+                      >
+                        <Radio className="h-4 w-4 text-primary shrink-0" />
+                        <div className="flex-1 min-w-0">
+                          <p className="text-xs font-mono font-medium text-foreground">{device.name}</p>
+                          <p className="text-[10px] text-muted-foreground">
+                            {device.serial_port || device.hw_id || device.dev_eui || "no port"}
+                          </p>
+                        </div>
+                        <Badge variant="outline" className="text-[9px] px-1 py-0">
+                          {device.status}
+                        </Badge>
+                      </button>
+                    )
+                  })
+                )}
+              </div>
+            </>
+          ) : (
+            <>
+              <DialogHeader>
+                <DialogTitle className="text-sm">
+                  Side assignment: {assignStep.deviceName}
+                </DialogTitle>
+                <DialogDescription className="text-xs text-muted-foreground">
+                  Select which facade/side this TX covers (for triangulation).
+                </DialogDescription>
+              </DialogHeader>
+              <div className="flex flex-col gap-2 py-2">
+                {(() => {
+                  const assignZone = zones.find((z) => z.id === assignDialog)
+                  const sides = assignZone?.sides ?? {}
+                  return Object.entries(sides).filter(([, label]) => Boolean(label)).map(([key, label]) => (
+                    <button
+                      key={key}
+                      onClick={() => assignDialog && assignDevice(assignStep.deviceId, assignDialog, key)}
+                      className="flex items-center gap-3 rounded border border-border/50 p-3 text-left hover:bg-muted/30 transition-colors"
+                    >
+                      <span className="text-sm font-mono font-bold text-cyan-500 w-6 text-center">{key}</span>
+                      <span className="text-xs text-foreground">{label}</span>
+                    </button>
+                  ))
+                })()}
                 <button
-                  key={device.id}
-                  onClick={() => assignDialog && assignDevice(device.id, assignDialog)}
-                  className="flex items-center gap-3 rounded border border-border/50 p-3 text-left hover:bg-muted/30 transition-colors"
+                  onClick={() => assignDialog && assignDevice(assignStep.deviceId, assignDialog)}
+                  className="flex items-center gap-3 rounded border border-dashed border-border/30 p-3 text-left hover:bg-muted/20 transition-colors"
                 >
-                  <Radio className="h-4 w-4 text-primary shrink-0" />
-                  <div className="flex-1 min-w-0">
-                    <p className="text-xs font-mono font-medium text-foreground">{device.name}</p>
-                    <p className="text-[10px] text-muted-foreground">{device.hw_id}</p>
-                  </div>
-                  <Badge variant="outline" className="text-[9px] px-1 py-0">
-                    {device.status}
-                  </Badge>
+                  <span className="text-sm font-mono text-muted-foreground w-6 text-center">-</span>
+                  <span className="text-xs text-muted-foreground">No specific side</span>
                 </button>
-              ))
-            )}
-          </div>
+              </div>
+              <DialogFooter>
+                <Button variant="ghost" size="sm" onClick={() => setAssignStep(null)}>Back</Button>
+              </DialogFooter>
+            </>
+          )}
         </DialogContent>
       </Dialog>
     </>
