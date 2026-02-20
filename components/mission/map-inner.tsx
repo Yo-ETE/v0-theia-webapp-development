@@ -120,17 +120,27 @@ export default function MapInner({
   const [drawPoints, setDrawPoints] = useState<[number, number][]>([])
   const mapRef = useRef<unknown>(null)
 
-  // ── Detection fade-out: keep last detection visible for 3s after it disappears ──
-  const [staleDetections, setStaleDetections] = useState<Record<string, LiveDetection & { fading: boolean }>>({})
+  // ── Detection state management with fade-out ──
+  // "stale" = last known good detection kept visible after presence drops
+  // Colors: green = active live detection, yellow/amber = stale (last known position)
+  const HOLD_MS = 3000  // hold last position at full opacity for 3s
+  const FADE_MS = 2000  // then fade out over 2s
+
+  // Store the last GOOD detection per zone (distance > 0, presence true)
+  const lastGoodRef = useRef<Record<string, LiveDetection>>({})
+  // Timestamp when presence was last seen per zone
   const lastSeenRef = useRef<Record<string, number>>({})
+  // Track stale zones and their phase
+  const [staleZones, setStaleZones] = useState<Record<string, "hold" | "fading">>({})
 
   useEffect(() => {
-    // Update last-seen timestamps for active detections
+    // Update last-good detections for active presences
     for (const [zoneId, det] of Object.entries(liveDetections)) {
-      if (det.presence) {
+      if (det.presence && det.distance > 0) {
+        lastGoodRef.current[zoneId] = det
         lastSeenRef.current[zoneId] = Date.now()
-        // Remove from stale if it came back
-        setStaleDetections((prev) => {
+        // Clear stale state if it came back
+        setStaleZones((prev) => {
           if (!prev[zoneId]) return prev
           const next = { ...prev }
           delete next[zoneId]
@@ -139,51 +149,54 @@ export default function MapInner({
       }
     }
 
-    // Check for zones that lost presence -> move to stale
     const interval = setInterval(() => {
       const now = Date.now()
-      const STALE_TIMEOUT = 3000 // 3 seconds before fade starts
-      const FADE_DURATION = 2000 // 2 seconds fade out
-
-      for (const [zoneId, lastTs] of Object.entries(lastSeenRef.current)) {
-        const liveDet = liveDetections[zoneId]
-        const isCurrentlyPresent = liveDet?.presence
-        if (!isCurrentlyPresent && lastTs > 0) {
+      setStaleZones((prev) => {
+        const next = { ...prev }
+        let changed = false
+        for (const [zoneId, lastTs] of Object.entries(lastSeenRef.current)) {
+          if (lastTs <= 0) continue
+          const liveDet = liveDetections[zoneId]
+          const isActive = liveDet?.presence && liveDet?.distance > 0
+          if (isActive) {
+            // Still active -- remove from stale if present
+            if (next[zoneId]) { delete next[zoneId]; changed = true }
+            continue
+          }
+          // No longer active -- check if we have a last good detection
+          if (!lastGoodRef.current[zoneId]) continue
           const elapsed = now - lastTs
-          if (elapsed > STALE_TIMEOUT + FADE_DURATION) {
-            // Fully expired, remove
-            setStaleDetections((prev) => {
-              if (!prev[zoneId]) return prev
-              const next = { ...prev }
-              delete next[zoneId]
-              return next
-            })
+          if (elapsed > HOLD_MS + FADE_MS) {
+            // Fully expired
+            if (next[zoneId]) { delete next[zoneId]; changed = true }
             lastSeenRef.current[zoneId] = 0
-          } else if (elapsed > STALE_TIMEOUT) {
-            // In fading phase
-            if (liveDet) {
-              setStaleDetections((prev) => ({ ...prev, [zoneId]: { ...liveDet, fading: true } }))
-            }
+          } else if (elapsed > HOLD_MS) {
+            if (next[zoneId] !== "fading") { next[zoneId] = "fading"; changed = true }
           } else {
-            // Still in hold phase, show at full opacity
-            if (liveDet) {
-              setStaleDetections((prev) => ({ ...prev, [zoneId]: { ...liveDet, fading: false } }))
-            }
+            if (next[zoneId] !== "hold") { next[zoneId] = "hold"; changed = true }
           }
         }
-      }
+        return changed ? next : prev
+      })
     }, 200)
-
     return () => clearInterval(interval)
   }, [liveDetections])
 
-  // Merge live + stale detections for rendering
-  const effectiveDetections: Record<string, LiveDetection & { fading?: boolean }> = {}
+  // Build effective detections: live (green) + stale (yellow)
+  // Each entry gets an extra `_state` field: "live" | "hold" | "fading"
+  type DetState = "live" | "hold" | "fading"
+  const effectiveDetections: Record<string, LiveDetection & { _state: DetState }> = {}
   for (const [zoneId, det] of Object.entries(liveDetections)) {
-    if (det.presence) effectiveDetections[zoneId] = det
+    if (det.presence && det.distance > 0) {
+      effectiveDetections[zoneId] = { ...det, _state: "live" }
+    }
   }
-  for (const [zoneId, det] of Object.entries(staleDetections)) {
-    if (!effectiveDetections[zoneId]) effectiveDetections[zoneId] = det
+  for (const [zoneId, phase] of Object.entries(staleZones)) {
+    if (effectiveDetections[zoneId]) continue // live takes priority
+    const lastGood = lastGoodRef.current[zoneId]
+    if (lastGood) {
+      effectiveDetections[zoneId] = { ...lastGood, _state: phase }
+    }
   }
 
   useEffect(() => {
@@ -468,7 +481,7 @@ export default function MapInner({
         {/* ── Saved zones ── */}
         {(zones ?? []).map((zone) => {
           const det = effectiveDetections[zone.id]
-          const hasPresence = !!det
+          const hasPresence = det?._state === "live"
           return (
             <Polygon
               key={zone.id}
@@ -598,44 +611,50 @@ export default function MapInner({
 
         {/* ── Detection projection lines + points ── */}
         {sensorMarkers.filter(sm => sm.detectionPos).map((sm) => {
-          const isFading = (sm.detection as LiveDetection & { fading?: boolean })?.fading
+          const state = (sm.detection as LiveDetection & { _state?: string })?._state ?? "live"
+          const color = state === "live" ? "#22c55e" : "#f59e0b" // green=live, yellow=stale
+          const opacity = state === "fading" ? 0.25 : state === "hold" ? 0.6 : 0.8
           return (
             <Polyline
               key={`det-line-${sm.id}`}
               positions={[sm.sensorPos, sm.detectionPos!]}
               pathOptions={{
-                color: "#f59e0b",
+                color,
                 weight: 2,
                 dashArray: "4 3",
-                opacity: isFading ? 0.2 : 0.8,
+                opacity,
               }}
             />
           )
         })}
         {sensorMarkers.filter(sm => sm.detectionPos).map((sm) => {
-          const isFading = (sm.detection as LiveDetection & { fading?: boolean })?.fading
+          const state = (sm.detection as LiveDetection & { _state?: string })?._state ?? "live"
+          const isLive = state === "live"
+          const isFading = state === "fading"
+          const color = isLive ? "#22c55e" : "#f59e0b" // green=live, amber=stale
           return (
             <CircleMarker
               key={`det-pt-${sm.id}`}
               center={sm.detectionPos!}
-              radius={8}
+              radius={isLive ? 8 : 6}
               pathOptions={{
-                color: "#f59e0b",
-                fillColor: "#f59e0b",
-                fillOpacity: isFading ? 0.2 : 0.6,
+                color,
+                fillColor: color,
+                fillOpacity: isFading ? 0.15 : isLive ? 0.7 : 0.4,
                 weight: 2,
-                opacity: isFading ? 0.3 : 0.8,
-                className: isFading ? "" : "detection-pulse",
+                opacity: isFading ? 0.25 : 0.8,
+                className: isLive ? "detection-pulse" : "",
               }}
             >
               <Tooltip permanent direction="top" offset={[0, -10]}>
                 <span style={{
-                  fontSize: 10, fontWeight: 700, color: "#f59e0b",
-                  opacity: isFading ? 0.4 : 1,
+                  fontSize: 10, fontWeight: 700, color,
+                  opacity: isFading ? 0.35 : 1,
                   background: "rgba(255,255,255,0.92)", padding: "1px 5px",
-                  borderRadius: 3, border: "1px solid rgba(245,158,11,0.4)",
+                  borderRadius: 3, border: `1px solid ${color}55`,
                 }}>
                   {sm.detection!.distance}cm {sm.detection!.direction === "G" ? "G" : sm.detection!.direction === "D" ? "D" : "C"}
+                  {!isLive && " (last)"}
                 </span>
               </Tooltip>
             </CircleMarker>
@@ -648,15 +667,18 @@ export default function MapInner({
           if (sensorMarkers.some(sm => sm.detection && zones.find(z => z.id === zoneId)?.devices.includes(sm.id))) return null
           const centroid = zoneCentroids[zoneId]
           if (!centroid || !det) return null
+          const fbColor = det._state === "live" ? "#22c55e" : "#f59e0b"
+          const fbFading = det._state === "fading"
           return (
             <CircleMarker
               key={`det-fallback-${zoneId}`}
               center={centroid}
               radius={8}
               pathOptions={{
-                color: "#f59e0b", fillColor: "#f59e0b",
-                fillOpacity: 0.5, weight: 2,
-                className: "detection-pulse",
+                color: fbColor, fillColor: fbColor,
+                fillOpacity: fbFading ? 0.15 : 0.5, weight: 2,
+                opacity: fbFading ? 0.3 : 0.8,
+                className: det._state === "live" ? "detection-pulse" : "",
               }}
             />
           )
@@ -789,13 +811,28 @@ export default function MapInner({
       )}
 
       {/* Live detection count overlay */}
-      {Object.keys(effectiveDetections).length > 0 && (
-        <div className="absolute top-2 right-2 z-[500] rounded bg-warning/90 backdrop-blur px-2.5 py-1.5 shadow-lg">
-          <span className="text-[10px] font-mono font-bold text-warning-foreground">
-            {Object.keys(effectiveDetections).length} DETECTION(S) ACTIVE(S)
-          </span>
-        </div>
-      )}
+      {Object.keys(effectiveDetections).length > 0 && (() => {
+        const liveCount = Object.values(effectiveDetections).filter(d => d._state === "live").length
+        const staleCount = Object.values(effectiveDetections).filter(d => d._state !== "live").length
+        return (
+          <div className="absolute top-2 right-2 z-[500] flex gap-1.5">
+            {liveCount > 0 && (
+              <div className="rounded bg-green-600/90 backdrop-blur px-2.5 py-1.5 shadow-lg">
+                <span className="text-[10px] font-mono font-bold text-white">
+                  {liveCount} ACTIVE
+                </span>
+              </div>
+            )}
+            {staleCount > 0 && (
+              <div className="rounded bg-amber-500/80 backdrop-blur px-2.5 py-1.5 shadow-lg">
+                <span className="text-[10px] font-mono font-bold text-white">
+                  {staleCount} LAST
+                </span>
+              </div>
+            )}
+          </div>
+        )
+      })()}
     </div>
   )
 }
