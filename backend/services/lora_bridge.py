@@ -152,7 +152,9 @@ class PortReader:
         if has_presence_only:
             presence = kv.get("presence", "0") == "1"
         else:
-            presence = d > 20
+            # LD2450: when no target, x=0 y=0 but d may retain the last value.
+            # True presence requires non-zero x or y coordinates AND valid distance.
+            presence = (x != 0 or y != 0) and d > 15
 
         # Determine sensor type string
         sensor_type = "gravity_mw" if has_presence_only else "ld2450"
@@ -235,17 +237,21 @@ class PortReader:
             )
 
         direction = "D" if angle > 30 else ("G" if angle < -30 else "C")
+        # When no presence, reset distance to 0 to avoid stale values on the map
+        effective_distance = d if presence else 0
         payload = {
-            "x": x, "y": y, "distance": d, "speed": v,
+            "x": x, "y": y, "distance": effective_distance, "speed": v,
             "angle": round(angle, 1),
             "presence": presence,
-            "direction": direction,
+            "direction": direction if presence else "C",
             "vbatt_tx": vbatt,
             "tx_id": tx_id,
             "sensor_type": sensor_type,
         }
 
-        if mission_id:
+        # Only store detection events in DB when there IS presence
+        # (avoids polluting history with idle frames)
+        if mission_id and presence:
             await db.execute(
                 """INSERT INTO events
                    (mission_id, device_id, event_type, zone, rssi, snr, payload)
@@ -256,6 +262,7 @@ class PortReader:
 
         await db.commit()
 
+        # Always broadcast SSE so the webapp can clear stale detections
         await sse_manager.broadcast("detection", {
             "device_id": device_id,
             "device_name": device_name,
@@ -268,10 +275,10 @@ class PortReader:
             "zone_label": zone_label,
             "side": side,
             "presence": presence,
-            "distance": d,
+            "distance": effective_distance,
             "speed": v,
             "angle": round(angle, 1),
-            "direction": direction,
+            "direction": direction if presence else "C",
             "vbatt_tx": vbatt,
             "rssi": self.last_rssi,
             "timestamp": now_iso,
@@ -314,7 +321,8 @@ class PortReader:
 
         self.packets_ok += 1
         angle = math.degrees(math.atan2(x, y)) if (x != 0 or y != 0) else 0.0
-        presence = d > 20
+        # LD2450: d can retain last value even with no target. Use x/y to confirm.
+        presence = (x != 0 or y != 0) and d > 15
 
         await self._handle_detection(
             tx_id=tx_id, sensor_type="ld2450",
