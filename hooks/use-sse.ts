@@ -9,10 +9,20 @@ type SSEEvent = {
 
 type SSEHandler = (event: SSEEvent) => void
 
+/**
+ * Connects directly to the backend SSE endpoint (not via Next.js proxy).
+ * The handler ref is updated without re-creating the EventSource connection.
+ */
 export function useSSE(onEvent?: SSEHandler) {
   const [connected, setConnected] = useState(false)
   const esRef = useRef<EventSource | null>(null)
+  const onEventRef = useRef<SSEHandler | undefined>(onEvent)
   const handlersRef = useRef<SSEHandler[]>([])
+
+  // Keep ref up-to-date without triggering reconnect
+  useEffect(() => {
+    onEventRef.current = onEvent
+  }, [onEvent])
 
   const addHandler = useCallback((handler: SSEHandler) => {
     handlersRef.current.push(handler)
@@ -22,12 +32,7 @@ export function useSSE(onEvent?: SSEHandler) {
   }, [])
 
   useEffect(() => {
-    if (onEvent) {
-      handlersRef.current.push(onEvent)
-    }
-
     const mode = process.env.NEXT_PUBLIC_MODE || "preview"
-    // In preview mode, SSE is not available (mock data)
     if (mode === "preview") return
 
     let reconnectTimer: ReturnType<typeof setTimeout> | null = null
@@ -35,14 +40,24 @@ export function useSSE(onEvent?: SSEHandler) {
 
     function connect() {
       if (closed) return
-      const es = new EventSource("/api/stream")
+
+      // Connect directly to backend SSE, not via Next.js proxy
+      // This avoids buffering issues in the proxy layer
+      const backendUrl = window.location.protocol + "//" + window.location.hostname + ":8000"
+      const es = new EventSource(`${backendUrl}/api/stream`)
       esRef.current = es
 
-      es.onopen = () => setConnected(true)
+      es.onopen = () => {
+        console.log("[v0] SSE connected directly to backend")
+        setConnected(true)
+      }
 
       es.onmessage = (evt) => {
         try {
           const parsed: SSEEvent = JSON.parse(evt.data)
+          // Call the main handler via ref (never stale)
+          onEventRef.current?.(parsed)
+          // Call additional handlers
           for (const handler of handlersRef.current) {
             handler(parsed)
           }
@@ -55,9 +70,8 @@ export function useSSE(onEvent?: SSEHandler) {
         setConnected(false)
         es.close()
         esRef.current = null
-        // Auto-reconnect after 3 seconds
         if (!closed) {
-          reconnectTimer = setTimeout(connect, 3000)
+          reconnectTimer = setTimeout(connect, 2000)
         }
       }
     }
@@ -72,11 +86,8 @@ export function useSSE(onEvent?: SSEHandler) {
         esRef.current = null
       }
       setConnected(false)
-      if (onEvent) {
-        handlersRef.current = handlersRef.current.filter((h) => h !== onEvent)
-      }
     }
-  }, [onEvent])
+  }, []) // Empty deps: connect once, never reconnect on handler change
 
   return { connected, addHandler }
 }
