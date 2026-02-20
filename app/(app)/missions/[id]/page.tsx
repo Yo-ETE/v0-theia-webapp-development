@@ -80,9 +80,11 @@ export default function MissionDetailPage() {
   } | null>(null)
   const [statusUpdating, setStatusUpdating] = useState(false)
   const [timelapseMode, setTimelapseMode] = useState(false)
-  const [replayDetections, setReplayDetections] = useState<Record<string, LiveDetection>>({})
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const [replayDetections, setReplayDetections] = useState<Record<string, any>>({})
 
-  const handleReplayDetection = useCallback((dets: Record<string, LiveDetection>) => {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const handleReplayDetection = useCallback((dets: Record<string, any>) => {
     setReplayDetections(dets)
   }, [])
 
@@ -812,7 +814,7 @@ export default function MissionDetailPage() {
                 <Button variant="ghost" size="sm" onClick={() => setAssignStep(null)}>Back</Button>
               </DialogFooter>
             </>
-          )}
+          ) : null}
         </DialogContent>
       </Dialog>
     </>

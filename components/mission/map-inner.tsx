@@ -14,6 +14,7 @@ interface LiveDetection {
   timestamp: string
   device_id?: string
   sensor_position?: number
+  [key: string]: unknown
 }
 
 interface SensorPlacement {

@@ -4,21 +4,24 @@ import type { Zone, DetectionEvent } from "@/lib/types"
 import { cn } from "@/lib/utils"
 import MapInner from "./map-inner"
 
+interface LiveDetection {
+  presence: boolean
+  distance: number
+  direction: string
+  device_name: string
+  side: string
+  rssi: number | null
+  timestamp: string
+  [key: string]: unknown
+}
+
 interface MissionMapProps {
   centerLat: number
   centerLon: number
   zoom: number
   zones: Zone[]
   events?: DetectionEvent[]
-  liveDetections?: Record<string, {
-    presence: boolean
-    distance: number
-    direction: string
-    device_name: string
-    side: string
-    rssi: number | null
-    timestamp: string
-  }>
+  liveDetections?: Record<string, LiveDetection>
   sensorPlacements?: {
     device_id: string
     device_name: string

@@ -27,7 +27,8 @@ interface LiveDetection {
 
 interface DetectionTimelapseProps {
   missionId: string
-  onDetection: (detections: Record<string, LiveDetection>) => void
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  onDetection: (detections: Record<string, any>) => void
   onClose: () => void
 }
 
