@@ -9,6 +9,7 @@ import {
   ScrollText,
   Activity,
   Wifi,
+  Settings,
 } from "lucide-react"
 import {
   Sidebar,
@@ -29,6 +30,7 @@ const navItems = [
   { title: "Missions", href: "/missions", icon: Crosshair },
   { title: "Devices", href: "/devices", icon: Radio },
   { title: "Logs", href: "/logs", icon: ScrollText },
+  { title: "Administration", href: "/admin", icon: Settings },
 ]
 
 export function AppSidebar() {

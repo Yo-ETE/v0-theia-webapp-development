@@ -1,10 +1,9 @@
 import { NextResponse } from "next/server"
 import { isPreviewMode, proxyToBackend } from "@/lib/api-mode"
-import { mockSystemStatus } from "@/lib/mock-data"
 
 export async function GET() {
   if (isPreviewMode()) {
-    return NextResponse.json(mockSystemStatus.gps)
+    return NextResponse.json({ fix: false, latitude: 0, longitude: 0, altitude: 0, speed: 0, satellites: 0, hdop: 0 })
   }
   try {
     const res = await proxyToBackend("/api/gps")
@@ -12,6 +11,6 @@ export async function GET() {
     const data = await res.json()
     return NextResponse.json(data)
   } catch {
-    return NextResponse.json(mockSystemStatus.gps)
+    return NextResponse.json({ fix: false, latitude: 0, longitude: 0, altitude: 0, speed: 0, satellites: 0, hdop: 0 })
   }
 }

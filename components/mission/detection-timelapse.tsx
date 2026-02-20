@@ -29,7 +29,7 @@ interface DetectionTimelapseProps {
   missionId: string
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   onDetection: (detections: Record<string, any>) => void
-  onClose: () => void
+  onClose?: () => void
 }
 
 function parseEventToDetection(ev: DetectionEvent): LiveDetection | null {
@@ -158,9 +158,11 @@ export function DetectionTimelapse({ missionId, onDetection, onClose }: Detectio
     <div className="rounded-lg border border-border/50 bg-card p-3">
       <div className="flex items-center justify-between mb-3">
         <h3 className="text-xs font-semibold text-foreground font-mono">TIMELAPSE</h3>
-        <Button variant="ghost" size="sm" className="h-6 w-6 p-0" onClick={onClose}>
-          <X className="h-3.5 w-3.5" />
-        </Button>
+        {onClose && (
+          <Button variant="ghost" size="sm" className="h-6 w-6 p-0" onClick={onClose}>
+            <X className="h-3.5 w-3.5" />
+          </Button>
+        )}
       </div>
 
       {/* Time range selector */}
