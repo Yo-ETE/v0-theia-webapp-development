@@ -7,17 +7,22 @@ import { useEventsRange } from "@/hooks/use-api"
 import type { DetectionEvent } from "@/lib/types"
 
 interface LiveDetection {
+  device_id: string
+  device_name: string
+  tx_id: string | null
+  zone_id: string | null
+  zone_label: string
+  side: string
   presence: boolean
   distance: number
+  speed: number
+  angle: number
   direction: string
-  device_name: string
-  side: string
+  vbatt_tx: number | null
   rssi: number | null
+  sensor_type?: string
   timestamp: string
   mission_id?: string
-  zone_id?: string
-  zone_name?: string
-  device_id?: string
 }
 
 interface DetectionTimelapseProps {
@@ -31,17 +36,22 @@ function parseEventToDetection(ev: DetectionEvent): LiveDetection | null {
   const distance = Number(p.distance ?? p.dist ?? 0)
   if (!distance) return null
   return {
+    device_id: ev.device_id ?? "",
+    device_name: ev.device_name ?? "",
+    tx_id: ev.device_id ?? null,
+    zone_id: ev.zone_id ?? null,
+    zone_label: String(p.zone ?? ev.zone_label ?? ""),
+    side: String(p.side ?? ""),
     presence: true,
     distance,
+    speed: Number(p.speed ?? 0),
+    angle: Number(p.angle ?? 0),
     direction: String(p.direction ?? p.dir ?? "C"),
-    device_name: ev.device_name ?? "",
-    side: String(p.side ?? ev.payload?.side ?? ""),
+    vbatt_tx: p.vbatt_tx ? Number(p.vbatt_tx) : null,
     rssi: ev.rssi,
+    sensor_type: String(p.sensor_type ?? "ld2450"),
     timestamp: ev.timestamp,
     mission_id: ev.mission_id,
-    zone_id: ev.zone_id ?? undefined,
-    zone_name: String(p.zone ?? ev.zone_label ?? ""),
-    device_id: ev.device_id,
   }
 }
 
@@ -90,9 +100,9 @@ export function DetectionTimelapse({ missionId, onDetection, onClose }: Detectio
     const det = parseEventToDetection(ev)
     if (det && det.zone_id) {
       onDetection({ [det.zone_id]: det })
-    } else if (det && det.zone_name) {
-      // Fallback: use zone_name as key
-      onDetection({ [det.zone_name]: det })
+    } else if (det && det.zone_label) {
+      // Fallback: use zone_label as key
+      onDetection({ [det.zone_label]: det })
     } else {
       onDetection({})
     }
@@ -255,7 +265,7 @@ export function DetectionTimelapse({ missionId, onDetection, onClose }: Detectio
               <div className="mt-2 rounded bg-muted/30 px-2 py-1.5 flex items-center gap-2">
                 <div className="h-2 w-2 rounded-full bg-warning shrink-0" />
                 <span className="text-[10px] font-mono text-foreground">
-                  {det.zone_name || currentEvent.zone_label} [{det.side}]
+                  {det.zone_label || currentEvent.zone_label} [{det.side}]
                 </span>
                 <span className="text-[10px] font-mono font-semibold text-warning">
                   {det.distance}cm {det.direction}
