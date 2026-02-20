@@ -45,6 +45,12 @@ class PortReader:
         self.packets_err = 0
         self.last_rssi: int = -120
         self._last_insert_ts: dict[str, float] = {}  # rate-limit DB inserts per device
+        # Stale frame detection: if the SAME (x,y,d) repeats for too long
+        # without any EMPTY frames in between, the RX is replaying old data
+        self._last_frame: dict[str, tuple[int, int, int]] = {}  # tx_id -> (x,y,d)
+        self._same_frame_count: dict[str, int] = {}  # tx_id -> count of identical frames
+        self._last_empty_ts: dict[str, float] = {}  # tx_id -> last time we saw EMPTY
+        self._STALE_REPEAT_LIMIT = 5  # after N identical frames, consider it stale
 
     async def start(self):
         import serial
@@ -163,6 +169,28 @@ class PortReader:
 
         # Determine sensor type string
         sensor_type = "gravity_mw" if has_presence_only else "ld2450"
+
+        # Stale frame detection: the RX LoRa module may replay the last received
+        # frame even after the TX is unplugged. If we see the EXACT same (x,y,d)
+        # repeated N+ times in a row without any EMPTY frame, mark as not-present.
+        key = tx_id or self.port
+        if not presence:
+            # EMPTY frame resets the stale counter
+            self._same_frame_count[key] = 0
+            self._last_frame.pop(key, None)
+            self._last_empty_ts[key] = time.time()
+        else:
+            frame_sig = (x, y, d)
+            prev_sig = self._last_frame.get(key)
+            if prev_sig == frame_sig:
+                self._same_frame_count[key] = self._same_frame_count.get(key, 0) + 1
+            else:
+                self._same_frame_count[key] = 1
+                self._last_frame[key] = frame_sig
+            # If same frame repeated too many times, it's stale replay from the RX
+            if self._same_frame_count[key] > self._STALE_REPEAT_LIMIT:
+                presence = False
+                print(f"[THEIA] Stale frame suppressed: {key} d={d} (same {self._same_frame_count[key]}x)")
 
         # Reuse the common device-lookup + event-insert + SSE-broadcast logic
         await self._handle_detection(
@@ -349,6 +377,23 @@ class PortReader:
         # LD2450 presence: non-zero coords + valid distance range (15-600cm)
         presence = (x != 0 or y != 0) and 15 < d < 600
 
+        # Stale frame detection (same logic as _parse_rx_frame)
+        key = tx_id or self.port
+        if not presence:
+            self._same_frame_count[key] = 0
+            self._last_frame.pop(key, None)
+            self._last_empty_ts[key] = time.time()
+        else:
+            frame_sig = (x, y, d)
+            prev_sig = self._last_frame.get(key)
+            if prev_sig == frame_sig:
+                self._same_frame_count[key] = self._same_frame_count.get(key, 0) + 1
+            else:
+                self._same_frame_count[key] = 1
+                self._last_frame[key] = frame_sig
+            if self._same_frame_count[key] > self._STALE_REPEAT_LIMIT:
+                presence = False
+
         await self._handle_detection(
             tx_id=tx_id, sensor_type="ld2450",
             x=x, y=y, d=d, v=v,
@@ -404,7 +449,24 @@ class PortReader:
         mission_id = row["mission_id"] if row else None
         zone = row["zone"] if row else ""
 
-        if mission_id:
+        # Only store detection events with real presence data (same rules as _handle_detection)
+        presence = payload.get("presence", False) if isinstance(payload, dict) else False
+        distance = 0
+        if isinstance(payload, dict):
+            distance = int(payload.get("distance", 0) or 0)
+        if mission_id and event_type == "detection" and presence and distance > 15:
+            device_key = device_id or dev_eui
+            now_ts = time.time()
+            last_insert_ts = self._last_insert_ts.get(device_key, 0)
+            if now_ts - last_insert_ts >= 8.0:
+                self._last_insert_ts[device_key] = now_ts
+                await db.execute(
+                    """INSERT INTO events (mission_id, device_id, event_type, zone, rssi, snr, payload)
+                       VALUES (?, ?, ?, ?, ?, ?, ?)""",
+                    (mission_id, device_id, event_type, zone, rssi, snr, json.dumps(payload)),
+                )
+        elif mission_id and event_type != "detection":
+            # Non-detection events (status, etc.) are always stored
             await db.execute(
                 """INSERT INTO events (mission_id, device_id, event_type, zone, rssi, snr, payload)
                    VALUES (?, ?, ?, ?, ?, ?, ?)""",
@@ -413,12 +475,14 @@ class PortReader:
 
         await db.commit()
 
-        await sse_manager.broadcast("detection", {
+        await sse_manager.broadcast(event_type, {
             "device_id": device_id,
             "dev_eui": dev_eui,
             "mission_id": mission_id,
             "zone": zone,
             "event_type": event_type,
+            "presence": presence,
+            "distance": distance,
             "rssi": rssi,
             "snr": snr,
             "payload": payload,
