@@ -37,11 +37,9 @@ async def lifespan(app: FastAPI):
     else:
         print("[THEIA] GPS device not found, skipping GPS reader")
 
-    if os.path.exists(os.getenv("LORA_SERIAL_PORT", "/dev/ttyACM0")):
-        _tasks.append(asyncio.create_task(lora_bridge.start()))
-        print("[THEIA] LoRa bridge started")
-    else:
-        print("[THEIA] LoRa serial port not found, skipping LoRa bridge")
+    # LoRa bridge: always start -- it auto-scans for USB serial ports
+    _tasks.append(asyncio.create_task(lora_bridge.start()))
+    print("[THEIA] LoRa bridge started (auto-scan mode)")
 
     yield
 

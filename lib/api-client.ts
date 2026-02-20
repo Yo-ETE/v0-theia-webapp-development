@@ -62,11 +62,22 @@ export function fetchDevices() {
   return request<import("./types").Device[]>("/devices")
 }
 
+export function createDevice(data: { dev_eui: string; name: string; type?: string; serial_port?: string }) {
+  return request<import("./types").Device>("/devices", {
+    method: "POST",
+    body: JSON.stringify(data),
+  })
+}
+
 export function updateDevice(id: string, data: Partial<import("./types").Device>) {
   return request<import("./types").Device>(`/devices/${id}`, {
     method: "PATCH",
     body: JSON.stringify(data),
   })
+}
+
+export function deleteDevice(id: string) {
+  return request<{ ok: boolean }>(`/devices/${id}`, { method: "DELETE" })
 }
 
 // ─── Events ──────────────────────────────────────────────────────

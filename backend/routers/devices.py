@@ -1,8 +1,7 @@
 """
-THEIA - Devices CRUD router
+THEIA - Devices CRUD router (with PATCH support for zone/side/floor assignment)
 """
 import uuid
-from datetime import datetime, timezone
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 from backend.database import get_db
@@ -14,6 +13,7 @@ class DeviceCreate(BaseModel):
     dev_eui: str
     name: str
     type: str = "microwave_tx"
+    serial_port: str = ""
     mission_id: str | None = None
     zone: str = ""
     position: str = ""
@@ -21,8 +21,14 @@ class DeviceCreate(BaseModel):
 
 class DeviceUpdate(BaseModel):
     name: str | None = None
+    type: str | None = None
+    serial_port: str | None = None
     mission_id: str | None = None
     zone: str | None = None
+    zone_id: str | None = None
+    zone_label: str | None = None
+    side: str | None = None
+    floor: int | None = None
     position: str | None = None
     enabled: bool | None = None
 
@@ -55,9 +61,10 @@ async def create_device(body: DeviceCreate):
     db = await get_db()
     did = str(uuid.uuid4())[:8]
     await db.execute(
-        """INSERT INTO devices (id, dev_eui, name, type, mission_id, zone, position)
-           VALUES (?, ?, ?, ?, ?, ?, ?)""",
-        (did, body.dev_eui, body.name, body.type, body.mission_id, body.zone, body.position),
+        """INSERT INTO devices (id, dev_eui, name, type, serial_port, mission_id, zone, position)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
+        (did, body.dev_eui, body.name, body.type, body.serial_port,
+         body.mission_id, body.zone, body.position),
     )
     await db.commit()
     await db.execute(
@@ -65,17 +72,22 @@ async def create_device(body: DeviceCreate):
         ("info", "api", f"Device enrolled: {body.name} ({body.dev_eui})"),
     )
     await db.commit()
-    return {"id": did, "dev_eui": body.dev_eui, "name": body.name}
+    cursor = await db.execute("SELECT * FROM devices WHERE id=?", (did,))
+    return dict(await cursor.fetchone())
 
 
-@router.put("/{device_id}")
-async def update_device(device_id: str, body: DeviceUpdate):
+@router.patch("/{device_id}")
+async def patch_device(device_id: str, body: DeviceUpdate):
     db = await get_db()
     cursor = await db.execute("SELECT * FROM devices WHERE id=?", (device_id,))
     if not await cursor.fetchone():
         raise HTTPException(status_code=404, detail="Device not found")
 
     updates = body.model_dump(exclude_none=True)
+    if not updates:
+        cursor = await db.execute("SELECT * FROM devices WHERE id=?", (device_id,))
+        return dict(await cursor.fetchone())
+
     if "enabled" in updates:
         updates["enabled"] = 1 if updates["enabled"] else 0
 
@@ -83,7 +95,14 @@ async def update_device(device_id: str, body: DeviceUpdate):
     values = list(updates.values()) + [device_id]
     await db.execute(f"UPDATE devices SET {set_clause} WHERE id=?", values)
     await db.commit()
-    return {"ok": True}
+
+    cursor = await db.execute("SELECT * FROM devices WHERE id=?", (device_id,))
+    return dict(await cursor.fetchone())
+
+
+@router.put("/{device_id}")
+async def update_device(device_id: str, body: DeviceUpdate):
+    return await patch_device(device_id, body)
 
 
 @router.delete("/{device_id}")

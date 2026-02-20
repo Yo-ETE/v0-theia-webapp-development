@@ -49,6 +49,7 @@ export default function MissionDetailPage() {
   const [zoneType, setZoneType] = useState<string>("facade")
   const [sideLabels, setSideLabels] = useState<Record<string, string>>({})
   const [assignDialog, setAssignDialog] = useState<string | null>(null) // zoneId
+  const [assignStep, setAssignStep] = useState<{ deviceId: string; deviceName: string } | null>(null)
   const [statusUpdating, setStatusUpdating] = useState(false)
 
   // ── Zone drawing ──────────────────────────────────────────
@@ -94,16 +95,15 @@ export default function MissionDetailPage() {
   }, [mission, id, mutate])
 
   // ── Device assignment ─────────────────────────────────────
-  const assignDevice = useCallback(async (deviceId: string, zoneId: string) => {
+  const assignDevice = useCallback(async (deviceId: string, zoneId: string, side?: string) => {
     if (!mission) return
-    // Update device: set mission_id and zone
     const zone = (mission.zones ?? []).find((z) => z.id === zoneId)
     await updateDevice(deviceId, {
       mission_id: id,
       zone_id: zoneId,
       zone_label: zone?.label ?? "",
+      side: side ?? "",
     })
-    // Update zone: add device to devices array
     const zones = (mission.zones ?? []).map((z) =>
       z.id === zoneId && !z.devices.includes(deviceId)
         ? { ...z, devices: [...z.devices, deviceId] }
@@ -116,6 +116,7 @@ export default function MissionDetailPage() {
     mutate(updated, false)
     mutateDevices()
     setAssignDialog(null)
+    setAssignStep(null)
   }, [mission, id, mutate, mutateDevices])
 
   // ── Status transitions ────────────────────────────────────

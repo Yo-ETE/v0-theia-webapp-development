@@ -53,11 +53,16 @@ async def init_tables(db: aiosqlite.Connection):
 
         CREATE TABLE IF NOT EXISTS devices (
             id TEXT PRIMARY KEY,
-            dev_eui TEXT UNIQUE NOT NULL,
+            dev_eui TEXT UNIQUE,
             name TEXT NOT NULL,
             type TEXT DEFAULT 'microwave_tx',
+            serial_port TEXT DEFAULT '',
             mission_id TEXT,
             zone TEXT DEFAULT '',
+            zone_id TEXT DEFAULT '',
+            zone_label TEXT DEFAULT '',
+            side TEXT DEFAULT '',
+            floor INTEGER,
             position TEXT DEFAULT '',
             enabled INTEGER DEFAULT 1,
             rssi REAL DEFAULT 0,
@@ -131,4 +136,13 @@ async def init_tables(db: aiosqlite.Connection):
         await db.execute("ALTER TABLE missions ADD COLUMN location TEXT DEFAULT ''")
     except Exception:
         pass
+    # Device columns
+    for col, dflt in [
+        ("serial_port", "''"), ("zone_id", "''"), ("zone_label", "''"),
+        ("side", "''"), ("floor", "NULL"),
+    ]:
+        try:
+            await db.execute(f"ALTER TABLE devices ADD COLUMN {col} TEXT DEFAULT {dflt}")
+        except Exception:
+            pass
     await db.commit()

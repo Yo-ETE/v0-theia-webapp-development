@@ -106,12 +106,16 @@ export type DeviceStatus = "online" | "offline" | "unknown"
 export interface Device {
   id: string
   hw_id: string
+  dev_eui: string
   name: string
-  type: "tx_microwave"
+  type: "tx_microwave" | "microwave_tx" | string
+  serial_port: string
   status: DeviceStatus
   mission_id: string | null
   zone_id: string | null
   zone_label: string | null
+  side: string | null
+  floor: number | null
   rssi: number | null
   snr: number | null
   battery: number | null
