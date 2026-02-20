@@ -183,8 +183,14 @@ export default function MapInner({
     if (!lastGood) continue
 
     const sinceLast = now - lastPresenceTs
-    if (sinceLast < STALE_MS) {
-      // Still within active window but live check didn't match -- show as live
+    // If we're still receiving SSE events but they say presence:false,
+    // go straight to "hold" (yellow) -- don't show green for stale data
+    const currentDet = liveDetections[zoneId]
+    const sseStillActive = currentDet && (now - (lastEventTsRef.current[zoneId] ?? 0)) < 3000
+    const explicitlyGone = sseStillActive && !currentDet.presence
+
+    if (sinceLast < STALE_MS && !explicitlyGone) {
+      // Still within active window and SSE hasn't said "gone" -- show as live
       effectiveDetections[zoneId] = { ...lastGood, _state: "live" }
     } else if (sinceLast < STALE_MS + HOLD_MS) {
       // Stale: hold at last known position (yellow)
