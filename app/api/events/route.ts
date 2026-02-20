@@ -6,11 +6,15 @@ import { store } from "@/lib/preview-store"
 function filterGhosts(events: Record<string, unknown>[]): Record<string, unknown>[] {
   return events.filter((evt) => {
     if (evt.type !== "detection") return true
-    const p = evt.payload as Record<string, unknown> | undefined
+    // payload may be an object or a JSON string (if backend didn't parse it)
+    let p = evt.payload as Record<string, unknown> | string | undefined
+    if (typeof p === "string") {
+      try { p = JSON.parse(p) } catch { return true }
+    }
     if (!p || typeof p !== "object") return true
-    const dist = Number(p.distance ?? 0)
+    const dist = Number((p as Record<string, unknown>).distance ?? 0)
     if (dist < 15) return false
-    const pres = p.presence
+    const pres = (p as Record<string, unknown>).presence
     if (pres === false || pres === "false" || pres === 0 || pres === "0") return false
     return true
   })
