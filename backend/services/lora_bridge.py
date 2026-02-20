@@ -45,12 +45,15 @@ class PortReader:
         self.packets_err = 0
         self.last_rssi: int = -120
         self._last_insert_ts: dict[str, float] = {}  # rate-limit DB inserts per device
-        # Stale frame detection: if the SAME (x,y,d) repeats for too long
-        # without any EMPTY frames in between, the RX is replaying old data
-        self._last_frame: dict[str, tuple[int, int, int]] = {}  # tx_id -> (x,y,d)
-        self._same_frame_count: dict[str, int] = {}  # tx_id -> count of identical frames
-        self._last_empty_ts: dict[str, float] = {}  # tx_id -> last time we saw EMPTY
-        self._STALE_REPEAT_LIMIT = 5  # after N identical frames, consider it stale
+        # --- Phantom / stale frame suppression ---
+        # The RX LoRa module can generate phantom data (noise) even when the TX
+        # is off. In normal operation, a real TX sends EMPTY frames regularly
+        # between presence events. If we NEVER see an EMPTY frame but keep
+        # getting presence frames, the data is phantom noise.
+        self._last_empty_ts: dict[str, float] = {}        # tx_id -> last EMPTY timestamp
+        self._presence_count: dict[str, int] = {}          # tx_id -> consecutive presence count
+        self._tx_validated: dict[str, bool] = {}            # tx_id -> seen at least 1 EMPTY
+        self._PRESENCE_WITHOUT_EMPTY_LIMIT = 10  # max consecutive presence frames before we require an EMPTY
 
     async def start(self):
         import serial
@@ -116,7 +119,36 @@ class PortReader:
         tx_id = parts[0].strip()
         data_str = parts[1].strip()
 
-        # Parse key=value pairs
+        # --- Handle EMPTY frames first ---
+        # Format: "[RX] TX01 | EMPTY => OFF rssi=-63 battTX=3.66"
+        # The "EMPTY" keyword means the sensor reports no target.
+        if data_str.startswith("EMPTY"):
+            # Parse any trailing key=value pairs (rssi, battTX)
+            for match in re.finditer(r'(\w+)=([^\s]+)', data_str):
+                k, v_str = match.group(1), match.group(2)
+                if k == "rssi":
+                    try: self.last_rssi = int(v_str)
+                    except ValueError: pass
+            vbatt = None
+            batt_match = re.search(r'battTX=([^\s]+)', data_str)
+            if batt_match:
+                try: vbatt = float(batt_match.group(1))
+                except ValueError: pass
+            self.packets_ok += 1
+            # Mark this TX as validated (we saw a real EMPTY from it)
+            key = tx_id or self.port
+            self._last_empty_ts[key] = time.time()
+            self._presence_count[key] = 0
+            self._tx_validated[key] = True
+            # Broadcast EMPTY as presence=False so the frontend clears the marker
+            await self._handle_detection(
+                tx_id=tx_id, sensor_type="ld2450",
+                x=0, y=0, d=0, v=0,
+                angle=0.0, presence=False, vbatt=vbatt,
+            )
+            return
+
+        # Parse key=value pairs for detection frames
         kv = {}
         for match in re.finditer(r'(\w+)=([^\s]+)', data_str):
             kv[match.group(1)] = match.group(2)
@@ -170,27 +202,29 @@ class PortReader:
         # Determine sensor type string
         sensor_type = "gravity_mw" if has_presence_only else "ld2450"
 
-        # Stale frame detection: the RX LoRa module may replay the last received
-        # frame even after the TX is unplugged. If we see the EXACT same (x,y,d)
-        # repeated N+ times in a row without any EMPTY frame, mark as not-present.
+        # --- Phantom frame suppression ---
+        # The RX LoRa module generates noise/phantom data even when the TX is off.
+        # A REAL TX sends EMPTY frames regularly between presence events.
+        # If we get many consecutive presence frames without ANY EMPTY frame,
+        # the data is phantom noise from the RX and must be suppressed.
         key = tx_id or self.port
         if not presence:
-            # EMPTY frame resets the stale counter
-            self._same_frame_count[key] = 0
-            self._last_frame.pop(key, None)
+            # EMPTY frame: this TX is real and active. Reset counter, validate TX.
             self._last_empty_ts[key] = time.time()
+            self._presence_count[key] = 0
+            self._tx_validated[key] = True
         else:
-            frame_sig = (x, y, d)
-            prev_sig = self._last_frame.get(key)
-            if prev_sig == frame_sig:
-                self._same_frame_count[key] = self._same_frame_count.get(key, 0) + 1
-            else:
-                self._same_frame_count[key] = 1
-                self._last_frame[key] = frame_sig
-            # If same frame repeated too many times, it's stale replay from the RX
-            if self._same_frame_count[key] > self._STALE_REPEAT_LIMIT:
+            self._presence_count[key] = self._presence_count.get(key, 0) + 1
+            # If we've never seen an EMPTY from this TX, or too many presence
+            # frames in a row without any EMPTY, suppress as phantom.
+            if not self._tx_validated.get(key, False):
+                # TX not validated yet -- need to see at least 1 EMPTY first
                 presence = False
-                print(f"[THEIA] Stale frame suppressed: {key} d={d} (same {self._same_frame_count[key]}x)")
+            elif self._presence_count[key] > self._PRESENCE_WITHOUT_EMPTY_LIMIT:
+                # Too many consecutive presence without any EMPTY = phantom noise
+                presence = False
+                if self._presence_count[key] % 20 == 0:  # log occasionally
+                    print(f"[THEIA] Phantom suppressed: {key} d={d} ({self._presence_count[key]} presence without EMPTY)")
 
         # Reuse the common device-lookup + event-insert + SSE-broadcast logic
         await self._handle_detection(
@@ -377,21 +411,17 @@ class PortReader:
         # LD2450 presence: non-zero coords + valid distance range (15-600cm)
         presence = (x != 0 or y != 0) and 15 < d < 600
 
-        # Stale frame detection (same logic as _parse_rx_frame)
+        # Phantom frame suppression (same logic as _parse_rx_frame)
         key = tx_id or self.port
         if not presence:
-            self._same_frame_count[key] = 0
-            self._last_frame.pop(key, None)
             self._last_empty_ts[key] = time.time()
+            self._presence_count[key] = 0
+            self._tx_validated[key] = True
         else:
-            frame_sig = (x, y, d)
-            prev_sig = self._last_frame.get(key)
-            if prev_sig == frame_sig:
-                self._same_frame_count[key] = self._same_frame_count.get(key, 0) + 1
-            else:
-                self._same_frame_count[key] = 1
-                self._last_frame[key] = frame_sig
-            if self._same_frame_count[key] > self._STALE_REPEAT_LIMIT:
+            self._presence_count[key] = self._presence_count.get(key, 0) + 1
+            if not self._tx_validated.get(key, False):
+                presence = False
+            elif self._presence_count[key] > self._PRESENCE_WITHOUT_EMPTY_LIMIT:
                 presence = False
 
         await self._handle_detection(
