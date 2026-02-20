@@ -6,7 +6,7 @@ import { useParams } from "next/navigation"
 import {
   ArrowLeft, Radio, MapPin, Clock, Users, BarChart3, Plus,
   Pencil, Play, Pause, CheckCircle, Trash2, Building2, Home,
-  Activity, Eye, EyeOff, Zap, Timer,
+  Activity, Eye, EyeOff, Zap, Timer, Download, Signal, Battery, Wifi, Unlink,
 } from "lucide-react"
 import { TopHeader } from "@/components/top-header"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
@@ -20,13 +20,16 @@ import {
 import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter,
 } from "@/components/ui/dialog"
+import {
+  Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
+} from "@/components/ui/table"
 import { MissionMap } from "@/components/mission/mission-map"
 import { DetectionTimelapse } from "@/components/mission/detection-timelapse"
 import { ErrorBoundary } from "@/components/error-boundary"
 import { useMission, useEvents, useDevices } from "@/hooks/use-api"
 import { useSSE } from "@/hooks/use-sse"
 import { updateMission, updateDevice } from "@/lib/api-client"
-import { missionStatusConfig, formatRelative, formatTime } from "@/lib/format"
+import { missionStatusConfig, eventTypeConfig, deviceStatusConfig, formatRelative, formatTime, formatDateTime } from "@/lib/format"
 import { cn } from "@/lib/utils"
 import type { Zone, DetectionEvent } from "@/lib/types"
 
@@ -79,6 +82,10 @@ export default function MissionDetailPage() {
     deviceName: string
   } | null>(null)
   const [statusUpdating, setStatusUpdating] = useState(false)
+  // ── Sub-view tabs (inline, no navigation) ──
+  type SubTab = "map" | "sensors" | "history" | "timelapse"
+  const [activeTab, setActiveTab] = useState<SubTab>("map")
+
   // ── Save map center/zoom on pan (debounced) ──
   const mapMoveTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
   const handleMapMove = useCallback((lat: number, lon: number, zoom: number) => {
@@ -316,7 +323,7 @@ export default function MissionDetailPage() {
   // In timelapse mode, use replay detections instead of live data
   // Live detections come ONLY from SSE -- never from polled DB events
   // (DB events are history, not current state)
-  const effectiveLiveByZone: Record<string, LiveDetection> = timelapseMode
+  const effectiveLiveByZone: Record<string, LiveDetection> = activeTab === "timelapse"
     ? { ...replayDetections }
     : { ...liveByZone }
 
@@ -335,19 +342,39 @@ export default function MissionDetailPage() {
               <Link href="/missions"><ArrowLeft className="mr-1.5 h-3.5 w-3.5" />Missions</Link>
             </Button>
             <div className="flex items-center gap-2">
-              <Button variant="outline" size="sm" asChild className="text-xs">
-                <Link href={`/missions/${id}/sensors`}><Radio className="mr-1.5 h-3 w-3" />Sensors</Link>
-              </Button>
-              <Button variant="outline" size="sm" asChild className="text-xs">
-                <Link href={`/missions/${id}/history`}><BarChart3 className="mr-1.5 h-3 w-3" />History</Link>
-              </Button>
               <Button
-                variant={timelapseMode ? "secondary" : "outline"}
+                variant={activeTab === "sensors" ? "secondary" : "outline"}
                 size="sm"
                 className="text-xs"
                 onClick={() => {
-                  setTimelapseMode(!timelapseMode)
-                  if (timelapseMode) setReplayDetections({})
+                  setActiveTab(activeTab === "sensors" ? "map" : "sensors")
+                  setTimelapseMode(false)
+                  setReplayDetections({})
+                }}
+              >
+                <Radio className="mr-1.5 h-3 w-3" />Sensors
+              </Button>
+              <Button
+                variant={activeTab === "history" ? "secondary" : "outline"}
+                size="sm"
+                className="text-xs"
+                onClick={() => {
+                  setActiveTab(activeTab === "history" ? "map" : "history")
+                  setTimelapseMode(false)
+                  setReplayDetections({})
+                }}
+              >
+                <BarChart3 className="mr-1.5 h-3 w-3" />History
+              </Button>
+              <Button
+                variant={activeTab === "timelapse" ? "secondary" : "outline"}
+                size="sm"
+                className="text-xs"
+                onClick={() => {
+                  const entering = activeTab !== "timelapse"
+                  setActiveTab(entering ? "timelapse" : "map")
+                  setTimelapseMode(entering)
+                  if (!entering) setReplayDetections({})
                 }}
               >
                 <Timer className="mr-1.5 h-3 w-3" />Timelapse
@@ -410,7 +437,7 @@ export default function MissionDetailPage() {
           </Card>
 
           {/* Map + Sidebar */}
-          <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">
+          {(activeTab === "map" || activeTab === "timelapse") && <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">
             <div className="lg:col-span-2">
               <ErrorBoundary>
                 <MissionMap
@@ -433,12 +460,13 @@ export default function MissionDetailPage() {
               </ErrorBoundary>
 
               {/* Timelapse panel */}
-              {timelapseMode && (
+              {activeTab === "timelapse" && (
                 <div className="mt-3">
                   <DetectionTimelapse
                     missionId={id}
                     onDetection={handleReplayDetection}
                     onClose={() => {
+                      setActiveTab("map")
                       setTimelapseMode(false)
                       setReplayDetections({})
                     }}
@@ -648,7 +676,208 @@ export default function MissionDetailPage() {
                 </CardContent>
               </Card>
             </div>
-          </div>
+          </div>}
+
+          {/* ── Inline History Panel ── */}
+          {activeTab === "history" && (
+            <Card className="border-border/50 bg-card">
+              <CardHeader className="pb-2">
+                <div className="flex items-center justify-between">
+                  <CardTitle className="text-sm">Events ({eventList.length})</CardTitle>
+                  <Button
+                    variant="outline" size="sm"
+                    disabled={eventList.length === 0}
+                    onClick={() => {
+                      const csv = [
+                        "timestamp,type,device,zone,rssi,snr,payload",
+                        ...eventList.map((e) =>
+                          [e.timestamp, e.type, e.device_name, e.zone_label ?? "", e.rssi ?? "", e.snr ?? "", JSON.stringify(e.payload)].join(",")
+                        ),
+                      ].join("\n")
+                      const blob = new Blob([csv], { type: "text/csv" })
+                      const url = URL.createObjectURL(blob)
+                      const a = document.createElement("a")
+                      a.href = url
+                      a.download = `${mission.name}-history.csv`
+                      a.click()
+                      URL.revokeObjectURL(url)
+                    }}
+                  >
+                    <Download className="mr-1.5 h-3.5 w-3.5" />Export CSV
+                  </Button>
+                </div>
+              </CardHeader>
+              <CardContent>
+                {eventList.length === 0 ? (
+                  <p className="py-8 text-center text-sm text-muted-foreground">No events recorded for this mission</p>
+                ) : (
+                  <div className="max-h-[500px] overflow-auto">
+                    <Table>
+                      <TableHeader>
+                        <TableRow className="border-border/50">
+                          <TableHead className="text-[10px]">Time</TableHead>
+                          <TableHead className="text-[10px]">Type</TableHead>
+                          <TableHead className="text-[10px]">Device</TableHead>
+                          <TableHead className="text-[10px]">Zone</TableHead>
+                          <TableHead className="text-[10px]">RSSI</TableHead>
+                          <TableHead className="text-[10px]">Payload</TableHead>
+                        </TableRow>
+                      </TableHeader>
+                      <TableBody>
+                        {eventList.map((evt) => {
+                          const evtCfg = eventTypeConfig[evt.type] ?? eventTypeConfig.system
+                          return (
+                            <TableRow key={evt.id} className="border-border/30">
+                              <TableCell className="font-mono text-[11px] text-muted-foreground">{formatDateTime(evt.timestamp)}</TableCell>
+                              <TableCell>
+                                <Badge variant="outline" className={cn("text-[9px] px-1 py-0", evtCfg.className)}>{evtCfg.label}</Badge>
+                              </TableCell>
+                              <TableCell className="font-mono text-xs text-foreground">{evt.device_name}</TableCell>
+                              <TableCell className="text-xs text-muted-foreground">{evt.zone_label ?? "---"}</TableCell>
+                              <TableCell className="font-mono text-[11px] text-foreground">{evt.rssi !== null ? `${evt.rssi}` : "---"}</TableCell>
+                              <TableCell className="font-mono text-[10px] text-muted-foreground max-w-48 truncate">{JSON.stringify(evt.payload)}</TableCell>
+                            </TableRow>
+                          )
+                        })}
+                      </TableBody>
+                    </Table>
+                  </div>
+                )}
+              </CardContent>
+            </Card>
+          )}
+
+          {/* ── Inline Sensors Panel ── */}
+          {activeTab === "sensors" && (
+            <div className="flex flex-col gap-4">
+              {/* Assigned Devices */}
+              <Card className="border-border/50 bg-card">
+                <CardHeader className="pb-2">
+                  <CardTitle className="flex items-center gap-2 text-sm">
+                    <Radio className="h-4 w-4 text-primary" />
+                    Assigned Devices ({missionDevices.length})
+                  </CardTitle>
+                </CardHeader>
+                <CardContent>
+                  {missionDevices.length === 0 ? (
+                    <p className="py-6 text-center text-sm text-muted-foreground">No devices assigned to this mission yet</p>
+                  ) : (
+                    <Table>
+                      <TableHeader>
+                        <TableRow className="border-border/50">
+                          <TableHead className="text-[10px]">Name</TableHead>
+                          <TableHead className="text-[10px]">TX ID</TableHead>
+                          <TableHead className="text-[10px]">Status</TableHead>
+                          <TableHead className="text-[10px]">Zone / Side</TableHead>
+                          <TableHead className="text-[10px]">RSSI</TableHead>
+                          <TableHead className="text-[10px]">Battery</TableHead>
+                          <TableHead className="text-[10px]">Last Seen</TableHead>
+                          <TableHead className="text-[10px]">Action</TableHead>
+                        </TableRow>
+                      </TableHeader>
+                      <TableBody>
+                        {missionDevices.map((device) => {
+                          const sCfg = deviceStatusConfig[device.status] ?? deviceStatusConfig.unknown
+                          return (
+                            <TableRow key={device.id} className="border-border/30">
+                              <TableCell className="font-mono text-xs font-medium text-foreground">{device.name}</TableCell>
+                              <TableCell className="font-mono text-[11px] text-muted-foreground">{device.dev_eui || device.hw_id || "---"}</TableCell>
+                              <TableCell>
+                                <Badge variant="outline" className={cn("text-[9px] px-1 py-0", sCfg.className)}>
+                                  <span className={cn("mr-1 h-1.5 w-1.5 rounded-full inline-block", sCfg.dot)} />
+                                  {sCfg.label}
+                                </Badge>
+                              </TableCell>
+                              <TableCell className="text-xs text-muted-foreground">
+                                {device.zone_label ? (
+                                  <span>{device.zone_label}{device.side && <span className="ml-1 text-primary font-mono">[{device.side}]</span>}</span>
+                                ) : "---"}
+                              </TableCell>
+                              <TableCell>
+                                {device.rssi !== null ? (
+                                  <span className={cn("font-mono text-xs", device.rssi >= -70 ? "text-success" : device.rssi >= -85 ? "text-warning" : "text-destructive")}>
+                                    {device.rssi} dBm
+                                  </span>
+                                ) : <span className="text-xs text-muted-foreground">---</span>}
+                              </TableCell>
+                              <TableCell>
+                                {device.battery !== null ? (
+                                  <div className="flex items-center gap-1">
+                                    <Battery className={cn("h-3 w-3", device.battery > 50 ? "text-success" : device.battery > 20 ? "text-warning" : "text-destructive")} />
+                                    <span className="font-mono text-xs text-foreground">{device.battery}%</span>
+                                  </div>
+                                ) : <span className="text-xs text-muted-foreground">---</span>}
+                              </TableCell>
+                              <TableCell className="text-[11px] text-muted-foreground">{device.last_seen ? formatRelative(device.last_seen) : "Never"}</TableCell>
+                              <TableCell>
+                                <Button variant="ghost" size="sm" className="h-6 text-[10px] px-2 text-destructive hover:text-destructive/80" onClick={() => unassignDevice(device.id)}>
+                                  <Unlink className="mr-1 h-3 w-3" />Remove
+                                </Button>
+                              </TableCell>
+                            </TableRow>
+                          )
+                        })}
+                      </TableBody>
+                    </Table>
+                  )}
+                </CardContent>
+              </Card>
+
+              {/* Available Devices */}
+              {allDevices && allDevices.filter(d => d.mission_id !== id).length > 0 && (
+                <Card className="border-border/50 bg-card">
+                  <CardHeader className="pb-2">
+                    <CardTitle className="flex items-center gap-2 text-sm">
+                      <Wifi className="h-4 w-4 text-muted-foreground" />
+                      Available Devices ({allDevices.filter(d => d.mission_id !== id).length})
+                    </CardTitle>
+                  </CardHeader>
+                  <CardContent>
+                    <Table>
+                      <TableHeader>
+                        <TableRow className="border-border/50">
+                          <TableHead className="text-[10px]">Name</TableHead>
+                          <TableHead className="text-[10px]">TX ID</TableHead>
+                          <TableHead className="text-[10px]">Type</TableHead>
+                          <TableHead className="text-[10px]">Status</TableHead>
+                          <TableHead className="text-[10px]">Action</TableHead>
+                        </TableRow>
+                      </TableHeader>
+                      <TableBody>
+                        {allDevices.filter(d => d.mission_id !== id).map((device) => {
+                          const sCfg = deviceStatusConfig[device.status] ?? deviceStatusConfig.unknown
+                          const isElsewhere = !!device.mission_id
+                          return (
+                            <TableRow key={device.id} className="border-border/30">
+                              <TableCell className="font-mono text-xs font-medium text-foreground">{device.name}</TableCell>
+                              <TableCell className="font-mono text-[11px] text-muted-foreground">{device.dev_eui || device.hw_id || "---"}</TableCell>
+                              <TableCell className="text-[11px] text-muted-foreground">
+                                {device.type || "TX"}
+                                {isElsewhere && <Badge variant="outline" className="ml-1 text-[8px] px-1 py-0 text-warning border-warning/30">other mission</Badge>}
+                              </TableCell>
+                              <TableCell>
+                                <Badge variant="outline" className={cn("text-[9px] px-1 py-0", sCfg.className)}>{sCfg.label}</Badge>
+                              </TableCell>
+                              <TableCell>
+                                <Button variant="outline" size="sm" className="h-6 text-[10px] px-2" onClick={async () => {
+                                  await updateDevice(device.id, { mission_id: id })
+                                  const updated = await updateMission(id, { device_count: (mission.device_count ?? 0) + 1 })
+                                  mutate(updated, false)
+                                  mutateDevices()
+                                }}>
+                                  <Signal className="mr-1 h-3 w-3" />{isElsewhere ? "Reassign" : "Assign"}
+                                </Button>
+                              </TableCell>
+                            </TableRow>
+                          )
+                        })}
+                      </TableBody>
+                    </Table>
+                  </CardContent>
+                </Card>
+              )}
+            </div>
+          )}
         </div>
       </main>
 
