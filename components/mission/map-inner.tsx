@@ -121,83 +121,79 @@ export default function MapInner({
   const mapRef = useRef<unknown>(null)
 
   // ── Detection state management with fade-out ──
-  // "stale" = last known good detection kept visible after presence drops
-  // Colors: green = active live detection, yellow/amber = stale (last known position)
-  const HOLD_MS = 3000  // hold last position at full opacity for 3s
-  const FADE_MS = 2000  // then fade out over 2s
+  // green = actively receiving presence events
+  // yellow "hold" = no new presence event for STALE_MS, show last known position
+  // yellow "fading" = fading out before disappearing
+  // gone = fully expired
+  const STALE_MS = 5000  // 5s without a new presence event = stale
+  const HOLD_MS = 4000   // hold stale position for 4s
+  const FADE_MS = 3000   // then fade for 3s
 
-  // Store the last GOOD detection per zone (distance > 0, presence true)
+  // Store the last GOOD detection per zone (with distance > 0, presence true)
   const lastGoodRef = useRef<Record<string, LiveDetection>>({})
-  // Timestamp when presence was last seen per zone
-  const lastSeenRef = useRef<Record<string, number>>({})
-  // Track stale zones and their phase
-  const [staleZones, setStaleZones] = useState<Record<string, "hold" | "fading">>({})
+  // Timestamp of the last RECEIVED event (any event, even presence:false) per zone
+  const lastEventTsRef = useRef<Record<string, number>>({})
+  // Timestamp of the last GOOD event per zone (presence true + distance > 0)
+  const lastPresenceTsRef = useRef<Record<string, number>>({})
+  // Serialized version counter to force re-render from the interval timer
+  const [tick, setTick] = useState(0)
 
+  // Track incoming events
   useEffect(() => {
-    // Update last-good detections for active presences
+    const now = Date.now()
     for (const [zoneId, det] of Object.entries(liveDetections)) {
+      lastEventTsRef.current[zoneId] = now
       if (det.presence && det.distance > 0) {
         lastGoodRef.current[zoneId] = det
-        lastSeenRef.current[zoneId] = Date.now()
-        // Clear stale state if it came back
-        setStaleZones((prev) => {
-          if (!prev[zoneId]) return prev
-          const next = { ...prev }
-          delete next[zoneId]
-          return next
-        })
+        lastPresenceTsRef.current[zoneId] = now
       }
     }
-
-    const interval = setInterval(() => {
-      const now = Date.now()
-      setStaleZones((prev) => {
-        const next = { ...prev }
-        let changed = false
-        for (const [zoneId, lastTs] of Object.entries(lastSeenRef.current)) {
-          if (lastTs <= 0) continue
-          const liveDet = liveDetections[zoneId]
-          const isActive = liveDet?.presence && liveDet?.distance > 0
-          if (isActive) {
-            // Still active -- remove from stale if present
-            if (next[zoneId]) { delete next[zoneId]; changed = true }
-            continue
-          }
-          // No longer active -- check if we have a last good detection
-          if (!lastGoodRef.current[zoneId]) continue
-          const elapsed = now - lastTs
-          if (elapsed > HOLD_MS + FADE_MS) {
-            // Fully expired
-            if (next[zoneId]) { delete next[zoneId]; changed = true }
-            lastSeenRef.current[zoneId] = 0
-          } else if (elapsed > HOLD_MS) {
-            if (next[zoneId] !== "fading") { next[zoneId] = "fading"; changed = true }
-          } else {
-            if (next[zoneId] !== "hold") { next[zoneId] = "hold"; changed = true }
-          }
-        }
-        return changed ? next : prev
-      })
-    }, 200)
-    return () => clearInterval(interval)
   }, [liveDetections])
 
-  // Build effective detections: live (green) + stale (yellow)
-  // Each entry gets an extra `_state` field: "live" | "hold" | "fading"
+  // Tick every 500ms to re-evaluate state based on elapsed time
+  useEffect(() => {
+    const interval = setInterval(() => setTick(t => t + 1), 500)
+    return () => clearInterval(interval)
+  }, [])
+
+  // Build effective detections based on timestamps, not just prop content
   type DetState = "live" | "hold" | "fading"
+  const now = Date.now()
   const effectiveDetections: Record<string, LiveDetection & { _state: DetState }> = {}
+
   for (const [zoneId, det] of Object.entries(liveDetections)) {
-    if (det.presence && det.distance > 0) {
+    const lastPresenceTs = lastPresenceTsRef.current[zoneId] ?? 0
+    const sinceLast = now - lastPresenceTs
+
+    if (det.presence && det.distance > 0 && sinceLast < STALE_MS) {
+      // Currently active: green
       effectiveDetections[zoneId] = { ...det, _state: "live" }
     }
   }
-  for (const [zoneId, phase] of Object.entries(staleZones)) {
-    if (effectiveDetections[zoneId]) continue // live takes priority
+
+  // Check stale zones (had a good detection in the past but now timed out)
+  for (const [zoneId, lastPresenceTs] of Object.entries(lastPresenceTsRef.current)) {
+    if (effectiveDetections[zoneId]) continue // already live
+    if (lastPresenceTs <= 0) continue
     const lastGood = lastGoodRef.current[zoneId]
-    if (lastGood) {
-      effectiveDetections[zoneId] = { ...lastGood, _state: phase }
+    if (!lastGood) continue
+
+    const sinceLast = now - lastPresenceTs
+    if (sinceLast < STALE_MS) {
+      // Still within active window but live check didn't match -- show as live
+      effectiveDetections[zoneId] = { ...lastGood, _state: "live" }
+    } else if (sinceLast < STALE_MS + HOLD_MS) {
+      // Stale: hold at last known position (yellow)
+      effectiveDetections[zoneId] = { ...lastGood, _state: "hold" }
+    } else if (sinceLast < STALE_MS + HOLD_MS + FADE_MS) {
+      // Fading out
+      effectiveDetections[zoneId] = { ...lastGood, _state: "fading" }
     }
+    // else: fully expired, don't add
   }
+
+  // Suppress unused tick warning (it drives re-renders)
+  void tick
 
   useEffect(() => {
     setMounted(true)

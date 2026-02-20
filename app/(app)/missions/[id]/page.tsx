@@ -99,12 +99,16 @@ export default function MissionDetailPage() {
     const d = event.data as unknown as LiveDetection
     if (d.mission_id !== id) return
 
-    setLiveDetections(prev => {
-      const next = [d, ...prev]
-      return next.slice(0, 50) // keep last 50
-    })
+    // Only add to feed if it's a real presence event
+    if (d.presence && d.distance > 0) {
+      setLiveDetections(prev => {
+        const next = [d, ...prev]
+        return next.slice(0, 50)
+      })
+    }
 
-    // Track latest detection per zone
+    // Always update liveByZone so map-inner sees the latest state
+    // (including presence: false to trigger stale transition)
     if (d.zone_id) {
       setLiveByZone(prev => ({ ...prev, [d.zone_id!]: d }))
     }

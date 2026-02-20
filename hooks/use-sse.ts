@@ -30,29 +30,47 @@ export function useSSE(onEvent?: SSEHandler) {
     // In preview mode, SSE is not available (mock data)
     if (mode === "preview") return
 
-    const es = new EventSource("/api/stream")
-    esRef.current = es
+    let reconnectTimer: ReturnType<typeof setTimeout> | null = null
+    let closed = false
 
-    es.onopen = () => setConnected(true)
+    function connect() {
+      if (closed) return
+      const es = new EventSource("/api/stream")
+      esRef.current = es
 
-    es.onmessage = (evt) => {
-      try {
-        const parsed: SSEEvent = JSON.parse(evt.data)
-        for (const handler of handlersRef.current) {
-          handler(parsed)
+      es.onopen = () => setConnected(true)
+
+      es.onmessage = (evt) => {
+        try {
+          const parsed: SSEEvent = JSON.parse(evt.data)
+          for (const handler of handlersRef.current) {
+            handler(parsed)
+          }
+        } catch {
+          // ignore parse errors
         }
-      } catch {
-        // ignore parse errors
+      }
+
+      es.onerror = () => {
+        setConnected(false)
+        es.close()
+        esRef.current = null
+        // Auto-reconnect after 3 seconds
+        if (!closed) {
+          reconnectTimer = setTimeout(connect, 3000)
+        }
       }
     }
 
-    es.onerror = () => {
-      setConnected(false)
-    }
+    connect()
 
     return () => {
-      es.close()
-      esRef.current = null
+      closed = true
+      if (reconnectTimer) clearTimeout(reconnectTimer)
+      if (esRef.current) {
+        esRef.current.close()
+        esRef.current = null
+      }
       setConnected(false)
       if (onEvent) {
         handlersRef.current = handlersRef.current.filter((h) => h !== onEvent)
