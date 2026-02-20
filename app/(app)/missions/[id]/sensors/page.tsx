@@ -34,7 +34,7 @@ export default function SensorsPage() {
 
   const unassignFromMission = useCallback(async (deviceId: string) => {
     if (!mission) return
-    await updateDevice(deviceId, { mission_id: null as unknown as string, zone_id: null as unknown as string, zone_label: "" })
+    await updateDevice(deviceId, { mission_id: null, zone_id: null, zone_label: null, side: null } as Partial<import("@/lib/types").Device>)
     // Remove device from zone devices arrays
     const zones = (mission.zones ?? []).map((z) => ({
       ...z,
@@ -83,9 +83,9 @@ export default function SensorsPage() {
                   <TableHeader>
                     <TableRow className="border-border/50">
                       <TableHead className="text-[10px]">Name</TableHead>
-                      <TableHead className="text-[10px]">HW ID</TableHead>
+                      <TableHead className="text-[10px]">TX ID</TableHead>
                       <TableHead className="text-[10px]">Status</TableHead>
-                      <TableHead className="text-[10px]">Zone</TableHead>
+                      <TableHead className="text-[10px]">Zone / Side</TableHead>
                       <TableHead className="text-[10px]">RSSI</TableHead>
                       <TableHead className="text-[10px]">Battery</TableHead>
                       <TableHead className="text-[10px]">Last Seen</TableHead>
@@ -101,7 +101,7 @@ export default function SensorsPage() {
                             {device.name}
                           </TableCell>
                           <TableCell className="font-mono text-[11px] text-muted-foreground">
-                            {device.hw_id}
+                            {device.dev_eui || device.hw_id || "---"}
                           </TableCell>
                           <TableCell>
                             <Badge variant="outline" className={cn("text-[9px] px-1 py-0", sCfg.className)}>
@@ -110,7 +110,12 @@ export default function SensorsPage() {
                             </Badge>
                           </TableCell>
                           <TableCell className="text-xs text-muted-foreground">
-                            {device.zone_label ?? "---"}
+                            {device.zone_label ? (
+                              <span>
+                                {device.zone_label}
+                                {device.side && <span className="ml-1 text-primary font-mono">[{device.side}]</span>}
+                              </span>
+                            ) : "---"}
                           </TableCell>
                           <TableCell>
                             {device.rssi !== null ? (
@@ -173,9 +178,9 @@ export default function SensorsPage() {
                   <TableHeader>
                     <TableRow className="border-border/50">
                       <TableHead className="text-[10px]">Name</TableHead>
-                      <TableHead className="text-[10px]">HW ID</TableHead>
+                      <TableHead className="text-[10px]">TX ID</TableHead>
+                      <TableHead className="text-[10px]">Type</TableHead>
                       <TableHead className="text-[10px]">Status</TableHead>
-                      <TableHead className="text-[10px]">Firmware</TableHead>
                       <TableHead className="text-[10px]">Action</TableHead>
                     </TableRow>
                   </TableHeader>
@@ -188,15 +193,15 @@ export default function SensorsPage() {
                             {device.name}
                           </TableCell>
                           <TableCell className="font-mono text-[11px] text-muted-foreground">
-                            {device.hw_id}
+                            {device.dev_eui || device.hw_id || "---"}
+                          </TableCell>
+                          <TableCell className="text-[11px] text-muted-foreground">
+                            {device.type || "TX"}
                           </TableCell>
                           <TableCell>
                             <Badge variant="outline" className={cn("text-[9px] px-1 py-0", sCfg.className)}>
                               {sCfg.label}
                             </Badge>
-                          </TableCell>
-                          <TableCell className="font-mono text-[11px] text-muted-foreground">
-                            {device.firmware}
                           </TableCell>
                           <TableCell>
                             <Button

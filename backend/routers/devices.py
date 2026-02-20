@@ -83,13 +83,21 @@ async def patch_device(device_id: str, body: DeviceUpdate):
     if not await cursor.fetchone():
         raise HTTPException(status_code=404, detail="Device not found")
 
-    updates = body.model_dump(exclude_none=True)
+    # Use exclude_unset so explicitly-sent null values (e.g. zone_id=null
+    # to unassign) are included, while omitted fields are skipped.
+    updates = body.model_dump(exclude_unset=True)
     if not updates:
         cursor = await db.execute("SELECT * FROM devices WHERE id=?", (device_id,))
         return dict(await cursor.fetchone())
 
     if "enabled" in updates:
         updates["enabled"] = 1 if updates["enabled"] else 0
+
+    # Convert None values to empty string for TEXT columns (SQLite compat)
+    nullable_text_cols = {"mission_id", "zone_id", "zone_label", "side", "zone", "position"}
+    for col in nullable_text_cols:
+        if col in updates and updates[col] is None:
+            updates[col] = ""
 
     set_clause = ", ".join(f"{k}=?" for k in updates)
     values = list(updates.values()) + [device_id]

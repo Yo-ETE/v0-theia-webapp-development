@@ -130,7 +130,8 @@ async def patch_mission(mission_id: str, body: MissionUpdate):
     if not await cursor.fetchone():
         raise HTTPException(status_code=404, detail="Mission not found")
 
-    updates = body.model_dump(exclude_none=True)
+    # exclude_unset keeps explicitly-sent null values (e.g. ended_at=null)
+    updates = body.model_dump(exclude_unset=True)
     if not updates:
         return await _get_full_mission(db, mission_id)
 
