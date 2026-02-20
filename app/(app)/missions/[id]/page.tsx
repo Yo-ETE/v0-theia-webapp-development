@@ -320,12 +320,44 @@ export default function MissionDetailPage() {
       sensor_position: Number(d.sensor_position) || 0.5,
     }))
 
-  // In timelapse mode, use replay detections instead of live data
-  // Live detections come ONLY from SSE -- never from polled DB events
-  // (DB events are history, not current state)
-  const effectiveLiveByZone: Record<string, LiveDetection> = bottomPanel === "timelapse"
-    ? { ...replayDetections }
-    : { ...liveByZone }
+  // Build effective live detections for the map.
+  // SSE detections are primary. When SSE hasn't delivered yet (page just loaded),
+  // seed from the most recent DB event per zone IF it's very recent (< 30s).
+  const effectiveLiveByZone: Record<string, LiveDetection> = (() => {
+    if (bottomPanel === "timelapse") return { ...replayDetections }
+    const result = { ...liveByZone }
+    // Only seed from DB if SSE hasn't provided anything yet
+    if (Object.keys(result).length === 0 && eventList.length > 0) {
+      const cutoff = Date.now() - 30_000 // 30 seconds
+      for (const evt of eventList) {
+        const evtTime = new Date(evt.timestamp).getTime()
+        if (evtTime < cutoff) break // events are sorted desc, stop at first old one
+        const p = evt.payload ?? {}
+        const dist = Number(p.distance ?? 0)
+        if (dist < 15) continue
+        const zid = evt.zone_id
+        if (!zid || result[zid]) continue
+        result[zid] = {
+          device_id: evt.device_id ?? "",
+          device_name: evt.device_name ?? evt.device_id ?? "",
+          tx_id: (p.tx_id as string) ?? null,
+          zone_id: zid,
+          zone_label: evt.zone_label ?? "",
+          side: evt.side ?? (p.side as string) ?? "",
+          presence: true,
+          distance: dist,
+          speed: Number(p.speed ?? 0),
+          angle: Number(p.angle ?? 0),
+          direction: String(p.direction ?? "C"),
+          vbatt_tx: p.vbatt_tx ? Number(p.vbatt_tx) : null,
+          rssi: evt.rssi ?? null,
+          sensor_type: String(p.sensor_type ?? "ld2450"),
+          timestamp: evt.timestamp,
+        }
+      }
+    }
+    return result
+  })()
 
   // Detection Feed: merge SSE live detections + recent DB events.
   // SSE detections appear first (newest), then DB events fill the rest.

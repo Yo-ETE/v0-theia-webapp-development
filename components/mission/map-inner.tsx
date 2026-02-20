@@ -173,6 +173,8 @@ export default function MapInner({
     }
   }
 
+
+
   // Check stale zones (had a good detection in the past but now timed out)
   for (const [zoneId, lastPresenceTs] of Object.entries(lastPresenceTsRef.current)) {
     if (effectiveDetections[zoneId]) continue // already live
