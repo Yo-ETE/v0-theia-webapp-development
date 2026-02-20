@@ -140,8 +140,10 @@ export default function MapInner({
   // Serialized version counter to force re-render from the interval timer
   const [tick, setTick] = useState(0)
 
-  // Track incoming events
-  useEffect(() => {
+  // Track incoming events -- update refs SYNCHRONOUSLY during render
+  // (not in useEffect which runs AFTER render, causing race conditions)
+  const prevLiveRef = useRef<Record<string, LiveDetection>>({})
+  if (liveDetections !== prevLiveRef.current) {
     const now = Date.now()
     for (const [zoneId, det] of Object.entries(liveDetections)) {
       lastEventTsRef.current[zoneId] = now
@@ -150,59 +152,55 @@ export default function MapInner({
         lastPresenceTsRef.current[zoneId] = now
       }
     }
-  }, [liveDetections])
+    prevLiveRef.current = liveDetections
+  }
 
-  // Tick every 500ms to re-evaluate state based on elapsed time
+  // Tick every 500ms to re-evaluate stale/hold/fade transitions
   useEffect(() => {
     const interval = setInterval(() => setTick(t => t + 1), 500)
     return () => clearInterval(interval)
   }, [])
 
-  // Build effective detections based on timestamps, not just prop content
+  // Build effective detections
   type DetState = "live" | "hold" | "fading"
   const now = Date.now()
   const effectiveDetections: Record<string, LiveDetection & { _state: DetState }> = {}
 
+  // 1) Current live detections from SSE -- if SSE says presence:true, it's live NOW
   for (const [zoneId, det] of Object.entries(liveDetections)) {
-    const lastPresenceTs = lastPresenceTsRef.current[zoneId] ?? 0
-    const sinceLast = now - lastPresenceTs
-
-    if (det.presence && det.distance > 0 && sinceLast < STALE_MS) {
-      // Currently active: green
+    if (det.presence && det.distance > 0) {
       effectiveDetections[zoneId] = { ...det, _state: "live" }
     }
   }
 
-
-
-  // Check stale zones (had a good detection in the past but now timed out)
+  // 2) Stale / hold / fade for zones that WERE live but no longer
   for (const [zoneId, lastPresenceTs] of Object.entries(lastPresenceTsRef.current)) {
-    if (effectiveDetections[zoneId]) continue // already live
+    if (effectiveDetections[zoneId]) continue // already live from step 1
     if (lastPresenceTs <= 0) continue
     const lastGood = lastGoodRef.current[zoneId]
     if (!lastGood) continue
 
     const sinceLast = now - lastPresenceTs
-    // If we're still receiving SSE events but they say presence:false,
-    // go straight to "hold" (yellow) -- don't show green for stale data
+
+    // If SSE is still active but says presence:false, skip "live" fallback
     const currentDet = liveDetections[zoneId]
     const sseStillActive = currentDet && (now - (lastEventTsRef.current[zoneId] ?? 0)) < 3000
     const explicitlyGone = sseStillActive && !currentDet.presence
 
     if (sinceLast < STALE_MS && !explicitlyGone) {
-      // Still within active window and SSE hasn't said "gone" -- show as live
+      // Brief gap in SSE -- keep showing as live
       effectiveDetections[zoneId] = { ...lastGood, _state: "live" }
     } else if (sinceLast < STALE_MS + HOLD_MS) {
-      // Stale: hold at last known position (yellow)
+      // Hold at last known position (yellow)
       effectiveDetections[zoneId] = { ...lastGood, _state: "hold" }
     } else if (sinceLast < STALE_MS + HOLD_MS + FADE_MS) {
       // Fading out
       effectiveDetections[zoneId] = { ...lastGood, _state: "fading" }
     }
-    // else: fully expired, don't add
+    // else: fully expired, remove
   }
 
-  // Suppress unused tick warning (it drives re-renders)
+  // Suppress unused tick warning (it drives re-renders for stale transitions)
   void tick
 
   useEffect(() => {

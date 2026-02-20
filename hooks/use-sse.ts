@@ -48,7 +48,6 @@ export function useSSE(onEvent?: SSEHandler) {
       esRef.current = es
 
       es.onopen = () => {
-        console.log("[v0] SSE connected directly to backend")
         setConnected(true)
       }
 

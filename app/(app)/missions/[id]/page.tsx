@@ -111,7 +111,6 @@ export default function MissionDetailPage() {
 
   // SSE handler: accumulate live detections for this mission
   const handleSSE = useCallback((event: { type: string; data: Record<string, unknown> }) => {
-    console.log("[v0] SSE event:", event.type, "mission:", (event.data as any)?.mission_id, "expected:", id, "presence:", (event.data as any)?.presence, "dist:", (event.data as any)?.distance, "zone_id:", (event.data as any)?.zone_id)
     if (event.type !== "detection") return
     const d = event.data as unknown as LiveDetection
     if (d.mission_id !== id) return
