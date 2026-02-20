@@ -1,6 +1,5 @@
 import { NextResponse, type NextRequest } from "next/server"
 import { isPreviewMode, proxyToBackend } from "@/lib/api-mode"
-import { store } from "@/lib/preview-store"
 
 /** Parse payload robustly -- handles object or JSON string */
 function parsePayload(raw: unknown): Record<string, unknown> | null {
@@ -94,7 +93,7 @@ export async function GET(request: NextRequest) {
   const missionId = searchParams.get("mission_id")
 
   if (isPreviewMode()) {
-    return NextResponse.json(store.getEvents(missionId ?? undefined))
+    return NextResponse.json([])
   }
 
   try {
@@ -106,6 +105,7 @@ export async function GET(request: NextRequest) {
     const clean = Array.isArray(data) ? filterGhosts(data) : data
     return NextResponse.json(clean)
   } catch {
-    return NextResponse.json(store.getEvents(missionId ?? undefined))
+    // Backend unreachable -- return empty array, NOT mock data
+    return NextResponse.json([])
   }
 }
