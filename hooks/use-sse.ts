@@ -10,14 +10,17 @@ type SSEEvent = {
 type SSEHandler = (event: SSEEvent) => void
 
 /**
- * Connects directly to the backend SSE endpoint (not via Next.js proxy).
- * The handler ref is updated without re-creating the EventSource connection.
+ * Robust SSE connection directly to the backend.
+ * - Reconnects automatically on error
+ * - Monitors for stale connections (no data for 45s) and forces reconnect
+ * - Handler is stored via ref so it never triggers reconnection
  */
 export function useSSE(onEvent?: SSEHandler) {
   const [connected, setConnected] = useState(false)
   const esRef = useRef<EventSource | null>(null)
   const onEventRef = useRef<SSEHandler | undefined>(onEvent)
   const handlersRef = useRef<SSEHandler[]>([])
+  const lastMessageRef = useRef<number>(0)
 
   // Keep ref up-to-date without triggering reconnect
   useEffect(() => {
@@ -36,27 +39,37 @@ export function useSSE(onEvent?: SSEHandler) {
     if (mode === "preview") return
 
     let reconnectTimer: ReturnType<typeof setTimeout> | null = null
+    let healthCheckTimer: ReturnType<typeof setInterval> | null = null
     let closed = false
+    let attempt = 0
 
     function connect() {
       if (closed) return
 
-      // Connect directly to backend SSE, not via Next.js proxy
-      // This avoids buffering issues in the proxy layer
-      const backendUrl = window.location.protocol + "//" + window.location.hostname + ":8000"
-      const es = new EventSource(`${backendUrl}/api/stream`)
+      // Close any existing connection first
+      if (esRef.current) {
+        esRef.current.close()
+        esRef.current = null
+      }
+
+      // Try same-origin proxy first (avoids CORS issues),
+      // health check below will force reconnect if it stalls
+      const es = new EventSource("/api/stream")
       esRef.current = es
 
       es.onopen = () => {
+        attempt = 0
+        lastMessageRef.current = Date.now()
         setConnected(true)
       }
 
       es.onmessage = (evt) => {
+        lastMessageRef.current = Date.now()
+        // Skip keepalive comments (they start with ":")
+        if (!evt.data || evt.data.trim() === "") return
         try {
           const parsed: SSEEvent = JSON.parse(evt.data)
-          // Call the main handler via ref (never stale)
           onEventRef.current?.(parsed)
-          // Call additional handlers
           for (const handler of handlersRef.current) {
             handler(parsed)
           }
@@ -70,23 +83,43 @@ export function useSSE(onEvent?: SSEHandler) {
         es.close()
         esRef.current = null
         if (!closed) {
-          reconnectTimer = setTimeout(connect, 2000)
+          // Exponential backoff: 1s, 2s, 4s, max 10s
+          const delay = Math.min(1000 * Math.pow(2, attempt), 10000)
+          attempt++
+          reconnectTimer = setTimeout(connect, delay)
         }
       }
     }
 
     connect()
 
+    // Health check: if no message (including keepalive) for 45s, force reconnect
+    // Backend sends keepalive every 30s, so 45s means the connection is dead
+    healthCheckTimer = setInterval(() => {
+      if (closed) return
+      const sinceLastMsg = Date.now() - lastMessageRef.current
+      if (lastMessageRef.current > 0 && sinceLastMsg > 45000) {
+        setConnected(false)
+        if (esRef.current) {
+          esRef.current.close()
+          esRef.current = null
+        }
+        attempt = 0
+        connect()
+      }
+    }, 10000)
+
     return () => {
       closed = true
       if (reconnectTimer) clearTimeout(reconnectTimer)
+      if (healthCheckTimer) clearInterval(healthCheckTimer)
       if (esRef.current) {
         esRef.current.close()
         esRef.current = null
       }
       setConnected(false)
     }
-  }, []) // Empty deps: connect once, never reconnect on handler change
+  }, [])
 
   return { connected, addHandler }
 }

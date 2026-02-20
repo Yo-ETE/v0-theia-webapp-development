@@ -39,16 +39,41 @@ export async function GET() {
   }
 
   // In pi mode, proxy to FastAPI SSE endpoint
+  // We re-emit each chunk individually to avoid Node.js buffering
   try {
-    const res = await fetch(`${getBackendUrl()}/api/stream`, {
+    const backendRes = await fetch(`${getBackendUrl()}/api/stream`, {
       headers: { Accept: "text/event-stream" },
+      // @ts-expect-error -- Node.js fetch extension to disable response buffering
+      highWaterMark: 0,
     })
 
-    return new Response(res.body, {
+    if (!backendRes.body) throw new Error("No body")
+
+    const reader = backendRes.body.getReader()
+    const stream = new ReadableStream({
+      async pull(controller) {
+        try {
+          const { done, value } = await reader.read()
+          if (done) {
+            controller.close()
+            return
+          }
+          controller.enqueue(value)
+        } catch {
+          controller.close()
+        }
+      },
+      cancel() {
+        reader.cancel()
+      },
+    })
+
+    return new Response(stream, {
       headers: {
         "Content-Type": "text/event-stream",
-        "Cache-Control": "no-cache",
+        "Cache-Control": "no-cache, no-transform",
         Connection: "keep-alive",
+        "X-Accel-Buffering": "no",
       },
     })
   } catch {
