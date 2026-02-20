@@ -39,7 +39,23 @@ async def list_events(
         params.append(to_ts)
 
     where = " AND ".join(conditions) if conditions else "1=1"
-    query = f"SELECT * FROM events WHERE {where} ORDER BY timestamp DESC LIMIT ? OFFSET ?"
+    query = f"""
+        SELECT
+            e.id, e.mission_id, e.device_id,
+            e.event_type AS type,
+            e.zone AS zone_name,
+            e.rssi, e.snr, e.payload, e.timestamp,
+            d.name AS device_name,
+            d.dev_eui AS tx_id,
+            d.zone_id,
+            d.zone_label,
+            d.side
+        FROM events e
+        LEFT JOIN devices d ON d.id = e.device_id
+        WHERE {where}
+        ORDER BY e.timestamp DESC
+        LIMIT ? OFFSET ?
+    """
     params.extend([limit, offset])
 
     cursor = await db.execute(query, params)

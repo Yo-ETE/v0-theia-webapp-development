@@ -166,3 +166,35 @@
 .segment-label-tooltip::before {
   display: none !important;
 }
+
+/* Detection pulse animation for map markers */
+@keyframes detection-pulse {
+  0% {
+    stroke-opacity: 1;
+    stroke-width: 3;
+  }
+  50% {
+    stroke-opacity: 0.4;
+    stroke-width: 6;
+  }
+  100% {
+    stroke-opacity: 1;
+    stroke-width: 3;
+  }
+}
+
+.detection-pulse {
+  animation: detection-pulse 1.2s ease-in-out infinite;
+}
+
+/* Zone label tooltip with transparent background */
+.zone-label-tip {
+  background: rgba(0, 0, 0, 0.6) !important;
+  border: none !important;
+  box-shadow: none !important;
+  padding: 2px 6px !important;
+  border-radius: 3px !important;
+}
+.zone-label-tip::before {
+  display: none !important;
+}

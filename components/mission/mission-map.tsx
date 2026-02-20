@@ -10,6 +10,15 @@ interface MissionMapProps {
   zoom: number
   zones: Zone[]
   events?: DetectionEvent[]
+  liveDetections?: Record<string, {
+    presence: boolean
+    distance: number
+    direction: string
+    device_name: string
+    side: string
+    rssi: number | null
+    timestamp: string
+  }>
   className?: string
   drawingMode?: boolean
   onPolygonDrawn?: (polygon: [number, number][]) => void

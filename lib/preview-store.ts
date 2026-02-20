@@ -109,8 +109,59 @@ class PreviewStore {
   // ── Events ─────────────────────────────────────────────────
 
   getEvents(missionId?: string) {
-    if (missionId) return this.events.filter((e) => e.mission_id === missionId)
-    return this.events
+    let result = missionId
+      ? this.events.filter((e) => e.mission_id === missionId)
+      : this.events
+
+    // In preview mode, generate simulated detection events for assigned devices
+    if (missionId) {
+      const mission = this.getMission(missionId)
+      if (mission && mission.status === "active" && mission.zones?.length) {
+        const assignedDevices = this.devices.filter((d) => d.mission_id === missionId && d.zone_id)
+        const simulated: DetectionEvent[] = assignedDevices.flatMap((dev) => {
+          const zone = mission.zones.find((z) => z.id === dev.zone_id)
+          if (!zone) return []
+          const now = Date.now()
+          return Array.from({ length: 5 }, (_, i) => {
+            const ts = new Date(now - i * 8000).toISOString()
+            const presence = Math.random() > 0.3
+            const distance = presence ? Math.round(50 + Math.random() * 400) : 0
+            const dirs = ["G", "C", "D"]
+            const direction = dirs[Math.floor(Math.random() * dirs.length)]
+            return {
+              id: `sim-${dev.id}-${i}`,
+              mission_id: missionId,
+              device_id: dev.id,
+              device_name: dev.name,
+              zone_id: zone.id,
+              zone_label: zone.label,
+              type: "detection" as const,
+              payload: {
+                presence,
+                distance,
+                speed: presence ? Math.round(Math.random() * 120) : 0,
+                angle: Math.round(Math.random() * 180 - 90),
+                direction,
+                sensor_type: "ld2450",
+                side: dev.side ?? "",
+                vbatt_tx: 3.2 + Math.random() * 0.5,
+                tx_id: dev.dev_eui ?? dev.hw_id,
+              },
+              rssi: -50 - Math.round(Math.random() * 30),
+              snr: 6 + Math.round(Math.random() * 8),
+              timestamp: ts,
+            }
+          })
+        })
+        if (simulated.length > 0) {
+          result = [...simulated, ...result].sort(
+            (a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime()
+          )
+        }
+      }
+    }
+
+    return result
   }
 
   // ── Logs ───────────────────────────────────────────────────
