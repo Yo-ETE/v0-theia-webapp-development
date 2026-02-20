@@ -688,27 +688,14 @@ export default function MissionDetailPage() {
                     disabled={eventList.length === 0}
                     onClick={async () => {
                       if (!confirm("Purger tous les events de cette mission ?")) return
-                      try {
-                        // Try proxy first
-                        let res = await fetch(`/api/events?mission_id=${id}`, { method: "DELETE" })
-                        // If proxy fails, try backend directly
-                        if (!res.ok) {
-                          const backendUrl = window.location.protocol + "//" + window.location.hostname + ":8000"
-                          res = await fetch(`${backendUrl}/api/events?mission_id=${id}`, { method: "DELETE" })
-                        }
-                        // Clear local SWR cache immediately, then revalidate after a delay
-                        await mutateEvents([], false)
-                        // Small delay to let backend commit, then revalidate
-                        setTimeout(() => mutateEvents(), 1000)
-                      } catch {
-                        // Last resort: try backend directly
-                        try {
-                          const backendUrl = window.location.protocol + "//" + window.location.hostname + ":8000"
-                          await fetch(`${backendUrl}/api/events?mission_id=${id}`, { method: "DELETE" })
-                          await mutateEvents([], false)
-                          setTimeout(() => mutateEvents(), 1000)
-                        } catch { /* ignore */ }
-                      }
+                      // Call both proxy and backend directly to ensure deletion
+                      const backendUrl = window.location.protocol + "//" + window.location.hostname + ":8000"
+                      await Promise.allSettled([
+                        fetch(`/api/events?mission_id=${id}`, { method: "DELETE" }),
+                        fetch(`${backendUrl}/api/events?mission_id=${id}`, { method: "DELETE" }),
+                      ])
+                      // Clear SWR cache, do NOT revalidate (backend may insert stale events)
+                      await mutateEvents([], false)
                     }}
                   >
                     <Trash2 className="mr-1.5 h-3.5 w-3.5" />Purger

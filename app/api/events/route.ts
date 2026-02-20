@@ -2,22 +2,73 @@ import { NextResponse, type NextRequest } from "next/server"
 import { isPreviewMode, proxyToBackend } from "@/lib/api-mode"
 import { store } from "@/lib/preview-store"
 
-/** Filter out ghost detection events (no real presence / distance < 15cm) */
+/** Parse payload robustly -- handles object or JSON string */
+function parsePayload(raw: unknown): Record<string, unknown> | null {
+  if (!raw) return null
+  if (typeof raw === "string") {
+    try { return JSON.parse(raw) } catch { return null }
+  }
+  if (typeof raw === "object") return raw as Record<string, unknown>
+  return null
+}
+
+/**
+ * Filter out ghost / stale detection events:
+ * 1) No real presence or distance < 15cm
+ * 2) Stale replay: multiple events with the exact same (x,y) coordinates
+ *    from the same device in a short window = RX LoRa replaying its buffer
+ */
 function filterGhosts(events: Record<string, unknown>[]): Record<string, unknown>[] {
-  return events.filter((evt) => {
+  // First pass: basic presence/distance filter
+  const basic = events.filter((evt) => {
     if (evt.type !== "detection") return true
-    // payload may be an object or a JSON string (if backend didn't parse it)
-    let p = evt.payload as Record<string, unknown> | string | undefined
-    if (typeof p === "string") {
-      try { p = JSON.parse(p) } catch { return true }
-    }
-    if (!p || typeof p !== "object") return true
-    const dist = Number((p as Record<string, unknown>).distance ?? 0)
+    const p = parsePayload(evt.payload)
+    if (!p) return true
+    const dist = Number(p.distance ?? 0)
     if (dist < 15) return false
-    const pres = (p as Record<string, unknown>).presence
+    const pres = p.presence
     if (pres === false || pres === "false" || pres === 0 || pres === "0") return false
     return true
   })
+
+  // Second pass: stale replay detection per device
+  // Events are sorted newest-first. Group consecutive events from the same device
+  // that have the exact same (x,y) coordinates -- these are stale RX replays.
+  // Keep only the first occurrence of each unique coordinate set.
+  const result: Record<string, unknown>[] = []
+  // Track last N coordinate signatures per device to detect replay bursts
+  const deviceCoordHistory: Record<string, { sig: string; count: number }> = {}
+
+  for (const evt of basic) {
+    if (evt.type !== "detection") {
+      result.push(evt)
+      continue
+    }
+    const p = parsePayload(evt.payload)
+    const deviceId = String(evt.device_id ?? "")
+    if (!p || !deviceId) {
+      result.push(evt)
+      continue
+    }
+    // Build a coordinate signature from the raw sensor data
+    const x = p.x ?? p.target_x ?? ""
+    const y = p.y ?? p.target_y ?? ""
+    const d = p.distance ?? ""
+    const sig = `${x}|${y}|${d}`
+
+    const prev = deviceCoordHistory[deviceId]
+    if (prev && prev.sig === sig) {
+      prev.count++
+      // Allow up to 2 events with the same coordinates (real person standing still)
+      // but beyond that it's almost certainly stale replay
+      if (prev.count > 2) continue // skip this stale event
+    } else {
+      deviceCoordHistory[deviceId] = { sig, count: 1 }
+    }
+    result.push(evt)
+  }
+
+  return result
 }
 
 export async function DELETE(request: NextRequest) {
