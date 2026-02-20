@@ -90,6 +90,7 @@ export interface Zone {
   color: string
   floor?: number
   devices: string[]
+  sides?: Record<string, string>
 }
 
 export interface Floor {

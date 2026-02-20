@@ -11,11 +11,8 @@ interface MapInnerProps {
   zones?: Zone[]
   events?: DetectionEvent[]
   className?: string
-  /** When true, enables polygon drawing mode */
   drawingMode?: boolean
-  /** Callback when a polygon is drawn */
   onPolygonDrawn?: (polygon: [number, number][]) => void
-  /** Callback when a zone is clicked */
   onZoneClick?: (zoneId: string) => void
 }
 
@@ -32,7 +29,7 @@ export default function MapInner({
 }: MapInnerProps) {
   const centerLat = Number.isFinite(rawLat) ? rawLat : 48.8566
   const centerLon = Number.isFinite(rawLon) ? rawLon : 2.3522
-  const zoom = Number.isFinite(rawZoom) ? rawZoom : 15
+  const zoom = Number.isFinite(rawZoom) ? rawZoom : 19
 
   const [mounted, setMounted] = useState(false)
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -54,26 +51,21 @@ export default function MapInner({
       .catch(() => {})
   }, [])
 
-  // Keep map view synced when center/zoom changes
-  // Also retries once after mount because mapRef may not be ready on first render
-  const prevCenter = useRef({ lat: centerLat, lon: centerLon, z: zoom })
+  // Keep map view synced when center/zoom props change
   useEffect(() => {
-    const setView = () => {
+    const doSetView = () => {
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const map = mapRef.current as any
-      if (map && map.setView) {
+      if (map && typeof map.setView === "function") {
         map.setView([centerLat, centerLon], zoom)
-        prevCenter.current = { lat: centerLat, lon: centerLon, z: zoom }
       }
     }
-    setView()
-    // Retry after short delay if map wasn't ready
-    const timer = setTimeout(setView, 300)
+    doSetView()
+    const timer = setTimeout(doSetView, 300)
     return () => clearTimeout(timer)
   }, [centerLat, centerLon, zoom])
 
-  // Map click handler for drawing -- attaches a click listener directly
-  // to avoid hooks-in-callback issues with useMapEvents
+  // Drawing: attach native Leaflet click handler
   useEffect(() => {
     if (!drawingMode) return
     const handler = (e: { latlng: { lat: number; lng: number } }) => {
@@ -82,54 +74,58 @@ export default function MapInner({
     const attach = () => {
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const map = mapRef.current as any
-      if (map?.on) {
+      if (map && typeof map.on === "function") {
         map.on("click", handler)
         return true
       }
       return false
     }
     if (!attach()) {
-      // Retry after map init
       const t = setTimeout(attach, 500)
       return () => clearTimeout(t)
     }
     return () => {
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const map = mapRef.current as any
-      map?.off?.("click", handler)
+      if (map && typeof map.off === "function") map.off("click", handler)
     }
   }, [drawingMode])
 
+  // Reset points when entering draw mode
+  useEffect(() => {
+    if (drawingMode) setDrawPoints([])
+  }, [drawingMode])
+
   const finishDrawing = useCallback(() => {
-    if (drawPoints.length >= 3 && onPolygonDrawn) {
+    if (drawPoints.length >= 2 && onPolygonDrawn) {
       onPolygonDrawn(drawPoints)
     }
     setDrawPoints([])
   }, [drawPoints, onPolygonDrawn])
 
-  const cancelDrawing = useCallback(() => {
-    setDrawPoints([])
-  }, [])
-
-  const undoLastPoint = useCallback(() => {
-    setDrawPoints((prev) => prev.slice(0, -1))
-  }, [])
-
-  const recentDetections = (events ?? [])
-    .filter((e) => e.type === "detection")
-    .slice(0, 10)
+  const cancelDrawing = useCallback(() => setDrawPoints([]), [])
+  const undoLastPoint = useCallback(() => setDrawPoints((p) => p.slice(0, -1)), [])
 
   if (!mounted || !RL) {
     return (
       <div className={cn("relative rounded-lg overflow-hidden border border-border/50 bg-muted/20", className)}>
         <div className="flex h-full w-full items-center justify-center" style={{ minHeight: "300px" }}>
-          <span className="text-xs text-muted-foreground font-mono animate-pulse">Loading map...</span>
+          <span className="text-xs text-muted-foreground font-mono animate-pulse">
+            Loading map...
+          </span>
         </div>
       </div>
     )
   }
 
-  const { MapContainer, TileLayer, Polygon, CircleMarker, Polyline } = RL
+  const {
+    MapContainer,
+    TileLayer,
+    Polygon,
+    Polyline,
+    CircleMarker,
+    Tooltip,
+  } = RL
 
   return (
     <div className={cn("relative rounded-lg overflow-hidden border border-border/50", className)}>
@@ -140,16 +136,16 @@ export default function MapInner({
         maxZoom={22}
         scrollWheelZoom={true}
         className="h-full w-full"
-        style={{ minHeight: "300px", background: "#0d1117" }}
+        style={{ minHeight: "300px" }}
       >
         <TileLayer
           attribution={'&copy; <a href="https://www.openstreetmap.org/copyright">OSM</a>'}
-          url="https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png"
+          url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
           maxZoom={22}
-          maxNativeZoom={20}
+          maxNativeZoom={19}
         />
 
-        {/* Existing zones */}
+        {/* Saved zones with permanent labels */}
         {(zones ?? []).map((zone) => (
           <Polygon
             key={zone.id}
@@ -157,7 +153,7 @@ export default function MapInner({
             pathOptions={{
               color: zone.color,
               fillColor: zone.color,
-              fillOpacity: 0.15,
+              fillOpacity: 0.2,
               weight: 2,
             }}
             eventHandlers={
@@ -165,82 +161,165 @@ export default function MapInner({
                 ? { click: () => onZoneClick(zone.id) }
                 : undefined
             }
-          />
+          >
+            <Tooltip permanent direction="center" className="zone-label-tip">
+              <span
+                style={{
+                  fontSize: 11,
+                  fontWeight: 600,
+                  color: zone.color,
+                }}
+              >
+                {zone.label}
+              </span>
+            </Tooltip>
+          </Polygon>
         ))}
 
-        {/* Drawing-in-progress polyline */}
+        {/* Drawing polyline (close shape if 3+ points) */}
         {drawPoints.length > 0 && (
-          <Polyline
-            positions={drawPoints}
-            pathOptions={{ color: "#22d3ee", weight: 2, dashArray: "6 4" }}
-          />
+          <>
+            <Polyline
+              positions={
+                drawPoints.length >= 3
+                  ? [...drawPoints, drawPoints[0]]
+                  : drawPoints
+              }
+              pathOptions={{
+                color: "#0891b2",
+                weight: 2,
+                dashArray: "6 4",
+              }}
+            />
+            {/* Side labels: A, B, C, D... between consecutive points */}
+            {drawPoints.map((pt, i) => {
+              const nextIdx = (i + 1) % drawPoints.length
+              if (i === drawPoints.length - 1 && drawPoints.length < 3)
+                return null
+              const next = drawPoints[nextIdx]
+              const mLat = (pt[0] + next[0]) / 2
+              const mLon = (pt[1] + next[1]) / 2
+              const sideLabel = String.fromCharCode(65 + i)
+              return (
+                <CircleMarker
+                  key={`side-label-${i}`}
+                  center={[mLat, mLon]}
+                  radius={0}
+                  pathOptions={{ opacity: 0, fillOpacity: 0 }}
+                >
+                  <Tooltip permanent direction="center">
+                    <span
+                      style={{
+                        fontSize: 10,
+                        fontWeight: 700,
+                        color: "#0891b2",
+                        background: "rgba(255,255,255,0.9)",
+                        padding: "1px 5px",
+                        borderRadius: 3,
+                        border: "1px solid #0891b2",
+                      }}
+                    >
+                      {sideLabel}
+                    </span>
+                  </Tooltip>
+                </CircleMarker>
+              )
+            })}
+          </>
         )}
 
-        {/* Drawing points markers */}
+        {/* Drawing vertex markers */}
         {drawPoints.map((pt, i) => (
           <CircleMarker
-            key={`draw-${i}`}
+            key={`vertex-${i}`}
             center={pt}
-            radius={4}
-            pathOptions={{ color: "#22d3ee", fillColor: "#22d3ee", fillOpacity: 1, weight: 1 }}
-          />
+            radius={5}
+            pathOptions={{
+              color: "#0891b2",
+              fillColor: "#0891b2",
+              fillOpacity: 1,
+              weight: 1,
+            }}
+          >
+            <Tooltip permanent direction="top" offset={[0, -8]}>
+              <span style={{ fontSize: 9, fontWeight: 600, color: "#0891b2" }}>
+                {"P"}
+                {i + 1}
+              </span>
+            </Tooltip>
+          </CircleMarker>
         ))}
 
         {/* Detection events */}
-        {recentDetections.map((evt) => {
-          const zone = (zones ?? []).find((z) => z.id === evt.zone_id)
-          if (!zone || !zone.polygon || zone.polygon.length === 0) return null
-          const lat = zone.polygon.reduce((s, p) => s + p[0], 0) / zone.polygon.length
-          const lon = zone.polygon.reduce((s, p) => s + p[1], 0) / zone.polygon.length
-          return (
-            <CircleMarker
-              key={evt.id}
-              center={[lat, lon]}
-              radius={6}
-              pathOptions={{ color: "#f59e0b", fillColor: "#f59e0b", fillOpacity: 0.8, weight: 2 }}
-            />
-          )
-        })}
+        {(events ?? [])
+          .filter((e) => e.type === "detection")
+          .slice(0, 10)
+          .map((evt) => {
+            const zone = (zones ?? []).find((z) => z.id === evt.zone_id)
+            if (!zone?.polygon?.length) return null
+            const cLat =
+              zone.polygon.reduce((s, p) => s + p[0], 0) /
+              zone.polygon.length
+            const cLon =
+              zone.polygon.reduce((s, p) => s + p[1], 0) /
+              zone.polygon.length
+            return (
+              <CircleMarker
+                key={evt.id}
+                center={[cLat, cLon]}
+                radius={6}
+                pathOptions={{
+                  color: "#f59e0b",
+                  fillColor: "#f59e0b",
+                  fillOpacity: 0.8,
+                  weight: 2,
+                }}
+              />
+            )
+          })}
       </MapContainer>
 
       {/* Coords overlay */}
-      <div className="absolute bottom-2 left-2 z-[1000] rounded bg-background/80 backdrop-blur px-2 py-1">
-        <span className="font-mono text-[10px] text-muted-foreground">
-          {(centerLat ?? 0).toFixed(4)}, {(centerLon ?? 0).toFixed(4)} z{zoom ?? 0}
+      <div className="absolute bottom-2 left-2 z-[500] rounded bg-card/90 backdrop-blur px-2 py-1 shadow-sm">
+        <span className="font-mono text-[10px] text-foreground/70">
+          {centerLat.toFixed(5)}, {centerLon.toFixed(5)} z{zoom}
         </span>
       </div>
 
       {/* Drawing toolbar */}
       {drawingMode && (
-        <div className="absolute top-2 left-2 z-[1000] flex items-center gap-1.5">
-          <div className="rounded bg-background/90 backdrop-blur px-2 py-1 border border-cyan-500/40">
-            <span className="text-[10px] font-mono text-cyan-400">
-              DRAW MODE {drawPoints.length > 0 ? `(${drawPoints.length} pts)` : "-- click map to add points"}
+        <div className="absolute top-2 left-2 z-[500] flex items-center gap-1.5 flex-wrap">
+          <div className="rounded bg-card/95 backdrop-blur px-2.5 py-1.5 border border-cyan-600/40 shadow-lg">
+            <span className="text-[10px] font-mono text-cyan-700 font-semibold">
+              {"DRAW"}{" "}
+              {drawPoints.length > 0
+                ? `-- ${drawPoints.length} pts`
+                : "-- click map"}
             </span>
           </div>
           {drawPoints.length > 0 && (
-            <>
+            <div className="flex items-center gap-1">
               <button
                 onClick={undoLastPoint}
-                className="rounded bg-background/90 backdrop-blur px-2 py-1 text-[10px] font-mono text-muted-foreground hover:text-foreground border border-border/50 transition-colors"
+                className="rounded bg-card/95 backdrop-blur px-2 py-1 text-[10px] font-medium text-foreground hover:bg-muted border border-border shadow-sm transition-colors"
               >
                 Undo
               </button>
               <button
                 onClick={cancelDrawing}
-                className="rounded bg-background/90 backdrop-blur px-2 py-1 text-[10px] font-mono text-destructive hover:text-destructive/80 border border-border/50 transition-colors"
+                className="rounded bg-card/95 backdrop-blur px-2 py-1 text-[10px] font-medium text-destructive hover:bg-destructive/10 border border-border shadow-sm transition-colors"
               >
                 Cancel
               </button>
-              {drawPoints.length >= 3 && (
+              {drawPoints.length >= 2 && (
                 <button
                   onClick={finishDrawing}
-                  className="rounded bg-cyan-600/90 backdrop-blur px-2.5 py-1 text-[10px] font-mono text-white hover:bg-cyan-500/90 border border-cyan-500/40 transition-colors"
+                  className="rounded bg-cyan-600 px-3 py-1.5 text-[10px] font-semibold text-white hover:bg-cyan-500 shadow-sm transition-colors"
                 >
-                  Finish ({drawPoints.length} pts)
+                  Validate ({drawPoints.length} pts)
                 </button>
               )}
-            </>
+            </div>
           )}
         </div>
       )}

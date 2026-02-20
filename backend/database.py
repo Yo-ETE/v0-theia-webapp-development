@@ -37,13 +37,18 @@ async def init_tables(db: aiosqlite.Connection):
             id TEXT PRIMARY KEY,
             name TEXT NOT NULL,
             description TEXT DEFAULT '',
-            status TEXT DEFAULT 'planning',
-            location_lat REAL,
-            location_lon REAL,
-            location_label TEXT DEFAULT '',
+            status TEXT DEFAULT 'draft',
+            location TEXT DEFAULT '',
+            environment TEXT DEFAULT 'horizontal',
+            center_lat REAL DEFAULT 48.8566,
+            center_lon REAL DEFAULT 2.3522,
+            zoom INTEGER DEFAULT 19,
             zones TEXT DEFAULT '[]',
+            floors TEXT DEFAULT '[]',
             created_at TEXT DEFAULT (datetime('now')),
-            updated_at TEXT DEFAULT (datetime('now'))
+            updated_at TEXT DEFAULT (datetime('now')),
+            started_at TEXT,
+            ended_at TEXT
         );
 
         CREATE TABLE IF NOT EXISTS devices (
@@ -91,4 +96,39 @@ async def init_tables(db: aiosqlite.Connection):
         CREATE INDEX IF NOT EXISTS idx_logs_source ON logs(source);
         CREATE INDEX IF NOT EXISTS idx_devices_mission ON devices(mission_id);
     """)
+    await db.commit()
+
+    # Migrations for existing databases
+    try:
+        await db.execute("ALTER TABLE missions ADD COLUMN environment TEXT DEFAULT 'horizontal'")
+    except Exception:
+        pass
+    try:
+        await db.execute("ALTER TABLE missions ADD COLUMN center_lat REAL DEFAULT 48.8566")
+    except Exception:
+        pass
+    try:
+        await db.execute("ALTER TABLE missions ADD COLUMN center_lon REAL DEFAULT 2.3522")
+    except Exception:
+        pass
+    try:
+        await db.execute("ALTER TABLE missions ADD COLUMN zoom INTEGER DEFAULT 19")
+    except Exception:
+        pass
+    try:
+        await db.execute("ALTER TABLE missions ADD COLUMN floors TEXT DEFAULT '[]'")
+    except Exception:
+        pass
+    try:
+        await db.execute("ALTER TABLE missions ADD COLUMN started_at TEXT")
+    except Exception:
+        pass
+    try:
+        await db.execute("ALTER TABLE missions ADD COLUMN ended_at TEXT")
+    except Exception:
+        pass
+    try:
+        await db.execute("ALTER TABLE missions ADD COLUMN location TEXT DEFAULT ''")
+    except Exception:
+        pass
     await db.commit()

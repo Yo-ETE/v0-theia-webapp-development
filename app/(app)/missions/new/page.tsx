@@ -1,7 +1,8 @@
 "use client"
 
-import { useState, useCallback } from "react"
+import { useState, useCallback, useRef } from "react"
 import { useRouter } from "next/navigation"
+import Link from "next/link"
 import { TopHeader } from "@/components/top-header"
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
@@ -14,18 +15,17 @@ import { ErrorBoundary } from "@/components/error-boundary"
 import { createMission } from "@/lib/api-client"
 import type { EnvironmentType } from "@/lib/types"
 import {
-  ArrowLeft,
-  ArrowRight,
-  Save,
-  Search,
-  Crosshair,
-  Building2,
-  Home,
-  Loader2,
+  ArrowLeft, ArrowRight, Save, Search, Crosshair,
+  Building2, Home, Loader2, MapPin, Check,
 } from "lucide-react"
-import Link from "next/link"
 
 const STEPS = ["Info", "Location", "Type", "Review"] as const
+
+interface GeoResult {
+  display_name: string
+  lat: string
+  lon: string
+}
 
 export default function NewMissionPage() {
   const router = useRouter()
@@ -34,10 +34,9 @@ export default function NewMissionPage() {
   const [searching, setSearching] = useState(false)
   const [locatingGps, setLocatingGps] = useState(false)
   const [searchQuery, setSearchQuery] = useState("")
-  const [searchResults, setSearchResults] = useState<
-    { display_name: string; lat: string; lon: string }[]
-  >([])
+  const [searchResults, setSearchResults] = useState<GeoResult[]>([])
 
+  // Stable form ref so state persists perfectly across step changes
   const [form, setForm] = useState({
     name: "",
     description: "",
@@ -48,100 +47,75 @@ export default function NewMissionPage() {
     zoom: 19,
   })
 
-  // ── Geocoding via Nominatim ───────────────────────────────────
+  // Track whether user has explicitly set a position
+  const positionSet = useRef(false)
+  const mapKey = useRef(0)
+
+  const setPosition = useCallback((lat: number, lon: number, label?: string) => {
+    positionSet.current = true
+    mapKey.current += 1
+    setForm((f) => ({
+      ...f,
+      center_lat: lat,
+      center_lon: lon,
+      location: label ?? f.location,
+    }))
+  }, [])
+
+  // Geocoding via server-side proxy to Nominatim
   const handleSearch = useCallback(async () => {
     if (!searchQuery.trim()) return
     setSearching(true)
     setSearchResults([])
     try {
-      const res = await fetch(
-        `https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(searchQuery)}&limit=5`,
-        { headers: { "User-Agent": "THEIA-Hub/1.0" } }
-      )
-      const data = await res.json()
+      const res = await fetch(`/api/geocode?q=${encodeURIComponent(searchQuery)}`)
+      const data: GeoResult[] = await res.json()
       setSearchResults(data)
-      if (data.length > 0) {
-        const top = data[0]
-        setForm((f) => ({
-          ...f,
-          center_lat: parseFloat(top.lat),
-          center_lon: parseFloat(top.lon),
-          location: top.display_name.split(",").slice(0, 3).join(",").trim(),
-        }))
-      }
     } catch {
-      // Nominatim may fail silently
+      // silent
     } finally {
       setSearching(false)
     }
   }, [searchQuery])
 
-  const selectResult = (r: { display_name: string; lat: string; lon: string }) => {
-    setForm((f) => ({
-      ...f,
-      center_lat: parseFloat(r.lat),
-      center_lon: parseFloat(r.lon),
-      location: r.display_name.split(",").slice(0, 3).join(",").trim(),
-    }))
+  const selectResult = useCallback((r: GeoResult) => {
+    const label = r.display_name.split(",").slice(0, 3).join(",").trim()
+    setPosition(parseFloat(r.lat), parseFloat(r.lon), label)
     setSearchResults([])
-  }
+    setSearchQuery(label)
+  }, [setPosition])
 
-  // ── Use GPS position ──────────────────────────────────────────
+  // GPS position from Hub or browser
   const useGpsPosition = useCallback(async () => {
     setLocatingGps(true)
     try {
       const res = await fetch("/api/gps")
       const gps = await res.json()
       if (gps.fix && gps.latitude && gps.longitude) {
-        setForm((f) => ({
-          ...f,
-          center_lat: gps.latitude,
-          center_lon: gps.longitude,
-          location: f.location || `GPS ${gps.latitude.toFixed(5)}, ${gps.longitude.toFixed(5)}`,
-        }))
-      } else {
-        // Fallback: browser geolocation
-        if ("geolocation" in navigator) {
-          navigator.geolocation.getCurrentPosition(
-            (pos) => {
-              setForm((f) => ({
-                ...f,
-                center_lat: pos.coords.latitude,
-                center_lon: pos.coords.longitude,
-                location: f.location || `GPS ${pos.coords.latitude.toFixed(5)}, ${pos.coords.longitude.toFixed(5)}`,
-              }))
-            },
-            () => {}
-          )
-        }
+        setPosition(gps.latitude, gps.longitude, `GPS ${gps.latitude.toFixed(5)}, ${gps.longitude.toFixed(5)}`)
+        setLocatingGps(false)
+        return
       }
-    } catch {
-      // If GPS API fails, try browser geolocation
-      if ("geolocation" in navigator) {
-        navigator.geolocation.getCurrentPosition(
-          (pos) => {
-            setForm((f) => ({
-              ...f,
-              center_lat: pos.coords.latitude,
-              center_lon: pos.coords.longitude,
-              location: f.location || `GPS ${pos.coords.latitude.toFixed(5)}, ${pos.coords.longitude.toFixed(5)}`,
-            }))
-          },
-          () => {}
-        )
-      }
-    } finally {
+    } catch { /* fall through to browser */ }
+    if ("geolocation" in navigator) {
+      navigator.geolocation.getCurrentPosition(
+        (pos) => {
+          setPosition(pos.coords.latitude, pos.coords.longitude, `GPS ${pos.coords.latitude.toFixed(5)}, ${pos.coords.longitude.toFixed(5)}`)
+          setLocatingGps(false)
+        },
+        () => setLocatingGps(false),
+        { enableHighAccuracy: true, timeout: 10000 }
+      )
+    } else {
       setLocatingGps(false)
     }
-  }, [])
+  }, [setPosition])
 
-  // ── Submit ────────────────────────────────────────────────────
+  // Submit
   async function handleSubmit() {
     setSaving(true)
     try {
-      console.log("[v0] Creating mission with:", JSON.stringify({ lat: form.center_lat, lon: form.center_lon, zoom: form.zoom }))
       const mission = await createMission(form)
-      console.log("[v0] Created mission:", mission.id, "lat:", mission.center_lat, "lon:", mission.center_lon)
       router.push(`/missions/${mission.id}`)
     } catch (err) {
       console.error("Failed to create mission:", err)
@@ -151,11 +125,9 @@ export default function NewMissionPage() {
   }
 
   const canNext =
-    step === 0
-      ? form.name.trim().length > 0
-      : step === 1
-        ? form.center_lat !== 0 && form.center_lon !== 0
-        : true
+    step === 0 ? form.name.trim().length > 0
+    : step === 1 ? positionSet.current || (form.center_lat !== 48.8566 || form.center_lon !== 2.3522)
+    : true
 
   return (
     <>
@@ -186,7 +158,7 @@ export default function NewMissionPage() {
                         : "bg-muted text-muted-foreground"
                   }`}
                 >
-                  <span className="text-[10px]">{i + 1}</span>
+                  {i < step ? <Check className="h-3 w-3" /> : <span className="text-[10px]">{i + 1}</span>}
                   {s}
                 </button>
                 {i < STEPS.length - 1 && (
@@ -207,9 +179,7 @@ export default function NewMissionPage() {
               </CardHeader>
               <CardContent className="flex flex-col gap-5">
                 <div className="flex flex-col gap-2">
-                  <Label htmlFor="name" className="text-xs text-muted-foreground">
-                    Mission Name *
-                  </Label>
+                  <Label htmlFor="name" className="text-xs text-muted-foreground">Mission Name *</Label>
                   <Input
                     id="name"
                     placeholder="e.g. ALPHA-7"
@@ -220,11 +190,9 @@ export default function NewMissionPage() {
                   />
                 </div>
                 <div className="flex flex-col gap-2">
-                  <Label htmlFor="description" className="text-xs text-muted-foreground">
-                    Description
-                  </Label>
+                  <Label htmlFor="desc" className="text-xs text-muted-foreground">Description</Label>
                   <Textarea
-                    id="description"
+                    id="desc"
                     placeholder="Brief description of the operation..."
                     value={form.description}
                     onChange={(e) => setForm({ ...form, description: e.target.value })}
@@ -239,74 +207,61 @@ export default function NewMissionPage() {
           {step === 1 && (
             <div className="flex flex-col gap-4">
               <Card className="border-border/50 bg-card">
-                <CardHeader>
+                <CardHeader className="pb-3">
                   <CardTitle className="text-sm">Location</CardTitle>
                   <CardDescription className="text-xs">
-                    Search an address, use GPS position, or enter coordinates manually.
+                    Search an address, use Hub GPS, or enter coordinates manually.
                   </CardDescription>
                 </CardHeader>
                 <CardContent className="flex flex-col gap-4">
-                  {/* Address search */}
+                  {/* Search bar */}
                   <div className="flex flex-col gap-2">
-                    <Label className="text-xs text-muted-foreground">Search Address</Label>
+                    <Label className="text-xs text-muted-foreground">Address Search</Label>
                     <div className="flex gap-2">
-                      <Input
-                        placeholder="e.g. 12 rue de la Paix, Paris"
-                        value={searchQuery}
-                        onChange={(e) => setSearchQuery(e.target.value)}
-                        onKeyDown={(e) => e.key === "Enter" && handleSearch()}
-                        className="bg-input/50 border-border text-sm flex-1"
-                      />
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        onClick={handleSearch}
-                        disabled={searching || !searchQuery.trim()}
-                        className="shrink-0"
-                      >
-                        {searching ? (
-                          <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                        ) : (
-                          <Search className="h-3.5 w-3.5" />
+                      <div className="relative flex-1">
+                        <Input
+                          placeholder="12 rue de la Paix, Paris..."
+                          value={searchQuery}
+                          onChange={(e) => setSearchQuery(e.target.value)}
+                          onKeyDown={(e) => e.key === "Enter" && handleSearch()}
+                          className="bg-input/50 border-border text-sm pr-8"
+                        />
+                        {searching && (
+                          <Loader2 className="absolute right-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 animate-spin text-muted-foreground" />
                         )}
+                      </div>
+                      <Button size="sm" variant="outline" onClick={handleSearch} disabled={searching || !searchQuery.trim()}>
+                        <Search className="h-3.5 w-3.5" />
                       </Button>
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        onClick={useGpsPosition}
-                        disabled={locatingGps}
-                        className="shrink-0"
-                        title="Use GPS / Hub position"
-                      >
-                        {locatingGps ? (
-                          <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                        ) : (
-                          <Crosshair className="h-3.5 w-3.5" />
-                        )}
-                        <span className="ml-1.5 text-xs hidden sm:inline">GPS</span>
+                      <Button size="sm" variant="outline" onClick={useGpsPosition} disabled={locatingGps} title="Use Hub GPS">
+                        {locatingGps ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Crosshair className="h-3.5 w-3.5" />}
+                        <span className="ml-1 text-xs hidden sm:inline">GPS</span>
                       </Button>
                     </div>
 
-                    {/* Search results dropdown */}
+                    {/* Search results */}
                     {searchResults.length > 0 && (
-                      <div className="rounded-lg border border-border/50 bg-popover overflow-hidden">
+                      <div className="rounded-lg border border-border/50 bg-popover overflow-hidden max-h-48 overflow-y-auto">
                         {searchResults.map((r, i) => (
                           <button
                             key={i}
                             onClick={() => selectResult(r)}
-                            className="w-full px-3 py-2 text-left text-xs hover:bg-accent transition-colors border-b border-border/30 last:border-0"
+                            className="w-full flex items-start gap-2 px-3 py-2 text-left text-xs hover:bg-accent transition-colors border-b border-border/30 last:border-0"
                           >
-                            <span className="text-foreground">{r.display_name}</span>
-                            <span className="block text-[10px] font-mono text-muted-foreground mt-0.5">
-                              {parseFloat(r.lat).toFixed(5)}, {parseFloat(r.lon).toFixed(5)}
-                            </span>
+                            <MapPin className="h-3 w-3 shrink-0 mt-0.5 text-primary" />
+                            <div className="min-w-0">
+                              <span className="text-foreground block truncate">{r.display_name}</span>
+                              <span className="text-[10px] font-mono text-muted-foreground">
+                                {parseFloat(r.lat).toFixed(5)}, {parseFloat(r.lon).toFixed(5)}
+                              </span>
+                            </div>
                           </button>
                         ))}
                       </div>
                     )}
                   </div>
 
-                  {/* Manual coords */}
+                  {/* Manual coordinates */}
                   <div className="grid grid-cols-3 gap-3">
                     <div className="flex flex-col gap-1.5">
                       <Label className="text-[10px] text-muted-foreground font-mono">Latitude</Label>
@@ -314,7 +269,11 @@ export default function NewMissionPage() {
                         type="number"
                         step="0.000001"
                         value={form.center_lat}
-                        onChange={(e) => setForm({ ...form, center_lat: parseFloat(e.target.value) || 0 })}
+                        onChange={(e) => {
+                          const v = parseFloat(e.target.value)
+                          if (!isNaN(v)) { positionSet.current = true; setForm((f) => ({ ...f, center_lat: v })) }
+                        }}
+                        onBlur={() => { mapKey.current += 1; setForm((f) => ({ ...f })) }}
                         className="bg-input/50 border-border font-mono text-xs h-8"
                       />
                     </div>
@@ -324,18 +283,20 @@ export default function NewMissionPage() {
                         type="number"
                         step="0.000001"
                         value={form.center_lon}
-                        onChange={(e) => setForm({ ...form, center_lon: parseFloat(e.target.value) || 0 })}
+                        onChange={(e) => {
+                          const v = parseFloat(e.target.value)
+                          if (!isNaN(v)) { positionSet.current = true; setForm((f) => ({ ...f, center_lon: v })) }
+                        }}
+                        onBlur={() => { mapKey.current += 1; setForm((f) => ({ ...f })) }}
                         className="bg-input/50 border-border font-mono text-xs h-8"
                       />
                     </div>
                     <div className="flex flex-col gap-1.5">
                       <Label className="text-[10px] text-muted-foreground font-mono">Zoom</Label>
                       <Input
-                        type="number"
-                        min={1}
-                        max={22}
+                        type="number" min={1} max={22}
                         value={form.zoom}
-                        onChange={(e) => setForm({ ...form, zoom: parseInt(e.target.value) || 17 })}
+                        onChange={(e) => setForm((f) => ({ ...f, zoom: parseInt(e.target.value) || 19 }))}
                         className="bg-input/50 border-border font-mono text-xs h-8"
                       />
                     </div>
@@ -354,8 +315,8 @@ export default function NewMissionPage() {
                 </CardContent>
               </Card>
 
-              {/* Live map preview */}
-              <Card className="border-border/50 bg-card">
+              {/* Live map */}
+              <Card className="border-border/50 bg-card overflow-hidden">
                 <CardHeader className="py-2 px-4">
                   <CardTitle className="text-xs flex items-center gap-2">
                     Map Preview
@@ -367,11 +328,12 @@ export default function NewMissionPage() {
                 <CardContent className="p-0">
                   <ErrorBoundary>
                     <MissionMap
+                      key={mapKey.current}
                       centerLat={form.center_lat}
                       centerLon={form.center_lon}
                       zoom={form.zoom}
                       zones={[]}
-                      className="h-[300px]"
+                      className="h-[350px]"
                     />
                   </ErrorBoundary>
                 </CardContent>
@@ -385,11 +347,10 @@ export default function NewMissionPage() {
               <CardHeader>
                 <CardTitle className="text-sm">Environment Type</CardTitle>
                 <CardDescription className="text-xs">
-                  Choose how sensors will be arranged. This determines zone layout and triangulation logic.
+                  Determines sensor arrangement, zone layout, and triangulation mode.
                 </CardDescription>
               </CardHeader>
               <CardContent className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-                {/* Horizontal */}
                 <button
                   onClick={() => setForm({ ...form, environment: "horizontal" })}
                   className={`flex flex-col gap-3 rounded-lg border-2 p-5 text-left transition-all ${
@@ -399,9 +360,7 @@ export default function NewMissionPage() {
                   }`}
                 >
                   <div className="flex items-center gap-3">
-                    <div className={`rounded-lg p-2 ${
-                      form.environment === "horizontal" ? "bg-primary/20 text-primary" : "bg-muted text-muted-foreground"
-                    }`}>
+                    <div className={`rounded-lg p-2 ${form.environment === "horizontal" ? "bg-primary/20 text-primary" : "bg-muted text-muted-foreground"}`}>
                       <Home className="h-5 w-5" />
                     </div>
                     <div>
@@ -409,19 +368,15 @@ export default function NewMissionPage() {
                       <p className="text-[10px] text-muted-foreground">Plan view / ground level</p>
                     </div>
                   </div>
-                  <div className="flex flex-col gap-1">
-                    <p className="text-xs text-muted-foreground leading-relaxed">
-                      House, garage row, corridor, perimeter. Sensors placed on facades, walls, or segments.
-                    </p>
-                    <div className="flex flex-wrap gap-1 mt-1">
-                      <Badge variant="outline" className="text-[9px] py-0">Facades</Badge>
-                      <Badge variant="outline" className="text-[9px] py-0">Perimeter</Badge>
-                      <Badge variant="outline" className="text-[9px] py-0">Triangulation 2D</Badge>
-                    </div>
+                  <p className="text-xs text-muted-foreground leading-relaxed">
+                    House, garage row, corridor, perimeter. TX on facades/walls.
+                  </p>
+                  <div className="flex flex-wrap gap-1">
+                    <Badge variant="outline" className="text-[9px] py-0">Facades A/B/C/D</Badge>
+                    <Badge variant="outline" className="text-[9px] py-0">Triangulation 2D</Badge>
                   </div>
                 </button>
 
-                {/* Vertical */}
                 <button
                   onClick={() => setForm({ ...form, environment: "vertical" })}
                   className={`flex flex-col gap-3 rounded-lg border-2 p-5 text-left transition-all ${
@@ -431,9 +386,7 @@ export default function NewMissionPage() {
                   }`}
                 >
                   <div className="flex items-center gap-3">
-                    <div className={`rounded-lg p-2 ${
-                      form.environment === "vertical" ? "bg-primary/20 text-primary" : "bg-muted text-muted-foreground"
-                    }`}>
+                    <div className={`rounded-lg p-2 ${form.environment === "vertical" ? "bg-primary/20 text-primary" : "bg-muted text-muted-foreground"}`}>
                       <Building2 className="h-5 w-5" />
                     </div>
                     <div>
@@ -441,15 +394,12 @@ export default function NewMissionPage() {
                       <p className="text-[10px] text-muted-foreground">Multi-floor / stairwell</p>
                     </div>
                   </div>
-                  <div className="flex flex-col gap-1">
-                    <p className="text-xs text-muted-foreground leading-relaxed">
-                      Staircase, building floors, landings. Sensors placed on specific floors/levels.
-                    </p>
-                    <div className="flex flex-wrap gap-1 mt-1">
-                      <Badge variant="outline" className="text-[9px] py-0">Floors</Badge>
-                      <Badge variant="outline" className="text-[9px] py-0">Landings</Badge>
-                      <Badge variant="outline" className="text-[9px] py-0">Vertical tracking</Badge>
-                    </div>
+                  <p className="text-xs text-muted-foreground leading-relaxed">
+                    Staircase, building floors. TX per floor/landing.
+                  </p>
+                  <div className="flex flex-wrap gap-1">
+                    <Badge variant="outline" className="text-[9px] py-0">Floors</Badge>
+                    <Badge variant="outline" className="text-[9px] py-0">Vertical tracking</Badge>
                   </div>
                 </button>
               </CardContent>
@@ -463,23 +413,19 @@ export default function NewMissionPage() {
                 <CardHeader>
                   <CardTitle className="text-sm">Review Mission</CardTitle>
                   <CardDescription className="text-xs">
-                    Verify all parameters before creating. Zones and devices can be configured after creation.
+                    Verify before creation. Zones and TX devices are configured after.
                   </CardDescription>
                 </CardHeader>
                 <CardContent className="flex flex-col gap-3">
                   <div className="grid grid-cols-2 gap-3">
                     <div className="rounded border border-border/50 p-3">
-                      <p className="text-[10px] text-muted-foreground mb-1">Mission Name</p>
+                      <p className="text-[10px] text-muted-foreground mb-1">Mission</p>
                       <p className="text-sm font-mono text-foreground">{form.name}</p>
                     </div>
                     <div className="rounded border border-border/50 p-3">
                       <p className="text-[10px] text-muted-foreground mb-1">Environment</p>
                       <div className="flex items-center gap-1.5">
-                        {form.environment === "horizontal" ? (
-                          <Home className="h-3.5 w-3.5 text-primary" />
-                        ) : (
-                          <Building2 className="h-3.5 w-3.5 text-primary" />
-                        )}
+                        {form.environment === "horizontal" ? <Home className="h-3.5 w-3.5 text-primary" /> : <Building2 className="h-3.5 w-3.5 text-primary" />}
                         <p className="text-sm text-foreground capitalize">{form.environment}</p>
                       </div>
                     </div>
@@ -500,16 +446,16 @@ export default function NewMissionPage() {
                 </CardContent>
               </Card>
 
-              {/* Map preview */}
-              <Card className="border-border/50 bg-card">
+              <Card className="border-border/50 bg-card overflow-hidden">
                 <CardContent className="p-0">
                   <ErrorBoundary>
                     <MissionMap
+                      key={`review-${form.center_lat}-${form.center_lon}`}
                       centerLat={form.center_lat}
                       centerLon={form.center_lon}
                       zoom={form.zoom}
                       zones={[]}
-                      className="h-[250px]"
+                      className="h-[300px]"
                     />
                   </ErrorBoundary>
                 </CardContent>
@@ -517,11 +463,10 @@ export default function NewMissionPage() {
             </div>
           )}
 
-          {/* Navigation buttons */}
+          {/* Navigation */}
           <div className="flex justify-between items-center mt-5 pt-4 border-t border-border/50">
             <Button
-              variant="ghost"
-              size="sm"
+              variant="ghost" size="sm"
               onClick={() => step > 0 ? setStep(step - 1) : router.push("/missions")}
             >
               <ArrowLeft className="mr-1.5 h-3.5 w-3.5" />

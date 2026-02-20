@@ -1,11 +1,12 @@
 """
 THEIA - Missions CRUD router
+Field names aligned with frontend: center_lat, center_lon, zoom, environment, location
 """
 import json
 import uuid
 from datetime import datetime, timezone
 from fastapi import APIRouter, HTTPException
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from backend.database import get_db
 
 router = APIRouter(prefix="/missions", tags=["missions"])
@@ -14,29 +15,69 @@ router = APIRouter(prefix="/missions", tags=["missions"])
 class MissionCreate(BaseModel):
     name: str
     description: str = ""
-    location_lat: float | None = None
-    location_lon: float | None = None
-    location_label: str = ""
-    zones: list = []
+    location: str = ""
+    environment: str = "horizontal"
+    center_lat: float = 48.8566
+    center_lon: float = 2.3522
+    zoom: int = 19
+    zones: list = Field(default_factory=list)
+    floors: list = Field(default_factory=list)
 
 
 class MissionUpdate(BaseModel):
     name: str | None = None
     description: str | None = None
     status: str | None = None
-    location_lat: float | None = None
-    location_lon: float | None = None
-    location_label: str | None = None
+    location: str | None = None
+    environment: str | None = None
+    center_lat: float | None = None
+    center_lon: float | None = None
+    zoom: int | None = None
     zones: list | None = None
+    floors: list | None = None
+    started_at: str | None = None
+    ended_at: str | None = None
+    device_count: int | None = None
+    event_count: int | None = None
 
 
 def _row_to_dict(row) -> dict:
+    """Convert a DB row to a frontend-compatible dict."""
     d = dict(row)
-    if "zones" in d and isinstance(d["zones"], str):
-        try:
-            d["zones"] = json.loads(d["zones"])
-        except Exception:
-            d["zones"] = []
+    for json_field in ("zones", "floors"):
+        if json_field in d and isinstance(d[json_field], str):
+            try:
+                d[json_field] = json.loads(d[json_field])
+            except Exception:
+                d[json_field] = []
+    # Ensure all expected fields exist
+    d.setdefault("environment", "horizontal")
+    d.setdefault("center_lat", 48.8566)
+    d.setdefault("center_lon", 2.3522)
+    d.setdefault("zoom", 19)
+    d.setdefault("floors", [])
+    d.setdefault("started_at", None)
+    d.setdefault("ended_at", None)
+    d.setdefault("device_count", 0)
+    d.setdefault("event_count", 0)
+    return d
+
+
+async def _get_full_mission(db, mission_id: str) -> dict:
+    """Fetch a mission and return full dict."""
+    cursor = await db.execute("SELECT * FROM missions WHERE id=?", (mission_id,))
+    row = await cursor.fetchone()
+    if not row:
+        return None
+    d = _row_to_dict(row)
+    # Count devices assigned to this mission
+    cursor2 = await db.execute("SELECT COUNT(*) FROM devices WHERE mission_id=?", (mission_id,))
+    count = await cursor2.fetchone()
+    d["device_count"] = count[0] if count else 0
+    # Count events
+    cursor3 = await db.execute("SELECT COUNT(*) FROM events WHERE mission_id=?", (mission_id,))
+    ecount = await cursor3.fetchone()
+    d["event_count"] = ecount[0] if ecount else 0
     return d
 
 
@@ -51,11 +92,10 @@ async def list_missions():
 @router.get("/{mission_id}")
 async def get_mission(mission_id: str):
     db = await get_db()
-    cursor = await db.execute("SELECT * FROM missions WHERE id=?", (mission_id,))
-    row = await cursor.fetchone()
-    if not row:
+    result = await _get_full_mission(db, mission_id)
+    if not result:
         raise HTTPException(status_code=404, detail="Mission not found")
-    return _row_to_dict(row)
+    return result
 
 
 @router.post("", status_code=201)
@@ -64,39 +104,54 @@ async def create_mission(body: MissionCreate):
     mid = str(uuid.uuid4())[:8]
     now = datetime.now(timezone.utc).isoformat()
     await db.execute(
-        """INSERT INTO missions (id, name, description, location_lat, location_lon, location_label, zones, created_at, updated_at)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)""",
-        (mid, body.name, body.description, body.location_lat, body.location_lon,
-         body.location_label, json.dumps(body.zones), now, now),
+        """INSERT INTO missions
+           (id, name, description, location, environment, center_lat, center_lon, zoom, zones, floors, status, created_at, updated_at)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+        (mid, body.name, body.description, body.location, body.environment,
+         body.center_lat, body.center_lon, body.zoom,
+         json.dumps(body.zones), json.dumps(body.floors),
+         "draft", now, now),
     )
     await db.commit()
-    # Insert log
     await db.execute(
         "INSERT INTO logs (level, source, message) VALUES (?, ?, ?)",
         ("info", "api", f"Mission created: {body.name} ({mid})"),
     )
     await db.commit()
-    return {"id": mid, "name": body.name, "status": "planning"}
+    # Return full mission object
+    return await _get_full_mission(db, mid)
 
 
-@router.put("/{mission_id}")
-async def update_mission(mission_id: str, body: MissionUpdate):
+@router.patch("/{mission_id}")
+async def patch_mission(mission_id: str, body: MissionUpdate):
+    """Partial update -- only updates fields that are not None."""
     db = await get_db()
-    cursor = await db.execute("SELECT * FROM missions WHERE id=?", (mission_id,))
-    existing = await cursor.fetchone()
-    if not existing:
+    cursor = await db.execute("SELECT id FROM missions WHERE id=?", (mission_id,))
+    if not await cursor.fetchone():
         raise HTTPException(status_code=404, detail="Mission not found")
 
     updates = body.model_dump(exclude_none=True)
-    if "zones" in updates:
-        updates["zones"] = json.dumps(updates["zones"])
+    if not updates:
+        return await _get_full_mission(db, mission_id)
+
+    # JSON-serialize list fields
+    for json_field in ("zones", "floors"):
+        if json_field in updates:
+            updates[json_field] = json.dumps(updates[json_field])
+
     updates["updated_at"] = datetime.now(timezone.utc).isoformat()
 
     set_clause = ", ".join(f"{k}=?" for k in updates)
     values = list(updates.values()) + [mission_id]
     await db.execute(f"UPDATE missions SET {set_clause} WHERE id=?", values)
     await db.commit()
-    return {"ok": True}
+    return await _get_full_mission(db, mission_id)
+
+
+@router.put("/{mission_id}")
+async def update_mission(mission_id: str, body: MissionUpdate):
+    """Full update -- same behavior as PATCH for backwards compat."""
+    return await patch_mission(mission_id, body)
 
 
 @router.delete("/{mission_id}")

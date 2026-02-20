@@ -47,6 +47,7 @@ export default function MissionDetailPage() {
   const [pendingPolygon, setPendingPolygon] = useState<[number, number][] | null>(null)
   const [zoneName, setZoneName] = useState("")
   const [zoneType, setZoneType] = useState<string>("facade")
+  const [sideLabels, setSideLabels] = useState<Record<string, string>>({})
   const [assignDialog, setAssignDialog] = useState<string | null>(null) // zoneId
   const [statusUpdating, setStatusUpdating] = useState(false)
 
@@ -55,6 +56,12 @@ export default function MissionDetailPage() {
     setPendingPolygon(polygon)
     setZoneName("")
     setZoneType("facade")
+    // Initialize side labels: A, B, C, D...
+    const labels: Record<string, string> = {}
+    for (let i = 0; i < polygon.length; i++) {
+      labels[String.fromCharCode(65 + i)] = ""
+    }
+    setSideLabels(labels)
     setZoneDialog(true)
     setDrawingMode(false)
   }, [])
@@ -71,12 +78,13 @@ export default function MissionDetailPage() {
       polygon: pendingPolygon,
       color: ZONE_COLORS[zones.length % ZONE_COLORS.length],
       devices: [],
+      sides: sideLabels,
     }
     const updated = await updateMission(id, { zones: [...zones, newZone] })
     mutate(updated, false)
     setZoneDialog(false)
     setPendingPolygon(null)
-  }, [mission, pendingPolygon, zoneName, zoneType, id, mutate])
+  }, [mission, pendingPolygon, zoneName, zoneType, sideLabels, id, mutate])
 
   const deleteZone = useCallback(async (zoneId: string) => {
     if (!mission) return
@@ -143,7 +151,6 @@ export default function MissionDetailPage() {
     )
   }
 
-  console.log("[v0] Mission loaded:", mission.id, "lat:", mission.center_lat, "lon:", mission.center_lon, "zoom:", mission.zoom, "zones:", mission.zones?.length)
   const statusCfg = missionStatusConfig[mission.status] ?? missionStatusConfig.draft
   const zones = mission.zones ?? []
   const eventList = events ?? []
@@ -438,8 +445,29 @@ export default function MissionDetailPage() {
                 </SelectContent>
               </Select>
             </div>
+            {/* Side labels */}
+            {pendingPolygon && pendingPolygon.length >= 2 && (
+              <div className="flex flex-col gap-2">
+                <Label className="text-xs text-muted-foreground">
+                  Side Labels ({pendingPolygon.length} sides)
+                </Label>
+                <div className="grid grid-cols-2 gap-2">
+                  {Object.keys(sideLabels).map((key) => (
+                    <div key={key} className="flex items-center gap-2">
+                      <span className="text-xs font-mono font-bold text-cyan-600 w-4 shrink-0">{key}</span>
+                      <Input
+                        placeholder={`Side ${key}`}
+                        value={sideLabels[key]}
+                        onChange={(e) => setSideLabels((prev) => ({ ...prev, [key]: e.target.value }))}
+                        className="bg-input/50 border-border text-xs h-7"
+                      />
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
             <p className="text-[10px] text-muted-foreground font-mono">
-              {pendingPolygon?.length ?? 0} polygon points
+              {pendingPolygon?.length ?? 0} points - {Object.values(sideLabels).filter(Boolean).length} sides labeled
             </p>
           </div>
           <DialogFooter>
