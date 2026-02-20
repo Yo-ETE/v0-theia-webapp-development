@@ -325,43 +325,9 @@ export default function MissionDetailPage() {
     ? { ...replayDetections }
     : { ...liveByZone }
 
-  // Detection Feed: merge SSE live detections + recent DB events.
-  // SSE detections appear first (newest), then DB events fill the rest.
-  // This ensures the feed survives page refresh.
-  const displayDetections: LiveDetection[] = (() => {
-    // Start with SSE detections from this session
-    const feed = [...liveDetections]
-    // Timestamps already in the feed (avoid duplicates)
-    const seenTs = new Set(feed.map(d => d.timestamp))
-    // Add recent DB events that aren't already in the feed
-    for (const evt of eventList) {
-      if (seenTs.has(evt.timestamp)) continue
-      const p = evt.payload ?? {}
-      const distance = Number(p.distance ?? 0)
-      // Skip ghost events: no real distance or presence was false
-      if (distance < 15) continue
-      const pres = p.presence
-      if (pres === false || pres === "false" || pres === 0 || pres === "0") continue
-      feed.push({
-        device_id: evt.device_id ?? "",
-        device_name: evt.device_name ?? evt.device_id ?? "",
-        tx_id: (p.tx_id as string) ?? null,
-        zone_id: evt.zone_id ?? null,
-        zone_label: evt.zone_label ?? "",
-        side: evt.side ?? (p.side as string) ?? "",
-        presence: true, // only presence=true events are stored in DB
-        distance,
-        speed: Number(p.speed ?? 0),
-        angle: Number(p.angle ?? 0),
-        direction: String(p.direction ?? "C"),
-        vbatt_tx: p.vbatt_tx ? Number(p.vbatt_tx) : null,
-        rssi: evt.rssi ?? null,
-        sensor_type: String(p.sensor_type ?? "ld2450"),
-        timestamp: evt.timestamp,
-      })
-    }
-    return feed.slice(0, 50)
-  })()
+  // Detection Feed: ONLY SSE live detections from this session.
+  // DB events are shown in the History panel, not here.
+  const displayDetections: LiveDetection[] = liveDetections
 
   return (
     <>
