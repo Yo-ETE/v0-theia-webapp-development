@@ -79,7 +79,7 @@ app.include_router(stream.router, prefix="/api")
 app.include_router(tiles.router, prefix="/api")
 
 
-THEIA_BUILD = "2026-02-20-v3-phantom-fix"
+THEIA_BUILD = "2026-02-20-v5-final-phantom-gate"
 
 @app.get("/")
 async def root():

@@ -315,6 +315,18 @@ class PortReader:
             "sensor_type": sensor_type,
         }
 
+        # --- FINAL phantom gate (safety net for ALL code paths) ---
+        # Even if a parser didn't suppress a phantom frame, block the INSERT here.
+        # A TX must have sent at least one explicit "EMPTY" keyword frame
+        # (which sets _tx_validated) before we store ANY presence event.
+        phantom_key = tx_id or self.port
+        if presence and not self._tx_validated.get(phantom_key, False):
+            # Never saw an EMPTY from this TX -> phantom noise, suppress
+            presence = False
+            effective_distance = 0
+            payload["presence"] = False
+            payload["distance"] = 0
+
         # Only store detection events in DB when there IS real presence
         # AND distance is significant (> 15cm to avoid sensor noise)
         # Rate-limit: max 1 INSERT per device per 8 seconds to avoid DB bloat
@@ -484,6 +496,11 @@ class PortReader:
         distance = 0
         if isinstance(payload, dict):
             distance = int(payload.get("distance", 0) or 0)
+        # Phantom gate: TX must be validated via explicit EMPTY frame
+        phantom_key = dev_eui or self.port
+        if presence and not self._tx_validated.get(phantom_key, False):
+            presence = False
+            distance = 0
         if mission_id and event_type == "detection" and presence and distance > 15:
             device_key = device_id or dev_eui
             now_ts = time.time()
@@ -565,8 +582,8 @@ class LoRaBridge:
         for pattern in ["/dev/ttyUSB*", "/dev/ttyACM*"]:
             found.extend(sorted(glob.glob(pattern)))
 
-        # Exclude GPS port if configured
-        gps_port = os.getenv("GPS_DEVICE", "")
+        # Exclude GPS port -- default to /dev/ttyUSB0 if not configured
+        gps_port = os.getenv("GPS_DEVICE", "/dev/ttyUSB0")
         return [p for p in found if p != gps_port]
 
     async def start(self):
@@ -584,7 +601,8 @@ class LoRaBridge:
                     self._readers[port] = reader
                     task = asyncio.create_task(reader.start())
                     self._tasks.append(task)
-                    print(f"[THEIA] Started reader for {port}")
+                    gps_port = os.getenv("GPS_DEVICE", "/dev/ttyUSB0")
+                    print(f"[THEIA] Started reader for {port} (GPS={gps_port}, phantom_gate=ACTIVE)")
 
             # Remove readers for disconnected ports
             for port in list(self._readers.keys()):
