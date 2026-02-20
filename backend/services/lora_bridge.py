@@ -152,9 +152,12 @@ class PortReader:
         if has_presence_only:
             presence = kv.get("presence", "0") == "1"
         else:
-            # LD2450: when no target, x=0 y=0 but d may retain the last value.
-            # True presence requires non-zero x or y coordinates AND valid distance.
-            presence = (x != 0 or y != 0) and d > 15
+            # LD2450 presence rules:
+            # 1) x or y must be non-zero (x=0 y=0 means no target)
+            # 2) distance must be > 15 cm (noise floor)
+            # 3) distance must be < 600 cm (LD2450 reliable range ~6m,
+            #    beyond that it picks up wall reflections / ghost targets)
+            presence = (x != 0 or y != 0) and 15 < d < 600
 
         # Determine sensor type string
         sensor_type = "gravity_mw" if has_presence_only else "ld2450"
@@ -321,8 +324,8 @@ class PortReader:
 
         self.packets_ok += 1
         angle = math.degrees(math.atan2(x, y)) if (x != 0 or y != 0) else 0.0
-        # LD2450: d can retain last value even with no target. Use x/y to confirm.
-        presence = (x != 0 or y != 0) and d > 15
+        # LD2450 presence: non-zero coords + valid distance range (15-600cm)
+        presence = (x != 0 or y != 0) and 15 < d < 600
 
         await self._handle_detection(
             tx_id=tx_id, sensor_type="ld2450",
