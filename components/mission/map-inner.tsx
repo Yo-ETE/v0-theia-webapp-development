@@ -189,10 +189,23 @@ export default function MapInner({
     }
   }
 
-  // Geometry: compute sensor and detection positions on the map
-  // 1cm ~ 0.000009 degrees latitude (approximate at ~48N)
-  const CM_TO_DEG_LAT = 0.000009
-  const CM_TO_DEG_LON = 0.0000135 // wider at 48N
+  // ── Geometry: sensor placement & detection projection ──
+  // All math is done in a local meter-space then converted back to lat/lon.
+  // 1 degree latitude  ≈ 111320 m
+  // 1 degree longitude ≈ 111320 * cos(lat) m
+
+  const refLat = centerLat
+  const M_PER_DEG_LAT = 111320
+  const M_PER_DEG_LON = 111320 * Math.cos(refLat * Math.PI / 180)
+
+  /** Convert [lat,lon] to local [x_m, y_m] (east, north) */
+  function toMeters(p: [number, number]): [number, number] {
+    return [(p[1] - centerLon) * M_PER_DEG_LON, (p[0] - centerLat) * M_PER_DEG_LAT]
+  }
+  /** Convert local [x_m, y_m] back to [lat,lon] */
+  function toLatLon(m: [number, number]): [number, number] {
+    return [centerLat + m[1] / M_PER_DEG_LAT, centerLon + m[0] / M_PER_DEG_LON]
+  }
 
   function getSideEdge(zone: Zone, sideKey: string): [[number, number], [number, number]] | null {
     const idx = sideKey.charCodeAt(0) - 65
@@ -205,20 +218,30 @@ export default function MapInner({
     return [p1[0] + (p2[0] - p1[0]) * t, p1[1] + (p2[1] - p1[1]) * t]
   }
 
-  function inwardNormal(p1: [number, number], p2: [number, number], centroid: [number, number]): [number, number] {
-    // Normal perpendicular to the side, pointing inward (toward centroid)
-    const dx = p2[1] - p1[1]
-    const dy = -(p2[0] - p1[0])
-    const len = Math.sqrt(dx * dx + dy * dy)
+  /**
+   * Compute the inward-pointing unit normal of a polygon side, in meters.
+   * Returns [nx, ny] in meter-space (east, north), length = 1.
+   */
+  function inwardNormalM(p1: [number, number], p2: [number, number], centroid: [number, number]): [number, number] {
+    const a = toMeters(p1)
+    const b = toMeters(p2)
+    const c = toMeters(centroid)
+    // Side direction vector in meters
+    const ex = b[0] - a[0]  // east component
+    const ey = b[1] - a[1]  // north component
+    // Perpendicular (rotate 90 degrees): (-ey, ex) or (ey, -ex)
+    let nx = -ey
+    let ny = ex
+    const len = Math.sqrt(nx * nx + ny * ny)
     if (len === 0) return [0, 0]
-    const nx = dx / len
-    const ny = dy / len
-    // Check if normal points toward centroid
-    const mid = pointAlongSide(p1, p2, 0.5)
-    const toCx = centroid[1] - mid[1]
-    const toCy = centroid[0] - mid[0]
-    const dot = nx * toCx + ny * toCy
-    return dot >= 0 ? [ny, nx] : [-ny, -nx] // [dlat, dlon]
+    nx /= len
+    ny /= len
+    // Check if it points toward centroid
+    const mx = (a[0] + b[0]) / 2
+    const my = (a[1] + b[1]) / 2
+    const dot = nx * (c[0] - mx) + ny * (c[1] - my)
+    if (dot < 0) { nx = -nx; ny = -ny }
+    return [nx, ny]
   }
 
   // Build sensor markers and detection projections
@@ -240,15 +263,21 @@ export default function MapInner({
     const centroid = zoneCentroids[zone.id]
     if (!centroid) return null
     const sensorLatLon = pointAlongSide(edge[0], edge[1], sp.sensor_position)
-    const normal = inwardNormal(edge[0], edge[1], centroid)
+    const normalM = inwardNormalM(edge[0], edge[1], centroid)
 
     // Check if there's a live detection for this zone
     const det = liveDetections[zone.id]
     let detectionLatLon: [number, number] | null = null
     if (det?.presence && det.distance > 0) {
-      const dLat = det.distance * CM_TO_DEG_LAT * normal[0]
-      const dLon = det.distance * CM_TO_DEG_LON * normal[1]
-      detectionLatLon = [sensorLatLon[0] + dLat, sensorLatLon[1] + dLon]
+      // distance is in cm, convert to meters
+      const distM = det.distance / 100
+      // Project from sensor position along the inward normal by distM meters
+      const sensorM = toMeters(sensorLatLon)
+      const detM: [number, number] = [
+        sensorM[0] + normalM[0] * distM,
+        sensorM[1] + normalM[1] * distM,
+      ]
+      detectionLatLon = toLatLon(detM)
     }
     return {
       id: sp.device_id,
