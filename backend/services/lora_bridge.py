@@ -73,7 +73,9 @@ class PortReader:
 
     async def _process_line(self, line: str):
         """Route to the correct parser based on frame format."""
-        if line.startswith("LD45;"):
+        if line.startswith("[RX]"):
+            await self._parse_rx_frame(line)
+        elif line.startswith("LD45;"):
             await self._parse_ld45(line)
         elif line.startswith("{"):
             await self._parse_json(line)
@@ -84,6 +86,196 @@ class PortReader:
             # Could be human-readable log lines from the RX (Angle:, Presence:, etc.)
             # Parse key-value pairs for enrichment
             await self._parse_rx_log(line)
+
+    # ------------------------------------------------------------------ [RX] frame
+    async def _parse_rx_frame(self, line: str):
+        """Parse the actual RX Arduino output format:
+        [RX] TX01 | x=6 y=-3257 d=3259 v=0 rssi=-39 battTX=4.09
+
+        Also supports Gravity Microwave sensor format:
+        [RX] TX02 | presence=1 d=150 rssi=-42 battTX=3.95
+        """
+        import re
+
+        # Strip the [RX] prefix
+        content = line[4:].strip()
+        # Split on |
+        parts = content.split("|", 1)
+        if len(parts) < 2:
+            self.packets_err += 1
+            return
+
+        tx_id = parts[0].strip()
+        data_str = parts[1].strip()
+
+        # Parse key=value pairs
+        kv = {}
+        for match in re.finditer(r'(\w+)=([^\s]+)', data_str):
+            kv[match.group(1)] = match.group(2)
+
+        # Extract RSSI from frame (not from separate log line)
+        try:
+            self.last_rssi = int(kv.get("rssi", self.last_rssi))
+        except (ValueError, TypeError):
+            pass
+
+        # Determine sensor type from available fields
+        has_xy = "x" in kv and "y" in kv
+        has_presence_only = "presence" in kv and not has_xy
+
+        try:
+            if has_xy:
+                # LD2450-type sensor: x, y, d, v
+                x = int(kv.get("x", "0"))
+                y = int(kv.get("y", "0"))
+                d = int(kv.get("d", "0"))
+                v = int(kv.get("v", "0"))
+            elif has_presence_only:
+                # Gravity Microwave sensor: presence, d
+                x = 0
+                y = 0
+                d = int(kv.get("d", "0"))
+                v = 0
+            else:
+                self.packets_err += 1
+                return
+
+            vbatt = float(kv["battTX"]) if "battTX" in kv else None
+        except (ValueError, KeyError):
+            self.packets_err += 1
+            return
+
+        self.packets_ok += 1
+
+        # Compute angle and presence
+        angle = math.degrees(math.atan2(x, y)) if (x != 0 or y != 0) else 0.0
+        if has_presence_only:
+            presence = kv.get("presence", "0") == "1"
+        else:
+            presence = d > 20
+
+        # Determine sensor type string
+        sensor_type = "gravity_mw" if has_presence_only else "ld2450"
+
+        # Reuse the common device-lookup + event-insert + SSE-broadcast logic
+        await self._handle_detection(
+            tx_id=tx_id,
+            sensor_type=sensor_type,
+            x=x, y=y, d=d, v=v,
+            angle=angle,
+            presence=presence,
+            vbatt=vbatt,
+        )
+
+    # ------------------------------------------------------------------ common handler
+    async def _handle_detection(
+        self, *, tx_id: str | None, sensor_type: str,
+        x: int, y: int, d: int, v: int,
+        angle: float, presence: bool, vbatt: float | None,
+    ):
+        """Common logic for all sensor parsers: lookup device, store event, broadcast SSE."""
+        db = await get_db()
+        row = None
+
+        if tx_id:
+            cursor = await db.execute(
+                "SELECT id, mission_id, zone, zone_id, zone_label, side, name "
+                "FROM devices WHERE dev_eui=? AND enabled=1",
+                (tx_id,),
+            )
+            row = await cursor.fetchone()
+
+            # Auto-enroll unknown TX
+            if not row:
+                import uuid
+                did = str(uuid.uuid4())[:8]
+                dev_type = "gravity_mw" if sensor_type == "gravity_mw" else "microwave_tx"
+                await db.execute(
+                    """INSERT INTO devices (id, dev_eui, name, type, serial_port, enabled)
+                       VALUES (?, ?, ?, ?, ?, 1)""",
+                    (did, tx_id, f"TX-{tx_id}", dev_type, self.port),
+                )
+                await db.commit()
+                print(f"[THEIA] Auto-enrolled new TX: {tx_id} ({sensor_type}) on {self.port}")
+                await db.execute(
+                    "INSERT INTO logs (level, source, message) VALUES (?, ?, ?)",
+                    ("info", "lora", f"Auto-enrolled TX {tx_id} ({sensor_type}) from {self.port}"),
+                )
+                await db.commit()
+                cursor = await db.execute(
+                    "SELECT id, mission_id, zone, zone_id, zone_label, side, name "
+                    "FROM devices WHERE id=?", (did,),
+                )
+                row = await cursor.fetchone()
+
+        # Fallback: match by serial port
+        if not row:
+            cursor = await db.execute(
+                "SELECT id, mission_id, zone, zone_id, zone_label, side, name "
+                "FROM devices WHERE serial_port=? AND enabled=1",
+                (self.port,),
+            )
+            row = await cursor.fetchone()
+
+        device_id = row["id"] if row else None
+        mission_id = row["mission_id"] if row else None
+        zone = row["zone"] if row else ""
+        zone_id = row["zone_id"] if row else None
+        zone_label = row["zone_label"] if row else ""
+        side = row["side"] if row else ""
+        device_name = row["name"] if row else (tx_id or self.port)
+
+        now_iso = datetime.now(timezone.utc).isoformat()
+        if device_id:
+            await db.execute(
+                """UPDATE devices SET
+                    battery=?, last_seen=?, rssi=?, serial_port=?
+                   WHERE id=?""",
+                (vbatt, now_iso, self.last_rssi, self.port, device_id),
+            )
+
+        direction = "D" if angle > 30 else ("G" if angle < -30 else "C")
+        payload = {
+            "x": x, "y": y, "distance": d, "speed": v,
+            "angle": round(angle, 1),
+            "presence": presence,
+            "direction": direction,
+            "vbatt_tx": vbatt,
+            "tx_id": tx_id,
+            "sensor_type": sensor_type,
+        }
+
+        if mission_id:
+            await db.execute(
+                """INSERT INTO events
+                   (mission_id, device_id, event_type, zone, rssi, snr, payload)
+                   VALUES (?, ?, ?, ?, ?, ?, ?)""",
+                (mission_id, device_id, "detection", zone, self.last_rssi, 0,
+                 json.dumps(payload)),
+            )
+
+        await db.commit()
+
+        await sse_manager.broadcast("detection", {
+            "device_id": device_id,
+            "device_name": device_name,
+            "tx_id": tx_id,
+            "sensor_type": sensor_type,
+            "serial_port": self.port,
+            "mission_id": mission_id,
+            "zone": zone,
+            "zone_id": zone_id,
+            "zone_label": zone_label,
+            "side": side,
+            "presence": presence,
+            "distance": d,
+            "speed": v,
+            "angle": round(angle, 1),
+            "direction": direction,
+            "vbatt_tx": vbatt,
+            "rssi": self.last_rssi,
+            "timestamp": now_iso,
+        })
 
     # ------------------------------------------------------------------ LD45 raw
     async def _parse_ld45(self, line: str):
@@ -122,111 +314,13 @@ class PortReader:
 
         self.packets_ok += 1
         angle = math.degrees(math.atan2(x, y)) if (x != 0 or y != 0) else 0.0
-        presence = d > 20  # basic threshold, can be refined per-device
+        presence = d > 20
 
-        # Lookup device: by dev_eui (TX ID) first, fallback to serial_port
-        db = await get_db()
-        row = None
-        if tx_id:
-            cursor = await db.execute(
-                "SELECT id, mission_id, zone, zone_id, zone_label, side, name "
-                "FROM devices WHERE dev_eui=? AND enabled=1",
-                (tx_id,),
-            )
-            row = await cursor.fetchone()
-
-            # Auto-enroll: create device if unknown TX ID appears
-            if not row:
-                import uuid
-                did = str(uuid.uuid4())[:8]
-                await db.execute(
-                    """INSERT INTO devices (id, dev_eui, name, type, serial_port, enabled)
-                       VALUES (?, ?, ?, 'microwave_tx', ?, 1)""",
-                    (did, tx_id, f"TX-{tx_id}", self.port),
-                )
-                await db.commit()
-                print(f"[THEIA] Auto-enrolled new TX: {tx_id} on {self.port}")
-                await db.execute(
-                    "INSERT INTO logs (level, source, message) VALUES (?, ?, ?)",
-                    ("info", "lora", f"Auto-enrolled TX {tx_id} from {self.port}"),
-                )
-                await db.commit()
-                cursor = await db.execute(
-                    "SELECT id, mission_id, zone, zone_id, zone_label, side, name "
-                    "FROM devices WHERE id=?",
-                    (did,),
-                )
-                row = await cursor.fetchone()
-
-        # Fallback: single-TX mode (match by serial port)
-        if not row:
-            cursor = await db.execute(
-                "SELECT id, mission_id, zone, zone_id, zone_label, side, name "
-                "FROM devices WHERE serial_port=? AND enabled=1",
-                (self.port,),
-            )
-            row = await cursor.fetchone()
-
-        device_id = row["id"] if row else None
-        mission_id = row["mission_id"] if row else None
-        zone = row["zone"] if row else ""
-        zone_id = row["zone_id"] if row else None
-        zone_label = row["zone_label"] if row else ""
-        side = row["side"] if row else ""
-        device_name = row["name"] if row else (tx_id or self.port)
-
-        # Update device telemetry
-        now_iso = datetime.now(timezone.utc).isoformat()
-        if device_id:
-            await db.execute(
-                """UPDATE devices SET
-                    battery=?, last_seen=?, rssi=?, serial_port=?
-                   WHERE id=?""",
-                (vbatt, now_iso, self.last_rssi, self.port, device_id),
-            )
-
-        direction = "D" if angle > 30 else ("G" if angle < -30 else "C")
-        payload = {
-            "x": x, "y": y, "distance": d, "speed": v,
-            "angle": round(angle, 1),
-            "presence": presence,
-            "direction": direction,
-            "vbatt_tx": vbatt,
-            "tx_id": tx_id,
-        }
-
-        # Insert event if device is assigned to a mission
-        if mission_id:
-            await db.execute(
-                """INSERT INTO events
-                   (mission_id, device_id, event_type, zone, rssi, snr, payload)
-                   VALUES (?, ?, ?, ?, ?, ?, ?)""",
-                (mission_id, device_id, "detection", zone, self.last_rssi, 0,
-                 json.dumps(payload)),
-            )
-
-        await db.commit()
-
-        # Broadcast via SSE (real-time to webapp)
-        await sse_manager.broadcast("detection", {
-            "device_id": device_id,
-            "device_name": device_name,
-            "tx_id": tx_id,
-            "serial_port": self.port,
-            "mission_id": mission_id,
-            "zone": zone,
-            "zone_id": zone_id,
-            "zone_label": zone_label,
-            "side": side,
-            "presence": presence,
-            "distance": d,
-            "speed": v,
-            "angle": round(angle, 1),
-            "direction": direction,
-            "vbatt_tx": vbatt,
-            "rssi": self.last_rssi,
-            "timestamp": now_iso,
-        })
+        await self._handle_detection(
+            tx_id=tx_id, sensor_type="ld2450",
+            x=x, y=y, d=d, v=v,
+            angle=angle, presence=presence, vbatt=vbatt,
+        )
 
     # ------------------------------------------------------------------ RX log lines
     async def _parse_rx_log(self, line: str):
@@ -311,6 +405,9 @@ class LoRaBridge:
     def data(self) -> dict:
         total_ok = sum(r.packets_ok for r in self._readers.values())
         total_err = sum(r.packets_err for r in self._readers.values())
+        # Pick the first active reader for primary port/rssi display
+        first_reader = next(iter(self._readers.values()), None)
+        first_port = next(iter(self._readers.keys()), "---")
         ports = {
             port: {
                 "packets_ok": r.packets_ok,
@@ -321,6 +418,10 @@ class LoRaBridge:
         }
         return {
             "connected": len(self._readers) > 0,
+            "port": first_port,
+            "baud_rate": first_reader.baud if first_reader else 0,
+            "rssi": first_reader.last_rssi if first_reader else None,
+            "snr": None,
             "ports": ports,
             "total_ports": len(self._readers),
             "packets_received": total_ok,
