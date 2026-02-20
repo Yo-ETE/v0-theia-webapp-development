@@ -265,17 +265,48 @@ export default function MapInner({
     const sensorLatLon = pointAlongSide(edge[0], edge[1], sp.sensor_position)
     const normalM = inwardNormalM(edge[0], edge[1], centroid)
 
+    // Compute lateral (tangent) direction along the side in meter-space.
+    // "Left" of someone facing inward = cross(inward, up) = rotate normal -90 deg.
+    // Side tangent from edge[0] to edge[1]:
+    const edgeA = toMeters(edge[0])
+    const edgeB = toMeters(edge[1])
+    const tx = edgeB[0] - edgeA[0]
+    const ty = edgeB[1] - edgeA[1]
+    const tLen = Math.sqrt(tx * tx + ty * ty)
+    // Unit tangent along the side (A -> B direction)
+    const tangentM: [number, number] = tLen > 0 ? [tx / tLen, ty / tLen] : [0, 0]
+    // Determine which direction "Gauche" is relative to inward-facing.
+    // If facing inward (normalM), "left" is perpendicular: rotate normal +90 = tangent or -tangent.
+    // Convention: looking from sensor toward centroid, "Gauche" = left = -tangent (A->B reversed)
+    // We verify: cross(normal, tangent) > 0 means tangent is to the right of normal
+    const cross = normalM[0] * tangentM[1] - normalM[1] * tangentM[0]
+    // If cross > 0: tangent is to the RIGHT of inward, so Gauche = -tangent
+    // If cross < 0: tangent is to the LEFT, so Gauche = +tangent
+    const leftM: [number, number] = cross >= 0
+      ? [-tangentM[0], -tangentM[1]]
+      : [tangentM[0], tangentM[1]]
+
     // Check if there's a live detection for this zone
     const det = liveDetections[zone.id]
     let detectionLatLon: [number, number] | null = null
     if (det?.presence && det.distance > 0) {
-      // distance is in cm, convert to meters
-      const distM = det.distance / 100
-      // Project from sensor position along the inward normal by distM meters
+      const distM = det.distance / 100 // cm -> meters
       const sensorM = toMeters(sensorLatLon)
+
+      // Lateral offset based on direction: G = left, D = right, C = center
+      // LD2450 has ~60deg FOV per zone, so offset ~30 degrees from center
+      // At distance d, lateral offset = d * tan(30deg) ~ d * 0.577
+      let lateralM = 0
+      if (det.direction === "G" || det.direction === "Gauche") {
+        lateralM = distM * 0.5 // shift left by ~half the distance
+      } else if (det.direction === "D" || det.direction === "Droite") {
+        lateralM = -distM * 0.5 // shift right
+      }
+      // Centre: lateralM stays 0
+
       const detM: [number, number] = [
-        sensorM[0] + normalM[0] * distM,
-        sensorM[1] + normalM[1] * distM,
+        sensorM[0] + normalM[0] * distM + leftM[0] * lateralM,
+        sensorM[1] + normalM[1] * distM + leftM[1] * lateralM,
       ]
       detectionLatLon = toLatLon(detM)
     }
@@ -325,9 +356,8 @@ export default function MapInner({
               eventHandlers={onZoneClick ? { click: () => onZoneClick(zone.id) } : undefined}
             >
               <Tooltip permanent direction="center" className="zone-label-tip">
-                <span style={{ fontSize: 11, fontWeight: 600, color: hasPresence ? "#f59e0b" : zone.color }}>
+                <span style={{ fontSize: 11, fontWeight: 600, color: zone.color }}>
                   {zone.label}
-                  {hasPresence && ` - ${det.distance}cm ${det.direction}`}
                 </span>
               </Tooltip>
             </Polygon>
@@ -367,13 +397,12 @@ export default function MapInner({
             : null
         )}
 
-        {/* ── Zone area label ── */}
-        {(zones ?? []).map((zone) => {
+        {/* ── Zone area label (only shown when no live detections to avoid clutter) ── */}
+        {!Object.keys(liveDetections).length && (zones ?? []).map((zone) => {
           if (!zone.polygon || zone.polygon.length < 3) return null
           const centroid = zoneCentroids[zone.id]
           if (!centroid) return null
           const area = polygonAreaM2(zone.polygon)
-          const perim = polygonPerimeterM(zone.polygon)
           return (
             <CircleMarker
               key={`area-${zone.id}`}
@@ -387,7 +416,7 @@ export default function MapInner({
                   background: "rgba(255,255,255,0.88)", padding: "1px 4px",
                   borderRadius: 2,
                 }}>
-                  {area < 1 ? `${Math.round(area * 10000)}cm2` : `${area.toFixed(1)}m2`} | P: {fmtDist(perim)}
+                  {area < 1 ? `${Math.round(area * 10000)}cm2` : `${area.toFixed(1)}m2`}
                 </span>
               </Tooltip>
             </CircleMarker>
@@ -436,51 +465,40 @@ export default function MapInner({
           <CircleMarker
             key={`det-pt-${sm.id}`}
             center={sm.detectionPos!}
-            radius={10}
+            radius={8}
             pathOptions={{
               color: "#f59e0b",
               fillColor: "#f59e0b",
-              fillOpacity: 0.5,
-              weight: 3,
+              fillOpacity: 0.6,
+              weight: 2,
               className: "detection-pulse",
             }}
           >
-            <Tooltip permanent direction="top" offset={[0, -12]}>
-              <div style={{ fontSize: 10, fontWeight: 700, textAlign: "center", lineHeight: 1.3, color: "#f59e0b" }}>
-                {sm.detection!.distance}cm
-                {sm.detection!.direction === "G" ? " Gauche" : sm.detection!.direction === "D" ? " Droite" : " Centre"}
-                <br />
-                <span style={{ fontSize: 8, color: "#888" }}>{sm.deviceName} [{sm.side}]</span>
-              </div>
+            <Tooltip direction="top" offset={[0, -10]}>
+              <span style={{ fontSize: 9, fontWeight: 600, color: "#f59e0b" }}>
+                {sm.detection!.distance}cm {sm.detection!.direction}
+              </span>
             </Tooltip>
           </CircleMarker>
         ))}
 
-        {/* ── Fallback: zone-level detection if no sensor placement ── */}
+        {/* ── Fallback: zone-level detection pulse if no sensor is placed ── */}
         {Object.entries(liveDetections).map(([zoneId, det]) => {
-          // Skip if there are already specific sensor markers for this zone
+          // Skip if sensor markers already cover this zone
           if (sensorMarkers.some(sm => sm.detection && zones.find(z => z.id === zoneId)?.devices.includes(sm.id))) return null
           const centroid = zoneCentroids[zoneId]
-          if (!centroid) return null
-          const zone = zones.find(z => z.id === zoneId)
-          if (!det.presence) return null
+          if (!centroid || !det.presence) return null
           return (
             <CircleMarker
               key={`det-fallback-${zoneId}`}
               center={centroid}
-              radius={10}
+              radius={8}
               pathOptions={{
                 color: "#f59e0b", fillColor: "#f59e0b",
-                fillOpacity: 0.5, weight: 3,
+                fillOpacity: 0.5, weight: 2,
                 className: "detection-pulse",
               }}
-            >
-              <Tooltip permanent direction="top" offset={[0, -12]}>
-                <span style={{ fontSize: 10, fontWeight: 700, color: "#f59e0b" }}>
-                  {zone?.label} {det.distance}cm {det.direction === "G" ? "G" : det.direction === "D" ? "D" : "C"}
-                </span>
-              </Tooltip>
-            </CircleMarker>
+            />
           )
         })}
 
