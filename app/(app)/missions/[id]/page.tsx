@@ -64,7 +64,7 @@ interface LiveDetection {
 export default function MissionDetailPage() {
   const { id } = useParams<{ id: string }>()
   const { data: mission, isLoading, mutate } = useMission(id)
-  const { data: events } = useEvents({ mission_id: id, event_type: "detection", limit: 500 })
+  const { data: events, mutate: mutateEvents } = useEvents({ mission_id: id, event_type: "detection", limit: 500 })
   const { data: allDevices, mutate: mutateDevices } = useDevices()
 
   const [drawingMode, setDrawingMode] = useState(false)
@@ -682,6 +682,18 @@ export default function MissionDetailPage() {
               <CardHeader className="pb-2">
                 <div className="flex items-center justify-between">
                   <CardTitle className="text-sm">Events ({eventList.length})</CardTitle>
+                  <div className="flex items-center gap-2">
+                  <Button
+                    variant="destructive" size="sm"
+                    disabled={eventList.length === 0}
+                    onClick={async () => {
+                      if (!confirm("Purger tous les events de cette mission ?")) return
+                      await fetch(`/api/events?mission_id=${id}`, { method: "DELETE" })
+                      mutateEvents([], false)
+                    }}
+                  >
+                    <Trash2 className="mr-1.5 h-3.5 w-3.5" />Purger
+                  </Button>
                   <Button
                     variant="outline" size="sm"
                     disabled={eventList.length === 0}
@@ -703,6 +715,7 @@ export default function MissionDetailPage() {
                   >
                     <Download className="mr-1.5 h-3.5 w-3.5" />Export CSV
                   </Button>
+                  </div>
                 </div>
               </CardHeader>
               <CardContent>

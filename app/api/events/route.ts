@@ -20,6 +20,24 @@ function filterGhosts(events: Record<string, unknown>[]): Record<string, unknown
   })
 }
 
+export async function DELETE(request: NextRequest) {
+  const { searchParams } = request.nextUrl
+  const missionId = searchParams.get("mission_id")
+
+  if (isPreviewMode()) {
+    return NextResponse.json({ ok: true })
+  }
+
+  try {
+    const qs = missionId ? `?mission_id=${missionId}` : ""
+    const res = await proxyToBackend(`/api/events${qs}`, { method: "DELETE" })
+    if (!res.ok) throw new Error(`Backend ${res.status}`)
+    return NextResponse.json(await res.json())
+  } catch {
+    return NextResponse.json({ ok: false, error: "Backend unreachable" }, { status: 502 })
+  }
+}
+
 export async function GET(request: NextRequest) {
   const { searchParams } = request.nextUrl
   const missionId = searchParams.get("mission_id")

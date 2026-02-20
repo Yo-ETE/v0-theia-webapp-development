@@ -108,3 +108,15 @@ async def list_events(
                     continue
         result.append(d)
     return result
+
+
+@router.delete("")
+async def purge_events(mission_id: str | None = None):
+    """Delete all events for a mission (or all events if no mission_id)."""
+    db = await get_db()
+    if mission_id:
+        await db.execute("DELETE FROM events WHERE mission_id=?", (mission_id,))
+    else:
+        await db.execute("DELETE FROM events")
+    await db.commit()
+    return {"ok": True}

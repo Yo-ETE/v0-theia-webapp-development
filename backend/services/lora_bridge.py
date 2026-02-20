@@ -22,6 +22,7 @@ import glob
 import json
 import math
 import os
+import time
 from datetime import datetime, timezone
 
 from backend.database import get_db
@@ -43,6 +44,7 @@ class PortReader:
         self.packets_ok = 0
         self.packets_err = 0
         self.last_rssi: int = -120
+        self._last_insert_ts: dict[str, float] = {}  # rate-limit DB inserts per device
 
     async def start(self):
         import serial
@@ -252,32 +254,36 @@ class PortReader:
             "sensor_type": sensor_type,
         }
 
-        # Only store detection events in DB when there IS presence
-        # (avoids polluting history with idle frames)
-        if mission_id and presence:
-            payload_json = json.dumps(payload)
-            try:
-                await db.execute(
-                    """INSERT INTO events
-                       (mission_id, device_id, event_type, zone, zone_id, side, rssi, snr, payload)
-                       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)""",
-                    (mission_id, device_id, "detection", zone, zone_id, side,
-                     self.last_rssi, 0, payload_json),
-                )
-            except Exception:
-                # Fallback: old schema without zone_id / side columns
-                await db.execute(
-                    """INSERT INTO events
-                       (mission_id, device_id, event_type, zone, rssi, snr, payload)
-                       VALUES (?, ?, ?, ?, ?, ?, ?)""",
-                    (mission_id, device_id, "detection", zone,
-                     self.last_rssi, 0, payload_json),
-                )
-            print(f"[THEIA-DB] INSERT event: d={d} dir={direction} zone_id={zone_id} mission={mission_id}")
+        # Only store detection events in DB when there IS real presence
+        # AND distance is significant (> 15cm to avoid sensor noise)
+        # Rate-limit: max 1 INSERT per device per 8 seconds to avoid DB bloat
+        if mission_id and presence and d > 15:
+            device_key = device_id or self.port
+            now_ts = time.time()
+            last_insert_ts = self._last_insert_ts.get(device_key, 0)
+            if now_ts - last_insert_ts >= 8.0:
+                self._last_insert_ts[device_key] = now_ts
+                payload_json = json.dumps(payload)
+                try:
+                    await db.execute(
+                        """INSERT INTO events
+                           (mission_id, device_id, event_type, zone, zone_id, side, rssi, snr, payload)
+                           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                        (mission_id, device_id, "detection", zone, zone_id, side,
+                         self.last_rssi, 0, payload_json),
+                    )
+                except Exception:
+                    # Fallback: old schema without zone_id / side columns
+                    await db.execute(
+                        """INSERT INTO events
+                           (mission_id, device_id, event_type, zone, rssi, snr, payload)
+                           VALUES (?, ?, ?, ?, ?, ?, ?)""",
+                        (mission_id, device_id, "detection", zone,
+                         self.last_rssi, 0, payload_json),
+                    )
+                print(f"[THEIA-DB] INSERT event: d={d} dir={direction} zone_id={zone_id} mission={mission_id}")
         elif presence and not mission_id:
             print(f"[THEIA-DB] SKIP (no mission): dev={device_id} d={d}")
-        elif mission_id and not presence:
-            pass  # Normal idle frame, no log needed
 
         await db.commit()
 
