@@ -8,19 +8,32 @@ export async function GET(
 ) {
   const { id } = await params
 
+  // Always check local store first (has freshest coords/zones)
+  const local = store.getMission(id)
+
   if (isPreviewMode()) {
-    const mission = store.getMission(id)
-    if (!mission) return NextResponse.json({ error: "Not found" }, { status: 404 })
-    return NextResponse.json(mission)
+    if (!local) return NextResponse.json({ error: "Not found" }, { status: 404 })
+    return NextResponse.json(local)
   }
 
   try {
     const res = await proxyToBackend(`/api/missions/${id}`)
     if (!res.ok) throw new Error(`Backend ${res.status}`)
-    return NextResponse.json(await res.json())
+    const backend = await res.json()
+    // Merge: local store has zones/coords that backend might not
+    const merged = {
+      ...backend,
+      center_lat: backend.center_lat ?? local?.center_lat,
+      center_lon: backend.center_lon ?? local?.center_lon,
+      zoom: backend.zoom ?? local?.zoom,
+      zones: (backend.zones?.length ? backend.zones : null) ?? local?.zones ?? [],
+      environment: backend.environment ?? local?.environment ?? "horizontal",
+    }
+    if (local) store.updateMission(id, merged)
+    return NextResponse.json(merged)
   } catch {
-    const mission = store.getMission(id)
-    return NextResponse.json(mission ?? { error: "Not found" }, { status: mission ? 200 : 404 })
+    if (local) return NextResponse.json(local)
+    return NextResponse.json({ error: "Not found" }, { status: 404 })
   }
 }
 
@@ -31,10 +44,12 @@ export async function PATCH(
   const { id } = await params
   const body = await request.json()
 
+  // Always update local store first -- never lose data
+  const localUpdated = store.updateMission(id, body)
+
   if (isPreviewMode()) {
-    const updated = store.updateMission(id, body)
-    if (!updated) return NextResponse.json({ error: "Not found" }, { status: 404 })
-    return NextResponse.json(updated)
+    if (!localUpdated) return NextResponse.json({ error: "Not found" }, { status: 404 })
+    return NextResponse.json(localUpdated)
   }
 
   try {
@@ -42,9 +57,15 @@ export async function PATCH(
       method: "PATCH",
       body: JSON.stringify(body),
     })
-    return NextResponse.json(await res.json(), { status: res.status })
+    if (!res.ok) throw new Error(`Backend ${res.status}`)
+    const backend = await res.json()
+    // Merge backend response with local (local has definitive zones)
+    const merged = { ...localUpdated, ...backend, zones: localUpdated?.zones ?? backend.zones }
+    store.updateMission(id, merged)
+    return NextResponse.json(merged)
   } catch {
-    const updated = store.updateMission(id, body)
-    return NextResponse.json(updated ?? { error: "Backend unreachable" }, { status: updated ? 200 : 503 })
+    // Backend down or 405 -- local store has the data
+    if (localUpdated) return NextResponse.json(localUpdated)
+    return NextResponse.json({ error: "Backend unreachable" }, { status: 503 })
   }
 }

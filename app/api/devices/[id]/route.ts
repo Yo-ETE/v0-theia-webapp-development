@@ -9,10 +9,12 @@ export async function PATCH(
   const { id } = await params
   const body = await request.json()
 
+  // Always update local store first
+  const localUpdated = store.updateDevice(id, body)
+
   if (isPreviewMode()) {
-    const updated = store.updateDevice(id, body)
-    if (!updated) return NextResponse.json({ error: "Not found" }, { status: 404 })
-    return NextResponse.json(updated)
+    if (!localUpdated) return NextResponse.json({ error: "Not found" }, { status: 404 })
+    return NextResponse.json(localUpdated)
   }
 
   try {
@@ -20,9 +22,10 @@ export async function PATCH(
       method: "PATCH",
       body: JSON.stringify(body),
     })
-    return NextResponse.json(await res.json(), { status: res.status })
+    if (!res.ok) throw new Error(`Backend ${res.status}`)
+    return NextResponse.json(await res.json())
   } catch {
-    const updated = store.updateDevice(id, body)
-    return NextResponse.json(updated ?? { error: "Backend unreachable" }, { status: updated ? 200 : 503 })
+    if (localUpdated) return NextResponse.json(localUpdated)
+    return NextResponse.json({ error: "Backend unreachable" }, { status: 503 })
   }
 }

@@ -9,7 +9,13 @@ export async function GET() {
   try {
     const res = await proxyToBackend("/api/missions")
     if (!res.ok) throw new Error(`Backend ${res.status}`)
-    return NextResponse.json(await res.json())
+    const missions = await res.json()
+    // Sync backend data into local store for resilience
+    for (const m of missions) {
+      if (!store.getMission(m.id)) store.createMission(m)
+      else store.updateMission(m.id, m)
+    }
+    return NextResponse.json(missions)
   } catch {
     return NextResponse.json(store.getMissions())
   }
@@ -18,20 +24,32 @@ export async function GET() {
 export async function POST(request: NextRequest) {
   const body = await request.json()
 
+  // Always store locally first so coordinates are never lost
+  const localMission = store.createMission(body)
+
   if (isPreviewMode()) {
-    const mission = store.createMission(body)
-    return NextResponse.json(mission, { status: 201 })
+    return NextResponse.json(localMission, { status: 201 })
   }
 
   try {
     const res = await proxyToBackend("/api/missions", {
       method: "POST",
-      body: JSON.stringify(body),
+      body: JSON.stringify({ ...body, id: localMission.id }),
     })
-    return NextResponse.json(await res.json(), { status: res.status })
+    if (!res.ok) throw new Error(`Backend ${res.status}`)
+    const backendMission = await res.json()
+    // Merge: keep local coords if backend didn't store them
+    const merged = {
+      ...localMission,
+      ...backendMission,
+      center_lat: backendMission.center_lat ?? localMission.center_lat,
+      center_lon: backendMission.center_lon ?? localMission.center_lon,
+      zoom: backendMission.zoom ?? localMission.zoom,
+      zones: backendMission.zones ?? localMission.zones,
+    }
+    store.updateMission(merged.id, merged)
+    return NextResponse.json(merged, { status: 201 })
   } catch {
-    // Fallback: store locally
-    const mission = store.createMission(body)
-    return NextResponse.json(mission, { status: 201 })
+    return NextResponse.json(localMission, { status: 201 })
   }
 }
