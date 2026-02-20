@@ -80,6 +80,8 @@ async def init_tables(db: aiosqlite.Connection):
             device_id TEXT,
             event_type TEXT NOT NULL,
             zone TEXT DEFAULT '',
+            zone_id TEXT DEFAULT '',
+            side TEXT DEFAULT '',
             rssi REAL,
             snr REAL,
             payload TEXT DEFAULT '{}',
@@ -151,4 +153,10 @@ async def init_tables(db: aiosqlite.Connection):
         await db.execute("ALTER TABLE devices ADD COLUMN sensor_position REAL DEFAULT 0.5")
     except Exception:
         pass
+    # Events columns
+    for col in ["zone_id", "side"]:
+        try:
+            await db.execute(f"ALTER TABLE events ADD COLUMN {col} TEXT DEFAULT ''")
+        except Exception:
+            pass
     await db.commit()

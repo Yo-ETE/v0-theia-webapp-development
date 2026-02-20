@@ -137,6 +137,7 @@ export interface DetectionEvent {
   device_name: string
   zone_id: string | null
   zone_label: string | null
+  side: string | null
   type: EventType
   payload: Record<string, unknown>
   rssi: number | null

@@ -44,12 +44,12 @@ async def list_events(
             e.id, e.mission_id, e.device_id,
             e.event_type AS type,
             e.zone AS zone_name,
+            e.zone_id,
+            e.side,
             e.rssi, e.snr, e.payload, e.timestamp,
             d.name AS device_name,
             d.dev_eui AS tx_id,
-            d.zone_id,
-            d.zone_label,
-            d.side
+            COALESCE(d.zone_label, e.zone) AS zone_label
         FROM events e
         LEFT JOIN devices d ON d.id = e.device_id
         WHERE {where}

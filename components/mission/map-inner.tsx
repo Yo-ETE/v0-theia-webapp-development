@@ -46,6 +46,7 @@ interface MapInnerProps {
   onZoneClick?: (zoneId: string) => void
   sensorPlaceMode?: SensorPlaceMode | null
   onSensorPlace?: (zoneId: string, side: string, position: number) => void
+  onMapMove?: (lat: number, lon: number, zoom: number) => void
 }
 
 // ── Geodesic measurement helpers ──────────────────────────────
@@ -109,6 +110,7 @@ export default function MapInner({
   onZoneClick,
   sensorPlaceMode = null,
   onSensorPlace,
+  onMapMove,
 }: MapInnerProps) {
   const centerLat = Number.isFinite(rawLat) ? rawLat : 48.8566
   const centerLon = Number.isFinite(rawLon) ? rawLon : 2.3522
@@ -245,6 +247,41 @@ export default function MapInner({
   }, [drawingMode])
 
   useEffect(() => { if (drawingMode) setDrawPoints([]) }, [drawingMode])
+
+  // ── Persist map center/zoom on pan/zoom ──
+  useEffect(() => {
+    if (!onMapMove) return
+    const handler = () => {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const map = mapRef.current as any
+      if (!map || typeof map.getCenter !== "function") return
+      const c = map.getCenter()
+      const z = map.getZoom()
+      onMapMove(c.lat, c.lng, z)
+    }
+    const attach = () => {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const map = mapRef.current as any
+      if (map && typeof map.on === "function") {
+        map.on("moveend", handler)
+        map.on("zoomend", handler)
+        return true
+      }
+      return false
+    }
+    if (!attach()) {
+      const t = setTimeout(attach, 500)
+      return () => clearTimeout(t)
+    }
+    return () => {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const map = mapRef.current as any
+      if (map && typeof map.off === "function") {
+        map.off("moveend", handler)
+        map.off("zoomend", handler)
+      }
+    }
+  }, [onMapMove])
 
   // ── Sensor placement click handler ──
   useEffect(() => {

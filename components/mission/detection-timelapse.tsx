@@ -36,13 +36,17 @@ function parseEventToDetection(ev: DetectionEvent): LiveDetection | null {
   const p = ev.payload ?? {}
   const distance = Number(p.distance ?? p.dist ?? 0)
   if (!distance) return null
+  // zone_id and side come from the event row directly (new schema)
+  // or fall back to payload / device join fields
+  const zoneId = ev.zone_id || (p.zone_id as string) || null
+  const side = ev.side || (p.side as string) || ""
   return {
     device_id: ev.device_id ?? "",
     device_name: ev.device_name ?? "",
     tx_id: ev.device_id ?? null,
-    zone_id: ev.zone_id ?? null,
-    zone_label: String(p.zone ?? ev.zone_label ?? ""),
-    side: String(p.side ?? ""),
+    zone_id: zoneId,
+    zone_label: ev.zone_label || String(p.zone ?? ""),
+    side,
     presence: true,
     distance,
     speed: Number(p.speed ?? 0),

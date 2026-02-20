@@ -79,6 +79,15 @@ export default function MissionDetailPage() {
     deviceName: string
   } | null>(null)
   const [statusUpdating, setStatusUpdating] = useState(false)
+  // ── Save map center/zoom on pan (debounced) ──
+  const mapMoveTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const handleMapMove = useCallback((lat: number, lon: number, zoom: number) => {
+    if (mapMoveTimer.current) clearTimeout(mapMoveTimer.current)
+    mapMoveTimer.current = setTimeout(() => {
+      updateMission(id, { center_lat: lat, center_lon: lon, zoom }).catch(() => {})
+    }, 1500) // debounce 1.5s after last move
+  }, [id])
+
   const [timelapseMode, setTimelapseMode] = useState(false)
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const [replayDetections, setReplayDetections] = useState<Record<string, any>>({})
@@ -405,7 +414,7 @@ export default function MissionDetailPage() {
             <div className="lg:col-span-2">
               <ErrorBoundary>
                 <MissionMap
-                  key={`${mission.id}-${mission.center_lat}-${mission.center_lon}`}
+                  key={mission.id}
                   centerLat={mission.center_lat}
                   centerLon={mission.center_lon}
                   zoom={mission.zoom ?? 19}
@@ -419,6 +428,7 @@ export default function MissionDetailPage() {
                   onZoneClick={(zoneId) => !sensorPlaceMode && setAssignDialog(zoneId)}
                   sensorPlaceMode={sensorPlaceMode}
                   onSensorPlace={handleSensorPlace}
+                  onMapMove={handleMapMove}
                 />
               </ErrorBoundary>
 

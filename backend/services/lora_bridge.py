@@ -257,10 +257,10 @@ class PortReader:
         if mission_id and presence:
             await db.execute(
                 """INSERT INTO events
-                   (mission_id, device_id, event_type, zone, rssi, snr, payload)
-                   VALUES (?, ?, ?, ?, ?, ?, ?)""",
-                (mission_id, device_id, "detection", zone, self.last_rssi, 0,
-                 json.dumps(payload)),
+                   (mission_id, device_id, event_type, zone, zone_id, side, rssi, snr, payload)
+                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                (mission_id, device_id, "detection", zone, zone_id, side,
+                 self.last_rssi, 0, json.dumps(payload)),
             )
 
         await db.commit()

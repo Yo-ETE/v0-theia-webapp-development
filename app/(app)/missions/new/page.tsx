@@ -334,6 +334,10 @@ export default function NewMissionPage() {
                       zoom={form.zoom}
                       zones={[]}
                       className="h-[350px]"
+                      onMapMove={(lat, lon, z) => {
+                        positionSet.current = true
+                        setForm((f) => ({ ...f, center_lat: lat, center_lon: lon, zoom: z }))
+                      }}
                     />
                   </ErrorBoundary>
                 </CardContent>
