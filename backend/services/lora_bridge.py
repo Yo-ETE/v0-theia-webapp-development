@@ -255,18 +255,29 @@ class PortReader:
         # Only store detection events in DB when there IS presence
         # (avoids polluting history with idle frames)
         if mission_id and presence:
-            await db.execute(
-                """INSERT INTO events
-                   (mission_id, device_id, event_type, zone, zone_id, side, rssi, snr, payload)
-                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)""",
-                (mission_id, device_id, "detection", zone, zone_id, side,
-                 self.last_rssi, 0, json.dumps(payload)),
-            )
+            payload_json = json.dumps(payload)
+            try:
+                await db.execute(
+                    """INSERT INTO events
+                       (mission_id, device_id, event_type, zone, zone_id, side, rssi, snr, payload)
+                       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                    (mission_id, device_id, "detection", zone, zone_id, side,
+                     self.last_rssi, 0, payload_json),
+                )
+            except Exception:
+                # Fallback: old schema without zone_id / side columns
+                await db.execute(
+                    """INSERT INTO events
+                       (mission_id, device_id, event_type, zone, rssi, snr, payload)
+                       VALUES (?, ?, ?, ?, ?, ?, ?)""",
+                    (mission_id, device_id, "detection", zone,
+                     self.last_rssi, 0, payload_json),
+                )
             print(f"[THEIA-DB] INSERT event: d={d} dir={direction} zone_id={zone_id} mission={mission_id}")
         elif presence and not mission_id:
-            print(f"[THEIA-DB] SKIP event (no mission_id): device={device_id} d={d} mission_id='{mission_id}'")
+            print(f"[THEIA-DB] SKIP (no mission): dev={device_id} d={d}")
         elif mission_id and not presence:
-            print(f"[THEIA-DB] SKIP event (no presence): x={x} y={y} d={d} presence={presence}")
+            pass  # Normal idle frame, no log needed
 
         await db.commit()
 

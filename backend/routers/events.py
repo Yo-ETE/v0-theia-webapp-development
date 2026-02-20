@@ -39,7 +39,8 @@ async def list_events(
         params.append(to_ts)
 
     where = " AND ".join(conditions) if conditions else "1=1"
-    query = f"""
+    # Try query with new columns first, fall back to old schema
+    query_new = f"""
         SELECT
             e.id, e.mission_id, e.device_id,
             e.event_type AS type,
@@ -56,9 +57,29 @@ async def list_events(
         ORDER BY e.timestamp DESC
         LIMIT ? OFFSET ?
     """
+    query_old = f"""
+        SELECT
+            e.id, e.mission_id, e.device_id,
+            e.event_type AS type,
+            e.zone AS zone_name,
+            '' AS zone_id,
+            '' AS side,
+            e.rssi, e.snr, e.payload, e.timestamp,
+            d.name AS device_name,
+            d.dev_eui AS tx_id,
+            COALESCE(d.zone_label, e.zone) AS zone_label
+        FROM events e
+        LEFT JOIN devices d ON d.id = e.device_id
+        WHERE {where}
+        ORDER BY e.timestamp DESC
+        LIMIT ? OFFSET ?
+    """
     params.extend([limit, offset])
 
-    cursor = await db.execute(query, params)
+    try:
+        cursor = await db.execute(query_new, params)
+    except Exception:
+        cursor = await db.execute(query_old, params)
     rows = await cursor.fetchall()
 
     result = []
