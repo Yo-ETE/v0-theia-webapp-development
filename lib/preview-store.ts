@@ -52,6 +52,22 @@ class PreviewStore {
     return mission
   }
 
+  deleteMission(id: string): boolean {
+    const idx = this.missions.findIndex((m) => m.id === id)
+    if (idx === -1) return false
+    this.missions.splice(idx, 1)
+    // Unassign any devices from this mission
+    this.devices.forEach((d) => {
+      if (d.mission_id === id) {
+        d.mission_id = ""
+        d.zone_id = ""
+        d.zone_label = ""
+        d.side = ""
+      }
+    })
+    return true
+  }
+
   updateMission(id: string, data: Partial<Mission>): Mission | null {
     const idx = this.missions.findIndex((m) => m.id === id)
     if (idx === -1) return null

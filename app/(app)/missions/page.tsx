@@ -1,17 +1,35 @@
 "use client"
 
+import { useState, useCallback } from "react"
 import Link from "next/link"
-import { Plus, Crosshair, Radio, BarChart3 } from "lucide-react"
+import { Plus, Crosshair, Radio, BarChart3, Trash2 } from "lucide-react"
 import { TopHeader } from "@/components/top-header"
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
+import {
+  AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent,
+  AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
+} from "@/components/ui/alert-dialog"
 import { useMissions } from "@/hooks/use-api"
+import { deleteMission } from "@/lib/api-client"
 import { missionStatusConfig, formatDate, formatRelative } from "@/lib/format"
 import { cn } from "@/lib/utils"
 
 export default function MissionsPage() {
-  const { data: missions, isLoading } = useMissions()
+  const { data: missions, isLoading, mutate } = useMissions()
+  const [deleteTarget, setDeleteTarget] = useState<{ id: string; name: string } | null>(null)
+
+  const handleDelete = useCallback(async () => {
+    if (!deleteTarget) return
+    try {
+      await deleteMission(deleteTarget.id)
+      mutate((prev) => prev?.filter((m) => m.id !== deleteTarget.id), false)
+    } catch (err) {
+      console.warn("[THEIA] Failed to delete mission:", err)
+    }
+    setDeleteTarget(null)
+  }, [deleteTarget, mutate])
 
   return (
     <>
@@ -45,8 +63,8 @@ export default function MissionsPage() {
               {missions?.map((mission) => {
                 const statusCfg = missionStatusConfig[mission.status] ?? missionStatusConfig.draft
                 return (
-                  <Link key={mission.id} href={`/missions/${mission.id}`}>
-                    <Card className="border-border/50 bg-card transition-colors hover:border-primary/30 hover:bg-card/80 cursor-pointer">
+                  <Card key={mission.id} className="border-border/50 bg-card transition-colors hover:border-primary/30 hover:bg-card/80 group relative">
+                    <Link href={`/missions/${mission.id}`} className="block">
                       <CardHeader className="pb-2">
                         <div className="flex items-start justify-between">
                           <div>
@@ -82,13 +100,43 @@ export default function MissionsPage() {
                           <span>Updated {formatRelative(mission.updated_at)}</span>
                         </div>
                       </CardContent>
-                    </Card>
-                  </Link>
+                    </Link>
+                    {/* Delete button */}
+                    <button
+                      onClick={(e) => {
+                        e.preventDefault()
+                        e.stopPropagation()
+                        setDeleteTarget({ id: mission.id, name: mission.name })
+                      }}
+                      className="absolute top-3 right-10 opacity-0 group-hover:opacity-100 transition-opacity rounded p-1 hover:bg-destructive/10 text-muted-foreground hover:text-destructive"
+                      title="Delete mission"
+                    >
+                      <Trash2 className="h-3.5 w-3.5" />
+                    </button>
+                  </Card>
                 )
               })}
             </div>
           )}
         </div>
+
+        {/* Delete confirmation */}
+        <AlertDialog open={!!deleteTarget} onOpenChange={(open) => !open && setDeleteTarget(null)}>
+          <AlertDialogContent className="bg-card border-border">
+            <AlertDialogHeader>
+              <AlertDialogTitle className="text-sm">Delete mission</AlertDialogTitle>
+              <AlertDialogDescription className="text-xs">
+                Are you sure you want to delete <strong>{deleteTarget?.name}</strong>? This will unassign all devices and remove the mission permanently.
+              </AlertDialogDescription>
+            </AlertDialogHeader>
+            <AlertDialogFooter>
+              <AlertDialogCancel className="text-xs h-8">Cancel</AlertDialogCancel>
+              <AlertDialogAction onClick={handleDelete} className="bg-destructive text-destructive-foreground hover:bg-destructive/90 text-xs h-8">
+                Delete
+              </AlertDialogAction>
+            </AlertDialogFooter>
+          </AlertDialogContent>
+        </AlertDialog>
       </main>
     </>
   )

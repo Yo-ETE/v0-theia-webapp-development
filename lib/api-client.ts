@@ -57,6 +57,10 @@ export function updateMission(id: string, data: Partial<import("./types").Missio
   })
 }
 
+export function deleteMission(id: string) {
+  return request<{ ok: boolean }>(`/missions/${id}`, { method: "DELETE" })
+}
+
 // ─── Devices ─────────────────────────────────────────────────────
 
 export function fetchDevices() {

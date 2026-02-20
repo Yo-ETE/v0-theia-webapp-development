@@ -39,6 +39,27 @@ export async function GET(
   }
 }
 
+export async function DELETE(
+  _request: NextRequest,
+  { params }: { params: Promise<{ id: string }> },
+) {
+  const { id } = await params
+  store.deleteMission(id)
+
+  if (isPreviewMode()) {
+    return NextResponse.json({ ok: true })
+  }
+
+  try {
+    const res = await proxyToBackend(`/api/missions/${id}`, { method: "DELETE" })
+    if (!res.ok) throw new Error(`Backend ${res.status}`)
+    return NextResponse.json({ ok: true })
+  } catch {
+    // Local store already deleted -- return success regardless
+    return NextResponse.json({ ok: true })
+  }
+}
+
 export async function PATCH(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> },

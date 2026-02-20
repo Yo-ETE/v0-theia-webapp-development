@@ -38,6 +38,54 @@ interface MapInnerProps {
   onZoneClick?: (zoneId: string) => void
 }
 
+// ── Geodesic measurement helpers ──────────────────────────────
+
+/** Haversine distance between two lat/lon points, returns meters */
+function haversineM(lat1: number, lon1: number, lat2: number, lon2: number): number {
+  const R = 6371000 // Earth radius in meters
+  const dLat = (lat2 - lat1) * Math.PI / 180
+  const dLon = (lon2 - lon1) * Math.PI / 180
+  const a = Math.sin(dLat / 2) ** 2 +
+    Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) * Math.sin(dLon / 2) ** 2
+  return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a))
+}
+
+/** Format distance: < 1m show cm, else show m with 1 decimal */
+function fmtDist(meters: number): string {
+  if (meters < 1) return `${Math.round(meters * 100)}cm`
+  if (meters < 10) return `${meters.toFixed(2)}m`
+  return `${meters.toFixed(1)}m`
+}
+
+/** Polygon area using Shoelace formula on projected coords (approximate m2) */
+function polygonAreaM2(polygon: [number, number][]): number {
+  if (polygon.length < 3) return 0
+  // Project to meters relative to centroid
+  const cLat = polygon.reduce((s, p) => s + p[0], 0) / polygon.length
+  const cosLat = Math.cos(cLat * Math.PI / 180)
+  const pts = polygon.map(([lat, lon]) => [
+    (lat - cLat) * 111320,          // meters north
+    (lon - polygon[0][1]) * 111320 * cosLat, // meters east
+  ])
+  let area = 0
+  for (let i = 0; i < pts.length; i++) {
+    const j = (i + 1) % pts.length
+    area += pts[i][0] * pts[j][1]
+    area -= pts[j][0] * pts[i][1]
+  }
+  return Math.abs(area) / 2
+}
+
+/** Perimeter of polygon in meters */
+function polygonPerimeterM(polygon: [number, number][]): number {
+  let total = 0
+  for (let i = 0; i < polygon.length; i++) {
+    const j = (i + 1) % polygon.length
+    total += haversineM(polygon[i][0], polygon[i][1], polygon[j][0], polygon[j][1])
+  }
+  return total
+}
+
 export default function MapInner({
   centerLat: rawLat,
   centerLon: rawLon,
@@ -257,40 +305,65 @@ export default function MapInner({
           )
         })}
 
-        {/* ── Side labels on saved zones ── */}
+        {/* ── Side labels with distance on saved zones ── */}
         {(zones ?? []).map((zone) =>
-          zone.sides && zone.polygon?.length >= 2
-            ? Object.entries(zone.sides)
-                .filter(([, label]) => Boolean(label))
-                .map(([key, label]) => {
-                  const idx = key.charCodeAt(0) - 65
-                  if (idx < 0 || idx >= zone.polygon.length) return null
-                  const nextIdx = (idx + 1) % zone.polygon.length
-                  const pt = zone.polygon[idx]
-                  const next = zone.polygon[nextIdx]
-                  const mLat = (pt[0] + next[0]) / 2
-                  const mLon = (pt[1] + next[1]) / 2
-                  return (
-                    <CircleMarker
-                      key={`side-${zone.id}-${key}`}
-                      center={[mLat, mLon]}
-                      radius={0}
-                      pathOptions={{ opacity: 0, fillOpacity: 0 }}
-                    >
-                      <Tooltip permanent direction="center">
-                        <span style={{
-                          fontSize: 9, fontWeight: 700, color: zone.color,
-                          background: "rgba(255,255,255,0.85)", padding: "1px 4px",
-                          borderRadius: 3, border: `1px solid ${zone.color}`,
-                        }}>
-                          {key}: {label}
-                        </span>
-                      </Tooltip>
-                    </CircleMarker>
-                  )
-                })
+          zone.polygon?.length >= 2
+            ? zone.polygon.map((pt, idx) => {
+                const nextIdx = (idx + 1) % zone.polygon.length
+                const next = zone.polygon[nextIdx]
+                const mLat = (pt[0] + next[0]) / 2
+                const mLon = (pt[1] + next[1]) / 2
+                const key = String.fromCharCode(65 + idx)
+                const sideLabel = zone.sides?.[key]
+                const dist = haversineM(pt[0], pt[1], next[0], next[1])
+                return (
+                  <CircleMarker
+                    key={`side-${zone.id}-${key}`}
+                    center={[mLat, mLon]}
+                    radius={0}
+                    pathOptions={{ opacity: 0, fillOpacity: 0 }}
+                  >
+                    <Tooltip permanent direction="center">
+                      <span style={{
+                        fontSize: 9, fontWeight: 700, color: zone.color,
+                        background: "rgba(255,255,255,0.92)", padding: "1px 5px",
+                        borderRadius: 3, border: `1px solid ${zone.color}`,
+                      }}>
+                        {key}{sideLabel ? `: ${sideLabel}` : ""} ({fmtDist(dist)})
+                      </span>
+                    </Tooltip>
+                  </CircleMarker>
+                )
+              })
             : null
         )}
+
+        {/* ── Zone area label ── */}
+        {(zones ?? []).map((zone) => {
+          if (!zone.polygon || zone.polygon.length < 3) return null
+          const centroid = zoneCentroids[zone.id]
+          if (!centroid) return null
+          const area = polygonAreaM2(zone.polygon)
+          const perim = polygonPerimeterM(zone.polygon)
+          return (
+            <CircleMarker
+              key={`area-${zone.id}`}
+              center={centroid}
+              radius={0}
+              pathOptions={{ opacity: 0, fillOpacity: 0 }}
+            >
+              <Tooltip permanent direction="bottom" offset={[0, 12]}>
+                <span style={{
+                  fontSize: 8, fontWeight: 600, color: "#666",
+                  background: "rgba(255,255,255,0.88)", padding: "1px 4px",
+                  borderRadius: 2,
+                }}>
+                  {area < 1 ? `${Math.round(area * 10000)}cm2` : `${area.toFixed(1)}m2`} | P: {fmtDist(perim)}
+                </span>
+              </Tooltip>
+            </CircleMarker>
+          )
+        })}
 
         {/* ── Sensor position markers (triangles on the side) ── */}
         {sensorMarkers.map((sm) => (
@@ -382,7 +455,7 @@ export default function MapInner({
           )
         })}
 
-        {/* ── Drawing polyline ── */}
+        {/* ── Drawing polyline with measurements ── */}
         {drawPoints.length > 0 && (
           <>
             <Polyline
@@ -395,18 +468,41 @@ export default function MapInner({
               const next = drawPoints[nextIdx]
               const mLat = (pt[0] + next[0]) / 2
               const mLon = (pt[1] + next[1]) / 2
+              const dist = haversineM(pt[0], pt[1], next[0], next[1])
               return (
                 <CircleMarker key={`side-label-${i}`} center={[mLat, mLon]} radius={0} pathOptions={{ opacity: 0, fillOpacity: 0 }}>
                   <Tooltip permanent direction="center">
                     <span style={{
                       fontSize: 10, fontWeight: 700, color: "#0891b2",
-                      background: "rgba(255,255,255,0.9)", padding: "1px 5px",
+                      background: "rgba(255,255,255,0.95)", padding: "1px 6px",
                       borderRadius: 3, border: "1px solid #0891b2",
-                    }}>{String.fromCharCode(65 + i)}</span>
+                    }}>
+                      {String.fromCharCode(65 + i)}: {fmtDist(dist)}
+                    </span>
                   </Tooltip>
                 </CircleMarker>
               )
             })}
+            {/* Total area during drawing */}
+            {drawPoints.length >= 3 && (() => {
+              const area = polygonAreaM2(drawPoints)
+              const perim = polygonPerimeterM(drawPoints)
+              const cLat = drawPoints.reduce((s, p) => s + p[0], 0) / drawPoints.length
+              const cLon = drawPoints.reduce((s, p) => s + p[1], 0) / drawPoints.length
+              return (
+                <CircleMarker center={[cLat, cLon]} radius={0} pathOptions={{ opacity: 0, fillOpacity: 0 }}>
+                  <Tooltip permanent direction="center">
+                    <span style={{
+                      fontSize: 10, fontWeight: 700, color: "#0891b2",
+                      background: "rgba(255,255,255,0.95)", padding: "2px 6px",
+                      borderRadius: 3, border: "1px solid #0891b2",
+                    }}>
+                      {area < 1 ? `${Math.round(area * 10000)}cm2` : `${area.toFixed(1)}m2`} | P: {fmtDist(perim)}
+                    </span>
+                  </Tooltip>
+                </CircleMarker>
+              )
+            })()}
           </>
         )}
 
@@ -436,6 +532,20 @@ export default function MapInner({
           <div className="rounded bg-card/95 backdrop-blur px-2.5 py-1.5 border border-cyan-600/40 shadow-lg">
             <span className="text-[10px] font-mono text-cyan-700 font-semibold">
               DRAW {drawPoints.length > 0 ? `-- ${drawPoints.length} pts` : "-- click map"}
+              {drawPoints.length >= 2 && (() => {
+                let total = 0
+                for (let i = 0; i < drawPoints.length - 1; i++) {
+                  total += haversineM(drawPoints[i][0], drawPoints[i][1], drawPoints[i+1][0], drawPoints[i+1][1])
+                }
+                if (drawPoints.length >= 3) {
+                  total += haversineM(drawPoints[drawPoints.length-1][0], drawPoints[drawPoints.length-1][1], drawPoints[0][0], drawPoints[0][1])
+                }
+                return ` | P: ${fmtDist(total)}`
+              })()}
+              {drawPoints.length >= 3 && (() => {
+                const area = polygonAreaM2(drawPoints)
+                return ` | ${area < 1 ? `${Math.round(area * 10000)}cm2` : `${area.toFixed(1)}m2`}`
+              })()}
             </span>
           </div>
           {drawPoints.length > 0 && (
