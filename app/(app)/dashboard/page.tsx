@@ -13,6 +13,7 @@ import {
   Globe,
   Cable,
   Activity,
+  Smartphone,
 } from "lucide-react"
 import { TopHeader } from "@/components/top-header"
 import { StatusCard } from "@/components/dashboard/status-card"
@@ -78,6 +79,7 @@ export default function DashboardPage() {
     internet: { connected: false, ping_ms: 0 },
     wifi: { connected: false, ssid: "", signal: 0, tx_rate: "", rx_rate: "" },
     ethernet: { connected: false, ip: "" },
+    usb_modem: { connected: false, ip: "", interface: "", type: "USB Modem" },
     ...status.network,
   }
 
@@ -203,6 +205,27 @@ export default function DashboardPage() {
                       <p className="text-xs font-medium text-foreground">Ethernet</p>
                       {network.ethernet.connected ? (
                         <span className="font-mono text-xs text-muted-foreground">{network.ethernet.ip}</span>
+                      ) : (
+                        <p className="text-xs text-muted-foreground">Non connecte</p>
+                      )}
+                    </div>
+                  </div>
+
+                  {/* USB Modem */}
+                  <div className="flex items-center gap-3">
+                    <div className={cn(
+                      "flex h-9 w-9 shrink-0 items-center justify-center rounded-lg",
+                      network.usb_modem.connected ? "bg-primary/10" : "bg-muted"
+                    )}>
+                      <Smartphone className={cn("h-4 w-4", network.usb_modem.connected ? "text-primary" : "text-muted-foreground")} />
+                    </div>
+                    <div>
+                      <p className="text-xs font-medium text-foreground">USB Modem</p>
+                      {network.usb_modem.connected ? (
+                        <div className="flex items-center gap-2">
+                          <span className="font-mono text-xs text-muted-foreground">{network.usb_modem.ip}</span>
+                          <span className="text-[10px] text-muted-foreground">({network.usb_modem.interface})</span>
+                        </div>
                       ) : (
                         <p className="text-xs text-muted-foreground">Non connecte</p>
                       )}

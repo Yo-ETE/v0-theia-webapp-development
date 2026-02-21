@@ -50,6 +50,7 @@ async def status():
             "internet": net_data.get("internet", {"connected": False, "ping_ms": 0}),
             "wifi": net_data.get("wifi", {"connected": False, "ssid": "", "signal": 0}),
             "ethernet": net_data.get("ethernet", {"connected": False, "ip": ""}),
+            "usb_modem": net_data.get("usb_modem", {"connected": False, "ip": "", "interface": ""}),
         },
         "alerts": [],
     }

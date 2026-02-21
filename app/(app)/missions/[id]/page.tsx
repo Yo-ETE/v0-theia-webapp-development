@@ -96,6 +96,7 @@ export default function MissionDetailPage() {
   const [activeTab, setActiveTab] = useState("live")
   const [timelapseMode, setTimelapseMode] = useState(false)
   const [heatmapMode, setHeatmapMode] = useState(false)
+  const [editingZoneId, setEditingZoneId] = useState<string | null>(null)
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const [replayDetections, setReplayDetections] = useState<Record<string, any>>({})
 
@@ -269,6 +270,22 @@ export default function MissionDetailPage() {
     mutateDevices()
   }, [mission, id, mutate, mutateDevices])
 
+  // ── Zone polygon editing ──
+  const updateZonePolygon = useCallback(async (zoneId: string, newPolygon: [number, number][]) => {
+    if (!mission) return
+    const updatedZones = (mission.zones ?? []).map((z) =>
+      z.id === zoneId ? { ...z, polygon: newPolygon } : z
+    )
+    // Optimistic update
+    mutate({ ...mission, zones: updatedZones }, false)
+    try {
+      await updateMission(id, { zones: updatedZones })
+    } catch (err) {
+      console.warn("[THEIA] Failed to update zone polygon:", err)
+      mutate() // rollback
+    }
+  }, [mission, id, mutate])
+
   // ── Status transitions ──
   const changeStatus = useCallback(async (newStatus: string) => {
     if (!mission) return
@@ -438,6 +455,8 @@ export default function MissionDetailPage() {
                   sensorPlaceMode={sensorPlaceMode}
                   onSensorPlace={handleSensorPlace}
                   onMapMove={handleMapMove}
+                  editingZoneId={editingZoneId}
+                  onZonePolygonUpdate={updateZonePolygon}
                 />
               </ErrorBoundary>
 
@@ -472,7 +491,8 @@ export default function MissionDetailPage() {
                 <CardContent className="flex flex-col gap-2">
                   {zones.length === 0 ? (
                     <p className="text-xs text-muted-foreground py-3 text-center">
-                      Click &quot;Draw Zone&quot; then click on the map to define zone polygons
+                      Cliquez &quot;Draw Zone&quot; puis placez les points un par un sur la carte.
+                      Minimum 3 points. Toute forme est possible (L, T, etc.)
                     </p>
                   ) : zones.map((zone) => {
                     const zoneDetRaw = effectiveLiveByZone[zone.id]
@@ -513,6 +533,9 @@ export default function MissionDetailPage() {
                           )}
                         </div>
                         <span className="text-[10px] text-muted-foreground font-mono">{zone.devices.length} TX</span>
+                        <button onClick={() => setEditingZoneId(editingZoneId === zone.id ? null : zone.id)}
+                          className={cn("text-[10px] transition-colors", editingZoneId === zone.id ? "text-warning opacity-100" : "text-muted-foreground hover:text-foreground opacity-0 group-hover:opacity-100")}
+                          title="Edit zone polygon"><Pencil className="h-3 w-3" /></button>
                         <button onClick={() => setAssignDialog(zone.id)}
                           className="text-[10px] text-primary hover:text-primary/80 transition-colors opacity-0 group-hover:opacity-100"
                           title="Assign device"><Plus className="h-3 w-3" /></button>
@@ -869,7 +892,14 @@ export default function MissionDetailPage() {
                               <TableCell>
                                 <div className="flex items-center gap-1">
                                   <Button variant="outline" size="sm" className="h-6 text-[10px] px-2" onClick={async () => {
-                                    await updateDevice(device.id, { mission_id: id })
+                                    // Clean device from any old assignment
+                                    await updateDevice(device.id, {
+                                      mission_id: id,
+                                      zone_id: "",
+                                      zone_label: "",
+                                      side: "",
+                                      sensor_position: 0.5,
+                                    } as Partial<import("@/lib/types").Device>)
                                     const updated = await updateMission(id, { device_count: (mission.device_count ?? 0) + 1 })
                                     mutate(updated, false)
                                     mutateDevices()
@@ -877,10 +907,7 @@ export default function MissionDetailPage() {
                                     <Signal className="mr-1 h-3 w-3" />{isElsewhere ? "Reassign" : "Assign"}
                                   </Button>
                                   {isElsewhere && (
-                                    <Button variant="ghost" size="sm" className="h-6 text-[10px] px-2 text-destructive hover:text-destructive/80" onClick={async () => {
-                                      await updateDevice(device.id, { mission_id: "", zone_id: "", zone_label: "", side: "", sensor_position: 0.5 } as Partial<import("@/lib/types").Device>)
-                                      mutateDevices()
-                                    }}>
+                                    <Button variant="ghost" size="sm" className="h-6 text-[10px] px-2 text-destructive hover:text-destructive/80" onClick={() => unassignDevice(device.id)}>
                                       <Unlink className="mr-1 h-3 w-3" />Remove
                                     </Button>
                                   )}

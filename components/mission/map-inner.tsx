@@ -48,6 +48,8 @@ interface MapInnerProps {
   sensorPlaceMode?: SensorPlaceMode | null
   onSensorPlace?: (zoneId: string, side: string, position: number) => void
   onMapMove?: (lat: number, lon: number, zoom: number) => void
+  editingZoneId?: string | null
+  onZonePolygonUpdate?: (zoneId: string, polygon: [number, number][]) => void
 }
 
 // ── Geodesic measurement helpers ──────────────────────────────
@@ -114,6 +116,8 @@ export default function MapInner({
   sensorPlaceMode = null,
   onSensorPlace,
   onMapMove,
+  editingZoneId = null,
+  onZonePolygonUpdate,
 }: MapInnerProps) {
   const centerLat = Number.isFinite(rawLat) ? rawLat : 48.8566
   const centerLon = Number.isFinite(rawLon) ? rawLon : 2.3522
@@ -353,8 +357,8 @@ export default function MapInner({
   }, [sensorPlaceMode, onSensorPlace, zones])
 
   const finishDrawing = useCallback(() => {
-    if (drawPoints.length >= 2 && onPolygonDrawn) onPolygonDrawn(drawPoints)
-    setDrawPoints([])
+  if (drawPoints.length >= 3 && onPolygonDrawn) onPolygonDrawn(drawPoints)
+  setDrawPoints([])
   }, [drawPoints, onPolygonDrawn])
 
   const cancelDrawing = useCallback(() => setDrawPoints([]), [])
@@ -566,6 +570,116 @@ export default function MapInner({
             </Polygon>
           )
         })}
+
+        {/* ── Zone editing overlay ── */}
+        {editingZoneId && (() => {
+          const zone = (zones ?? []).find(z => z.id === editingZoneId)
+          if (!zone || !zone.polygon?.length || !RL) return null
+          const { Marker: RLMarker } = RL as Record<string, React.ComponentType<Record<string, unknown>>>
+
+          // Dynamic import for L.divIcon
+          const L = (typeof window !== "undefined" && (window as Record<string, unknown>).L) as { divIcon: (opts: Record<string, unknown>) => unknown } | undefined
+          if (!L) return null
+
+          const vertexIcon = L.divIcon({
+            className: "",
+            html: '<div style="width:12px;height:12px;background:#f59e0b;border:2px solid white;border-radius:50%;cursor:grab;box-shadow:0 1px 4px rgba(0,0,0,0.3)"></div>',
+            iconSize: [12, 12],
+            iconAnchor: [6, 6],
+          })
+          const midpointIcon = L.divIcon({
+            className: "",
+            html: '<div style="width:10px;height:10px;background:white;border:2px solid #f59e0b;border-radius:50%;cursor:pointer;box-shadow:0 1px 3px rgba(0,0,0,0.2)"></div>',
+            iconSize: [10, 10],
+            iconAnchor: [5, 5],
+          })
+
+          return (
+            <>
+              {/* Vertex markers - draggable */}
+              {zone.polygon.map((pt, i) => (
+                <RLMarker
+                  key={`edit-v-${i}`}
+                  position={pt}
+                  icon={vertexIcon}
+                  draggable={true}
+                  eventHandlers={{
+                    dragend: (e: { target: { getLatLng: () => { lat: number; lng: number } } }) => {
+                      const pos = e.target.getLatLng()
+                      const newPoly = [...zone.polygon]
+                      newPoly[i] = [pos.lat, pos.lng]
+                      onZonePolygonUpdate?.(zone.id, newPoly)
+                    },
+                    contextmenu: (e: { originalEvent: { preventDefault: () => void } }) => {
+                      e.originalEvent.preventDefault()
+                      if (zone.polygon.length <= 3) return // min 3 points
+                      const newPoly = zone.polygon.filter((_, idx) => idx !== i)
+                      onZonePolygonUpdate?.(zone.id, newPoly)
+                    },
+                  }}
+                >
+                  <Tooltip direction="top" offset={[0, -10]}>
+                    <span style={{ fontSize: 9, fontWeight: 600 }}>
+                      P{i + 1} | {zone.polygon.length <= 3 ? "min 3 pts" : "clic-droit = suppr"}
+                    </span>
+                  </Tooltip>
+                </RLMarker>
+              ))}
+
+              {/* Midpoint markers - click to add vertex */}
+              {zone.polygon.map((pt, i) => {
+                const next = zone.polygon[(i + 1) % zone.polygon.length]
+                const midLat = (pt[0] + next[0]) / 2
+                const midLon = (pt[1] + next[1]) / 2
+                return (
+                  <RLMarker
+                    key={`edit-m-${i}`}
+                    position={[midLat, midLon]}
+                    icon={midpointIcon}
+                    eventHandlers={{
+                      click: () => {
+                        const newPoly = [...zone.polygon]
+                        newPoly.splice(i + 1, 0, [midLat, midLon])
+                        onZonePolygonUpdate?.(zone.id, newPoly)
+                      },
+                    }}
+                  >
+                    <Tooltip direction="top" offset={[0, -8]}>
+                      <span style={{ fontSize: 9 }}>+ ajouter point</span>
+                    </Tooltip>
+                  </RLMarker>
+                )
+              })}
+
+              {/* Side labels with distances */}
+              {zone.polygon.map((pt, i) => {
+                const next = zone.polygon[(i + 1) % zone.polygon.length]
+                const mLat = (pt[0] + next[0]) / 2
+                const mLon = (pt[1] + next[1]) / 2
+                const dist = haversineM(pt[0], pt[1], next[0], next[1])
+                return (
+                  <CircleMarker key={`edit-side-${i}`} center={[mLat, mLon]} radius={0} pathOptions={{ opacity: 0, fillOpacity: 0 }}>
+                    <Tooltip permanent direction="center">
+                      <span style={{
+                        fontSize: 9, fontWeight: 700, color: "#f59e0b",
+                        background: "rgba(255,255,255,0.95)", padding: "1px 5px",
+                        borderRadius: 3, border: "1px solid #f59e0b",
+                      }}>
+                        {String.fromCharCode(65 + i)}: {fmtDist(dist)}
+                      </span>
+                    </Tooltip>
+                  </CircleMarker>
+                )
+              })}
+
+              {/* Outline of editing polygon */}
+              <Polyline
+                positions={[...zone.polygon, zone.polygon[0]]}
+                pathOptions={{ color: "#f59e0b", weight: 2, dashArray: "4 4" }}
+              />
+            </>
+          )
+        })()}
 
         {/* ── Heatmap overlay ── */}
         {heatmapData && (zones ?? []).map((zone) => {
@@ -853,7 +967,7 @@ export default function MapInner({
         <div className="absolute top-2 left-2 z-[500] flex items-center gap-1.5 flex-wrap">
           <div className="rounded bg-card/95 backdrop-blur px-2.5 py-1.5 border border-cyan-600/40 shadow-lg">
             <span className="text-[10px] font-mono text-cyan-700 font-semibold">
-              DRAW {drawPoints.length > 0 ? `-- ${drawPoints.length} pts` : "-- click map"}
+              DRAW {drawPoints.length > 0 ? `-- ${drawPoints.length} pts` : "-- cliquez pour placer les points"}
               {drawPoints.length >= 2 && (() => {
                 let total = 0
                 for (let i = 0; i < drawPoints.length - 1; i++) {
@@ -880,7 +994,7 @@ export default function MapInner({
                 className="rounded bg-card/95 backdrop-blur px-2 py-1 text-[10px] font-medium text-destructive hover:bg-destructive/10 border border-border shadow-sm transition-colors">
                 Cancel
               </button>
-              {drawPoints.length >= 2 && (
+              {drawPoints.length >= 3 && (
                 <button onClick={finishDrawing}
                   className="rounded bg-cyan-600 px-3 py-1.5 text-[10px] font-semibold text-white hover:bg-cyan-500 shadow-sm transition-colors">
                   Validate ({drawPoints.length} pts)
@@ -890,6 +1004,27 @@ export default function MapInner({
           )}
         </div>
       )}
+
+      {/* Zone editing mode overlay */}
+      {editingZoneId && (() => {
+        const zone = (zones ?? []).find(z => z.id === editingZoneId)
+        if (!zone) return null
+        const area = polygonAreaM2(zone.polygon)
+        const perim = polygonPerimeterM(zone.polygon)
+        return (
+          <div className="absolute top-2 left-2 z-[500] rounded bg-amber-950/90 backdrop-blur px-3 py-2 border border-amber-500/40 shadow-lg max-w-xs">
+            <p className="text-[11px] font-semibold text-amber-300 font-mono">
+              EDIT: {zone.label} ({zone.polygon.length} pts)
+            </p>
+            <p className="text-[10px] text-amber-200/70 mt-0.5">
+              {area < 1 ? `${Math.round(area * 10000)}cm2` : `${area.toFixed(1)}m2`} | P: {fmtDist(perim)}
+            </p>
+            <p className="text-[9px] text-amber-200/50 mt-1">
+              Drag = deplacer | Milieu = ajouter | Clic-droit = supprimer
+            </p>
+          </div>
+        )
+      })()}
 
       {/* Sensor placement mode overlay */}
       {sensorPlaceMode && (

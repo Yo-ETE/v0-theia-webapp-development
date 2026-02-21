@@ -71,34 +71,48 @@ class SystemMonitor:
         except Exception:
             pass
 
-        # WiFi info
-        wifi_info: dict = {"connected": False, "ssid": "", "signal": 0, "tx_rate": "", "rx_rate": ""}
-        try:
-            iw = subprocess.run(
-                ["iwconfig", "wlan0"], capture_output=True, text=True, timeout=3
-            )
-            if iw.returncode == 0 and "ESSID:" in iw.stdout:
-                essid = iw.stdout.split('ESSID:"')[1].split('"')[0] if 'ESSID:"' in iw.stdout else ""
-                if essid:
-                    wifi_info["connected"] = True
-                    wifi_info["ssid"] = essid
-                if "Signal level=" in iw.stdout:
-                    sig = iw.stdout.split("Signal level=")[1].split(" ")[0]
-                    wifi_info["signal"] = int(sig)
-                if "Bit Rate=" in iw.stdout:
-                    rate = iw.stdout.split("Bit Rate=")[1].split(" ")[0]
-                    wifi_info["tx_rate"] = f"{rate} Mb/s"
-        except Exception:
-            pass
+        # WiFi info (check all wlan interfaces)
+        wifi_info: dict = {"connected": False, "ssid": "", "signal": 0, "tx_rate": "", "rx_rate": "", "interface": ""}
+        for iface in ips:
+            if not iface.startswith("wlan"):
+                continue
+            try:
+                iw = subprocess.run(
+                    ["iwconfig", iface], capture_output=True, text=True, timeout=3
+                )
+                if iw.returncode == 0 and "ESSID:" in iw.stdout:
+                    essid = iw.stdout.split('ESSID:"')[1].split('"')[0] if 'ESSID:"' in iw.stdout else ""
+                    if essid:
+                        wifi_info["connected"] = True
+                        wifi_info["ssid"] = essid
+                        wifi_info["interface"] = iface
+                    if "Signal level=" in iw.stdout:
+                        sig = iw.stdout.split("Signal level=")[1].split(" ")[0]
+                        try:
+                            wifi_info["signal"] = int(sig)
+                        except ValueError:
+                            pass
+                    if "Bit Rate=" in iw.stdout:
+                        rate = iw.stdout.split("Bit Rate=")[1].split(" ")[0]
+                        wifi_info["tx_rate"] = f"{rate} Mb/s"
+                    if wifi_info["connected"]:
+                        break
+            except Exception:
+                pass
 
-        # Ethernet info
-        eth_info: dict = {"connected": False, "ip": ""}
-        try:
-            if "eth0" in ips:
-                eth_info["connected"] = True
-                eth_info["ip"] = ips["eth0"]
-        except Exception:
-            pass
+        # Ethernet info (check all eth/enp interfaces)
+        eth_info: dict = {"connected": False, "ip": "", "interface": ""}
+        for iface, ip_addr in ips.items():
+            if iface.startswith("eth") or iface.startswith("enp"):
+                eth_info = {"connected": True, "ip": ip_addr, "interface": iface}
+                break
+
+        # USB modem / cellular info (usb0, wwan0, ppp0, etc.)
+        usb_modem: dict = {"connected": False, "ip": "", "interface": "", "type": "USB Modem"}
+        for iface, ip_addr in ips.items():
+            if any(iface.startswith(p) for p in ("usb", "wwan", "ppp", "bnep", "cdc-wdm")):
+                usb_modem = {"connected": True, "ip": ip_addr, "interface": iface, "type": "USB Modem"}
+                break
 
         return {
             "cpu_percent": psutil.cpu_percent(interval=0.5),
@@ -116,6 +130,7 @@ class SystemMonitor:
                 "internet": internet,
                 "wifi": wifi_info,
                 "ethernet": eth_info,
+                "usb_modem": usb_modem,
             },
         }
 
