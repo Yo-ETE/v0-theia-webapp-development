@@ -116,10 +116,17 @@ interface VersionInfo {
   latestCommits?: GitCommit[]
 }
 
+interface GitUpdateStep {
+  name: string
+  status: "pending" | "running" | "done" | "error"
+  output?: string
+}
+
 interface GitUpdateResult {
   status: string
   output: string
   commands?: string[]
+  steps?: GitUpdateStep[]
   commits?: GitCommit[]
 }
 
@@ -1016,35 +1023,74 @@ export default function AdminPage() {
                 <p className="text-sm text-muted-foreground">Chargement...</p>
               )}
 
-              {(updateOutput || updateResult) && (
-                <div className="flex flex-col gap-2 rounded-lg border border-border/50 bg-secondary/5 overflow-hidden">
+              {(updateOutput || updateResult || isUpdating) && (
+                <div className="flex flex-col rounded-lg border border-border/50 bg-[hsl(var(--card))] overflow-hidden">
                   {/* Terminal header */}
                   <div className="flex items-center gap-2 px-3 py-2 bg-secondary/30 border-b border-border/30">
-                    <Terminal className="h-3.5 w-3.5 text-muted-foreground" />
-                    <span className="text-[10px] font-medium text-muted-foreground uppercase tracking-wider">Terminal</span>
+                    <div className="flex gap-1.5">
+                      <div className="h-2.5 w-2.5 rounded-full bg-destructive/60" />
+                      <div className="h-2.5 w-2.5 rounded-full bg-warning/60" />
+                      <div className="h-2.5 w-2.5 rounded-full bg-success/60" />
+                    </div>
+                    <Terminal className="h-3.5 w-3.5 text-muted-foreground ml-1" />
+                    <span className="text-[10px] font-medium font-mono text-muted-foreground">theia@pi ~ update</span>
                     {updateResult?.status === "success" && (
-                      <Badge variant="outline" className="ml-auto h-4 text-[8px] border-success/50 text-success">OK</Badge>
+                      <Badge variant="outline" className="ml-auto h-4 text-[8px] border-success/50 text-success">EXIT 0</Badge>
                     )}
                     {updateResult?.status === "error" && (
-                      <Badge variant="outline" className="ml-auto h-4 text-[8px] border-destructive/50 text-destructive">ERREUR</Badge>
+                      <Badge variant="outline" className="ml-auto h-4 text-[8px] border-destructive/50 text-destructive">EXIT 1</Badge>
+                    )}
+                    {isUpdating && !updateResult && (
+                      <div className="ml-auto flex items-center gap-1.5">
+                        <Loader2 className="h-3 w-3 animate-spin text-primary" />
+                        <span className="text-[9px] text-primary font-mono">RUNNING</span>
+                      </div>
                     )}
                   </div>
 
-                  {/* Commands + output */}
-                  <ScrollArea className="h-48 px-3 pb-3">
-                    {updateResult?.commands && updateResult.commands.length > 0 && (
-                      <div className="flex flex-col gap-0.5 mb-2">
-                        {updateResult.commands.map((cmd, i) => (
-                          <div key={i} className="flex items-center gap-2">
-                            <span className="text-[10px] text-success font-mono font-bold select-none">$</span>
-                            <code className="text-[11px] font-mono text-foreground">{cmd}</code>
+                  {/* Steps + output */}
+                  <ScrollArea className="h-56">
+                    <div className="p-3 flex flex-col gap-2">
+                      {/* Step-by-step process view */}
+                      {updateResult?.steps && updateResult.steps.length > 0 ? (
+                        updateResult.steps.map((step, i) => (
+                          <div key={i} className="flex flex-col">
+                            <div className="flex items-center gap-2">
+                              {step.status === "done" && <CheckCircle2 className="h-3 w-3 text-success shrink-0" />}
+                              {step.status === "error" && <AlertTriangle className="h-3 w-3 text-destructive shrink-0" />}
+                              {step.status === "running" && <Loader2 className="h-3 w-3 animate-spin text-primary shrink-0" />}
+                              {step.status === "pending" && <div className="h-3 w-3 rounded-full border border-border/50 shrink-0" />}
+                              <span className="text-[10px] text-success font-mono font-bold select-none">$</span>
+                              <code className="text-[11px] font-mono text-foreground">{step.name}</code>
+                            </div>
+                            {step.output && (
+                              <pre className="ml-5 mt-0.5 text-[10px] font-mono text-muted-foreground whitespace-pre-wrap leading-relaxed pl-2 border-l border-border/30">{step.output}</pre>
+                            )}
                           </div>
-                        ))}
-                      </div>
-                    )}
-                    {updateOutput && (
-                      <pre className="text-[11px] font-mono text-muted-foreground whitespace-pre-wrap leading-relaxed">{updateOutput}</pre>
-                    )}
+                        ))
+                      ) : updateResult?.commands && updateResult.commands.length > 0 ? (
+                        /* Fallback: simple commands list if no steps */
+                        <div className="flex flex-col gap-0.5">
+                          {updateResult.commands.map((cmd, i) => (
+                            <div key={i} className="flex items-center gap-2">
+                              <CheckCircle2 className="h-3 w-3 text-success shrink-0" />
+                              <span className="text-[10px] text-success font-mono font-bold select-none">$</span>
+                              <code className="text-[11px] font-mono text-foreground">{cmd}</code>
+                            </div>
+                          ))}
+                        </div>
+                      ) : isUpdating ? (
+                        <div className="flex items-center gap-2">
+                          <Loader2 className="h-3 w-3 animate-spin text-primary" />
+                          <span className="text-[11px] font-mono text-muted-foreground">Connexion au serveur...</span>
+                        </div>
+                      ) : null}
+
+                      {/* Raw output */}
+                      {updateOutput && !updateResult?.steps && (
+                        <pre className="text-[10px] font-mono text-muted-foreground whitespace-pre-wrap leading-relaxed mt-1 pt-1 border-t border-border/20">{updateOutput}</pre>
+                      )}
+                    </div>
                   </ScrollArea>
 
                   {/* New commits pulled */}

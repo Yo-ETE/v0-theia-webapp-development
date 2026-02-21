@@ -74,12 +74,21 @@ function getMockResponse(path: string, method: string) {
   if (path === "git/fetch") return { status: "success", message: "Fetched latest from remote" }
   if (path === "git/update") return {
     status: "success",
+    steps: [
+      { name: "git fetch", status: "done", output: "remote: Enumerating objects: 12, done.\nremote: Counting objects: 100% (12/12), done." },
+      { name: "git checkout main", status: "done", output: "Already on 'main'" },
+      { name: "git pull --ff-only", status: "done", output: "Updating abc1234..def5678\nFast-forward\n backend/routers/config.py | 12 +++++++++---\n components/mission/map.tsx | 8 ++++----\n 2 files changed, 13 insertions(+), 7 deletions(-)" },
+      { name: "pip install -r requirements.txt", status: "done", output: "Requirement already satisfied: fastapi>=0.100\nRequirement already satisfied: uvicorn\nInstalling collected packages: websockets\nSuccessfully installed websockets-12.0" },
+      { name: "systemctl restart theia-backend", status: "done", output: "theia-backend.service restarted" },
+    ],
     commands: [
       "git fetch --quiet",
       "git checkout main",
       "git pull --ff-only",
+      "pip install -r requirements.txt",
+      "systemctl restart theia-backend",
     ],
-    output: "Already on 'main'\nUpdating abc1234..def5678\nFast-forward\n backend/routers/config.py | 12 +++++++++---\n frontend/components/map.tsx | 8 ++++----\n 2 files changed, 13 insertions(+), 7 deletions(-)\n[OK] Mise a jour terminee",
+    output: "Already on 'main'\nUpdating abc1234..def5678\nFast-forward\n backend/routers/config.py | 12 +++++++++---\n components/mission/map.tsx | 8 ++++----\n 2 files changed, 13 insertions(+), 7 deletions(-)\n\npip: Successfully installed websockets-12.0\n\n[OK] Mise a jour terminee - services redemarres",
     commits: [
       { hash: "def5678", message: "fix: GPS timeout on cold start", date: "2026-02-20 14:30", author: "Yoann" },
       { hash: "bcd4567", message: "feat: add LoRa channel hopping", date: "2026-02-19 11:15", author: "Yoann" },

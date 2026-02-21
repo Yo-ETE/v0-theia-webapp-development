@@ -26,6 +26,7 @@ import {
 } from "@/components/ui/table"
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { MissionMap } from "@/components/mission/mission-map"
+import { StaticMiniMap } from "@/components/mission/static-mini-map"
 import { FloorManager } from "@/components/mission/floor-manager"
 import { DetectionTimelapse } from "@/components/mission/detection-timelapse"
 import { ErrorBoundary } from "@/components/error-boundary"
@@ -545,17 +546,14 @@ export default function MissionDetailPage() {
               {isFloorMode ? (
                 /* ── Etages / Garage: mini-map + FloorManager ── */
                 <div className="flex flex-col gap-3">
-                  {/* Read-only mini-map for location context */}
-                  <ErrorBoundary>
-                    <MissionMap
-                      key={`minimap-${mission.id}`}
-                      centerLat={mission.center_lat}
-                      centerLon={mission.center_lon}
-                      zoom={mission.zoom ?? 17}
-                      zones={[]}
-                      className="h-[180px] rounded-lg opacity-90 pointer-events-auto"
-                    />
-                  </ErrorBoundary>
+                  {/* Static mini-map for location context (no Leaflet) */}
+                  <StaticMiniMap
+                    lat={mission.center_lat}
+                    lon={mission.center_lon}
+                    zoom={Math.min(mission.zoom ?? 17, 17)}
+                    label={mission.name}
+                    className="h-[160px]"
+                  />
 
                   <Card className="border-border/50 bg-card">
                     <CardContent className="p-4">
