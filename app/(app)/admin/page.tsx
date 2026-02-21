@@ -901,14 +901,14 @@ export default function AdminPage() {
                       <div className="h-2 w-2 rounded-full bg-success animate-pulse" />
                       <p className="text-[10px] text-muted-foreground font-medium uppercase tracking-wider">Version actuelle</p>
                     </div>
-                    <div className="flex items-center gap-3">
-                      <div className="flex items-center gap-1.5 rounded-md bg-secondary/40 px-2 py-1">
-                        <GitBranch className="h-3 w-3 text-primary" />
-                        <span className="font-mono text-xs text-foreground font-medium">{versionInfo.branch}</span>
+                    <div className="flex items-center gap-3 flex-wrap">
+                      <div className="flex items-center gap-1.5 rounded-md bg-secondary/40 px-2.5 py-1.5">
+                        <GitBranch className="h-3.5 w-3.5 text-primary shrink-0" />
+                        <span className="font-mono text-xs text-foreground font-medium">{versionInfo.branch || "---"}</span>
                       </div>
-                      <div className="flex items-center gap-1.5 rounded-md bg-secondary/40 px-2 py-1">
-                        <GitCommitHorizontal className="h-3 w-3 text-primary" />
-                        <span className="font-mono text-xs text-primary font-bold">{versionInfo.commit}</span>
+                      <div className="flex items-center gap-1.5 rounded-md bg-secondary/40 px-2.5 py-1.5">
+                        <GitCommitHorizontal className="h-3.5 w-3.5 text-primary shrink-0" />
+                        <span className="font-mono text-xs text-primary font-bold">{versionInfo.commit || "---"}</span>
                       </div>
                     </div>
                     {(versionInfo.commitMessage || versionInfo.commitDate) && (
@@ -916,9 +916,11 @@ export default function AdminPage() {
                         {versionInfo.commitMessage && (
                           <p className="text-xs text-foreground">{versionInfo.commitMessage}</p>
                         )}
-                        <p className="text-[10px] text-muted-foreground">
-                          {versionInfo.commitAuthor && `${versionInfo.commitAuthor} - `}{versionInfo.commitDate}
-                        </p>
+                        {versionInfo.commitDate && (
+                          <p className="text-[10px] text-muted-foreground">
+                            {versionInfo.commitAuthor && `${versionInfo.commitAuthor} - `}{versionInfo.commitDate}
+                          </p>
+                        )}
                       </div>
                     )}
                   </div>

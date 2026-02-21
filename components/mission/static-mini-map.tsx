@@ -46,18 +46,21 @@ export function StaticMiniMap({ lat, lon, zoom = 16, className, label }: StaticM
     }
   }
 
-  // CSS transform: move the grid so targetPx lands at 50% 50% of the container
-  const tx = `calc(50% - ${targetPxX}px)`
-  const ty = `calc(50% - ${targetPxY}px)`
-
   return (
     <div className={cn("relative rounded-lg overflow-hidden border border-border/50 bg-secondary/20", className)}>
+      {/* 
+        Position the grid so that (targetPxX, targetPxY) lands at the center of the parent.
+        left/top: 50% gives us the parent's center. 
+        translate(-targetPxX, -targetPxY) shifts the grid so the target pixel is at that center.
+      */}
       <div
         className="absolute pointer-events-none"
         style={{
           width: gridW,
           height: gridH,
-          transform: `translate(${tx}, ${ty})`,
+          left: "50%",
+          top: "50%",
+          transform: `translate(-${targetPxX}px, -${targetPxY}px)`,
         }}
       >
         {tiles.map(({ x, y, gx, gy }) => (

@@ -24,8 +24,26 @@ export async function GET(request: NextRequest) {
     const qs = branch ? `?branch=${encodeURIComponent(branch)}` : ""
     const res = await proxyToBackend(`/api/admin/version${qs}`)
     const data = await res.json()
-    return NextResponse.json(data)
-  } catch {
+    console.log("[v0] Backend /api/admin/version raw response:", JSON.stringify(data))
+    // Normalize field names from backend (may use different naming)
+    const normalized = {
+      branch: data.branch || data.current_branch || data.git_branch || "unknown",
+      commit: data.commit || data.current_commit || data.git_commit || data.commit_hash || "unknown",
+      commitDate: data.commitDate || data.commit_date || data.date || null,
+      commitMessage: data.commitMessage || data.commit_message || data.message || null,
+      commitAuthor: data.commitAuthor || data.commit_author || data.author || null,
+      updateAvailable: data.updateAvailable ?? data.update_available ?? false,
+      commitsBehind: data.commitsBehind ?? data.commits_behind ?? 0,
+      latestCommits: (data.latestCommits || data.latest_commits || []).map((c: Record<string, string>) => ({
+        hash: c.hash || c.commit || c.sha || "",
+        message: c.message || c.commit_message || "",
+        date: c.date || c.commit_date || "",
+        author: c.author || c.commit_author || "",
+      })),
+    }
+    return NextResponse.json(normalized)
+  } catch (err) {
+    console.log("[v0] Backend /api/admin/version error:", err)
     return NextResponse.json({
       branch: "unknown",
       commit: "unknown",
