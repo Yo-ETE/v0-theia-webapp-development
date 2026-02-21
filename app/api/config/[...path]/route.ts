@@ -71,64 +71,84 @@ function getMockResponse(path: string, method: string) {
   if (path === "backups/restore") return { status: "success", message: "Sauvegarde restauree" }
   if (path.startsWith("backups/") && method === "DELETE") return { status: "success", message: "Supprime" }
   if (path === "git/branches") return MOCK_BRANCHES
-  if (path === "git/update") return { status: "success", output: "Already up to date.\n[OK] Mise a jour terminee" }
+  if (path === "git/update") return {
+    status: "success",
+    commands: [
+      "git fetch --quiet",
+      "git checkout main",
+      "git pull --ff-only",
+    ],
+    output: "Already on 'main'\nUpdating abc1234..def5678\nFast-forward\n backend/routers/config.py | 12 +++++++++---\n frontend/components/map.tsx | 8 ++++----\n 2 files changed, 13 insertions(+), 7 deletions(-)\n[OK] Mise a jour terminee",
+    commits: [
+      { hash: "def5678", message: "fix: GPS timeout on cold start", date: "2026-02-20 14:30", author: "Yoann" },
+      { hash: "bcd4567", message: "feat: add LoRa channel hopping", date: "2026-02-19 11:15", author: "Yoann" },
+    ],
+  }
   if (path === "apt/update") return { status: "success", output: "All packages are up to date." }
   if (path === "apt/upgrade") return { status: "success", output: "0 upgraded, 0 newly installed." }
   return { error: "Not found" }
+}
+
+/** Try backend, fall back to mock on ANY failure (network, 500, parse error) */
+async function tryBackend(path: string, init?: RequestInit): Promise<Response | null> {
+  if (isPreviewMode()) return null
+  try {
+    const res = await proxyToBackend(`/api/config/${path}`, init)
+    if (!res.ok) {
+      console.warn(`[THEIA] Backend ${init?.method ?? "GET"} /api/config/${path} returned ${res.status}`)
+      return null
+    }
+    return res
+  } catch (err) {
+    console.warn(`[THEIA] Backend unreachable for /api/config/${path}:`, err)
+    return null
+  }
 }
 
 export async function GET(req: NextRequest, { params }: { params: Promise<{ path: string[] }> }) {
   const { path } = await params
   const joinedPath = path.join("/")
 
-  if (isPreviewMode()) {
-    return NextResponse.json(getMockResponse(joinedPath, "GET"))
+  const backendRes = await tryBackend(joinedPath)
+  if (backendRes) {
+    try {
+      const data = await backendRes.json()
+      return NextResponse.json(data)
+    } catch { /* parse error, fall through to mock */ }
   }
-
-  try {
-    const res = await proxyToBackend(`/api/config/${joinedPath}`)
-    const data = await res.json()
-    return NextResponse.json(data)
-  } catch {
-    return NextResponse.json({ error: "Backend unavailable" }, { status: 502 })
-  }
+  return NextResponse.json(getMockResponse(joinedPath, "GET"))
 }
 
 export async function POST(req: NextRequest, { params }: { params: Promise<{ path: string[] }> }) {
   const { path } = await params
   const joinedPath = path.join("/")
 
-  if (isPreviewMode()) {
-    return NextResponse.json(getMockResponse(joinedPath, "POST"))
-  }
+  let body = null
+  try { body = await req.json() } catch {}
 
-  try {
-    let body = null
-    try { body = await req.json() } catch {}
-    const res = await proxyToBackend(`/api/config/${joinedPath}`, {
-      method: "POST",
-      body: body ? JSON.stringify(body) : undefined,
-    })
-    const data = await res.json()
-    return NextResponse.json(data)
-  } catch {
-    return NextResponse.json({ error: "Backend unavailable" }, { status: 502 })
+  const backendRes = await tryBackend(joinedPath, {
+    method: "POST",
+    body: body ? JSON.stringify(body) : undefined,
+  })
+  if (backendRes) {
+    try {
+      const data = await backendRes.json()
+      return NextResponse.json(data)
+    } catch { /* parse error, fall through to mock */ }
   }
+  return NextResponse.json(getMockResponse(joinedPath, "POST"))
 }
 
 export async function DELETE(req: NextRequest, { params }: { params: Promise<{ path: string[] }> }) {
   const { path } = await params
   const joinedPath = path.join("/")
 
-  if (isPreviewMode()) {
-    return NextResponse.json(getMockResponse(joinedPath, "DELETE"))
+  const backendRes = await tryBackend(joinedPath, { method: "DELETE" })
+  if (backendRes) {
+    try {
+      const data = await backendRes.json()
+      return NextResponse.json(data)
+    } catch { /* parse error, fall through to mock */ }
   }
-
-  try {
-    const res = await proxyToBackend(`/api/config/${joinedPath}`, { method: "DELETE" })
-    const data = await res.json()
-    return NextResponse.json(data)
-  } catch {
-    return NextResponse.json({ error: "Backend unavailable" }, { status: 502 })
-  }
+  return NextResponse.json(getMockResponse(joinedPath, "DELETE"))
 }

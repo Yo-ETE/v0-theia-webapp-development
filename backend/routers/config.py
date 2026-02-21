@@ -445,7 +445,20 @@ async def git_update(body: dict = None):
 
         def _update():
             lines = []
+            commands = []
+
+            # Get current commit before update
+            old_hash = subprocess.run(
+                ["git", "rev-parse", "--short", "HEAD"],
+                capture_output=True, text=True, cwd=repo_dir, timeout=5
+            ).stdout.strip()
+
+            commands.append("git fetch --quiet")
+            subprocess.run(["git", "fetch", "--quiet"], capture_output=True, text=True, cwd=repo_dir, timeout=15)
+
             if branch:
+                cmd = f"git checkout {branch}"
+                commands.append(cmd)
                 r = subprocess.run(
                     ["git", "checkout", branch],
                     capture_output=True, text=True, cwd=repo_dir, timeout=15
@@ -454,6 +467,7 @@ async def git_update(body: dict = None):
                 if r.returncode != 0:
                     lines.append(r.stderr.strip())
 
+            commands.append("git pull --ff-only")
             r = subprocess.run(
                 ["git", "pull", "--ff-only"],
                 capture_output=True, text=True, cwd=repo_dir, timeout=30
@@ -461,23 +475,44 @@ async def git_update(body: dict = None):
             lines.append(r.stdout.strip())
             if r.returncode != 0:
                 lines.append(r.stderr.strip())
-                return {"status": "error", "output": "\n".join(lines)}
+                return {"status": "error", "output": "\n".join(lines), "commands": commands, "commits": []}
+
+            # Get new commits since old hash
+            commits = []
+            try:
+                log_result = subprocess.run(
+                    ["git", "log", f"{old_hash}..HEAD", "--pretty=format:%h|%s|%ai|%an", "--max-count=20"],
+                    capture_output=True, text=True, cwd=repo_dir, timeout=5
+                )
+                if log_result.returncode == 0 and log_result.stdout.strip():
+                    for line in log_result.stdout.strip().split("\n"):
+                        parts = line.split("|", 3)
+                        if len(parts) >= 4:
+                            commits.append({
+                                "hash": parts[0],
+                                "message": parts[1],
+                                "date": parts[2][:16],
+                                "author": parts[3],
+                            })
+            except Exception:
+                pass
 
             # Run install if exists
             install = os.path.join(repo_dir, "install.sh")
             if os.path.exists(install):
+                commands.append("sudo bash install.sh")
                 r2 = subprocess.run(
                     ["sudo", "bash", "install.sh"],
                     capture_output=True, text=True, cwd=repo_dir, timeout=300
                 )
                 lines.append(r2.stdout.strip()[-500:] if r2.stdout else "")
 
-            return {"status": "success", "output": "\n".join(lines)}
+            return {"status": "success", "output": "\n".join(lines), "commands": commands, "commits": commits}
 
         data = await asyncio.get_event_loop().run_in_executor(None, _update)
         return data
     except Exception as e:
-        return {"status": "error", "output": str(e)}
+        return {"status": "error", "output": str(e), "commands": [], "commits": []}
 
 
 # ── System ────────────────────────────────────────────────────────

@@ -7,8 +7,12 @@ export async function GET() {
       branch: "main",
       commit: "abc1234",
       commitDate: "2026-02-20 14:30:00 +0100",
-      updateAvailable: false,
-      commitsBehind: 0,
+      updateAvailable: true,
+      commitsBehind: 2,
+      latestCommits: [
+        { hash: "def5678", message: "fix: GPS timeout on cold start", date: "2026-02-20 14:30", author: "Yoann" },
+        { hash: "bcd4567", message: "feat: add LoRa channel hopping", date: "2026-02-19 11:15", author: "Yoann" },
+      ],
     })
   }
   try {

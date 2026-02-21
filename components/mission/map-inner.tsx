@@ -651,12 +651,14 @@ export default function MapInner({
                 )
               })}
 
-              {/* Side labels with distances */}
+              {/* Side labels with distances and custom facade names */}
               {zone.polygon.map((pt, i) => {
                 const next = zone.polygon[(i + 1) % zone.polygon.length]
                 const mLat = (pt[0] + next[0]) / 2
                 const mLon = (pt[1] + next[1]) / 2
                 const dist = haversineM(pt[0], pt[1], next[0], next[1])
+                const sideKey = String.fromCharCode(65 + i)
+                const customName = zone.sides?.[sideKey]
                 return (
                   <CircleMarker key={`edit-side-${i}`} center={[mLat, mLon]} radius={0} pathOptions={{ opacity: 0, fillOpacity: 0 }}>
                     <Tooltip permanent direction="center">
@@ -665,7 +667,7 @@ export default function MapInner({
                         background: "rgba(255,255,255,0.95)", padding: "1px 5px",
                         borderRadius: 3, border: "1px solid #f59e0b",
                       }}>
-                        {String.fromCharCode(65 + i)}: {fmtDist(dist)}
+                        {sideKey}{customName ? ` (${customName})` : ""}: {fmtDist(dist)}
                       </span>
                     </Tooltip>
                   </CircleMarker>

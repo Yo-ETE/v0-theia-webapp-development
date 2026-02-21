@@ -41,6 +41,8 @@ const ZONE_TYPES = [
   { value: "perimeter", label: "Perimeter" },
   { value: "interior", label: "Interior" },
   { value: "roof", label: "Roof" },
+  { value: "floor", label: "Floor / Etage" },
+  { value: "section", label: "Section / Troncon" },
   { value: "custom", label: "Custom" },
 ] as const
 
@@ -75,6 +77,15 @@ export default function MissionDetailPage() {
   const [zoneName, setZoneName] = useState("")
   const [zoneType, setZoneType] = useState<string>("facade")
   const [sideLabels, setSideLabels] = useState<Record<string, string>>({})
+  const [manualZoneDialog, setManualZoneDialog] = useState(false)
+  const [manualZoneName, setManualZoneName] = useState("")
+  const [manualZoneType, setManualZoneType] = useState<string>("floor")
+  const [manualSideCount, setManualSideCount] = useState(4)
+  const [manualSideLabels, setManualSideLabels] = useState<Record<string, string>>({})
+  const [editZoneDialog, setEditZoneDialog] = useState<string | null>(null) // zone id being edited
+  const [editZoneName, setEditZoneName] = useState("")
+  const [editZoneType, setEditZoneType] = useState<string>("facade")
+  const [editSideLabels, setEditSideLabels] = useState<Record<string, string>>({})
   const [assignDialog, setAssignDialog] = useState<string | null>(null)
   const [assignStep, setAssignStep] = useState<{ deviceId: string; deviceName: string; side?: string } | null>(null)
   const [sensorPlaceMode, setSensorPlaceMode] = useState<{
@@ -273,9 +284,20 @@ export default function MissionDetailPage() {
   // ── Zone polygon editing ──
   const updateZonePolygon = useCallback(async (zoneId: string, newPolygon: [number, number][]) => {
     if (!mission) return
-    const updatedZones = (mission.zones ?? []).map((z) =>
-      z.id === zoneId ? { ...z, polygon: newPolygon } : z
-    )
+    const updatedZones = (mission.zones ?? []).map((z) => {
+      if (z.id !== zoneId) return z
+      // Sync sides map: add keys for new points, keep existing labels
+      const sides: Record<string, string> = { ...(z.sides ?? {}) }
+      for (let i = 0; i < newPolygon.length; i++) {
+        const key = String.fromCharCode(65 + i)
+        if (!(key in sides)) sides[key] = ""
+      }
+      // Remove keys beyond polygon length
+      for (const key of Object.keys(sides)) {
+        if (key.charCodeAt(0) - 65 >= newPolygon.length) delete sides[key]
+      }
+      return { ...z, polygon: newPolygon, sides }
+    })
     // Optimistic update
     mutate({ ...mission, zones: updatedZones }, false)
     try {
@@ -285,6 +307,107 @@ export default function MissionDetailPage() {
       mutate() // rollback
     }
   }, [mission, id, mutate])
+
+  // ── Zone properties edit ──
+  const openEditZone = useCallback((zoneId: string) => {
+    const zone = (mission?.zones ?? []).find((z) => z.id === zoneId)
+    if (!zone) return
+    setEditZoneName(zone.label)
+    setEditZoneType(zone.type)
+    // Build side labels map with all sides (A, B, C, ...)
+    const labels: Record<string, string> = {}
+    for (let i = 0; i < zone.polygon.length; i++) {
+      const key = String.fromCharCode(65 + i)
+      labels[key] = zone.sides?.[key] || ""
+    }
+    setEditSideLabels(labels)
+    setEditZoneDialog(zoneId)
+  }, [mission])
+
+  const saveEditZone = useCallback(async () => {
+    if (!mission || !editZoneDialog || !editZoneName.trim()) return
+    const zones = (mission.zones ?? []).map((z) =>
+      z.id === editZoneDialog
+        ? {
+            ...z,
+            label: editZoneName.trim(),
+            name: editZoneName.trim().toLowerCase().replace(/\s+/g, "-"),
+            type: editZoneType as Zone["type"],
+            sides: editSideLabels,
+          }
+        : z
+    )
+    try {
+      const updated = await updateMission(id, { zones })
+      mutate(updated, false)
+    } catch (err) {
+      console.warn("[THEIA] Failed to update zone:", err)
+    }
+    setEditZoneDialog(null)
+  }, [mission, editZoneDialog, editZoneName, editZoneType, editSideLabels, id, mutate])
+
+  // ── Manual zone creation (for vertical / underground) ──
+  const openManualZoneDialog = useCallback(() => {
+    const env = mission?.environment ?? "horizontal"
+    setManualZoneName(env === "vertical" ? "Etage 0" : "Section A")
+    setManualZoneType(env === "vertical" ? "floor" : "section")
+    setManualSideCount(4)
+    const labels: Record<string, string> = {}
+    for (let i = 0; i < 4; i++) {
+      labels[String.fromCharCode(65 + i)] = ""
+    }
+    setManualSideLabels(labels)
+    setManualZoneDialog(true)
+  }, [mission])
+
+  const updateManualSideCount = useCallback((count: number) => {
+    const n = Math.max(2, Math.min(26, count))
+    setManualSideCount(n)
+    const labels: Record<string, string> = {}
+    for (let i = 0; i < n; i++) {
+      const key = String.fromCharCode(65 + i)
+      labels[key] = manualSideLabels[key] || ""
+    }
+    setManualSideLabels(labels)
+  }, [manualSideLabels])
+
+  const saveManualZone = useCallback(async () => {
+    if (!mission || !manualZoneName.trim()) return
+    const zones = mission.zones ?? []
+    // Create a small placeholder polygon near the mission center
+    // For vertical/underground, this is just a reference point
+    const lat = mission.center_lat
+    const lon = mission.center_lon
+    const offset = 0.00005 * (zones.length + 1) // Small offset per zone
+    const polygon: [number, number][] = []
+    const n = manualSideCount
+    for (let i = 0; i < n; i++) {
+      const angle = (2 * Math.PI * i) / n - Math.PI / 2
+      polygon.push([
+        lat + Math.sin(angle) * offset,
+        lon + Math.cos(angle) * offset,
+      ])
+    }
+    const newZone: Zone = {
+      id: `zone-${Date.now()}-${Math.random().toString(36).slice(2, 5)}`,
+      mission_id: id,
+      name: manualZoneName.trim().toLowerCase().replace(/\s+/g, "-"),
+      label: manualZoneName.trim(),
+      type: manualZoneType as Zone["type"],
+      polygon,
+      color: ZONE_COLORS[zones.length % ZONE_COLORS.length],
+      devices: [],
+      sides: manualSideLabels,
+      floor: manualZoneType === "floor" ? zones.filter((z) => z.type === "floor").length : undefined,
+    }
+    try {
+      const updated = await updateMission(id, { zones: [...zones, newZone] })
+      mutate(updated, false)
+    } catch (err) {
+      console.warn("[THEIA] Failed to create manual zone:", err)
+    }
+    setManualZoneDialog(false)
+  }, [mission, manualZoneName, manualZoneType, manualSideCount, manualSideLabels, id, mutate])
 
   // ── Status transitions ──
   const changeStatus = useCallback(async (newStatus: string) => {
@@ -511,7 +634,14 @@ export default function MissionDetailPage() {
                         <div className="h-3 w-3 rounded-sm shrink-0" style={{ backgroundColor: zone.color }} />
                         <div className="flex-1 min-w-0">
                           <p className="text-xs font-medium text-foreground truncate">{zone.label}</p>
-                          <p className="text-[10px] text-muted-foreground">{zone.type}</p>
+                          <div className="flex items-center gap-1 flex-wrap">
+                            <span className="text-[10px] text-muted-foreground">{zone.type}</span>
+                            {zone.sides && Object.entries(zone.sides).filter(([, v]) => v).length > 0 && (
+                              <span className="text-[9px] font-mono text-primary">
+                                [{Object.entries(zone.sides).filter(([, v]) => v).map(([k, v]) => `${k}:${v}`).join(" ")}]
+                              </span>
+                            )}
+                          </div>
                           {zoneDetection && (
                             <div className="flex items-center gap-2 mt-0.5">
                               {zoneDetection.presence ? (
@@ -533,6 +663,9 @@ export default function MissionDetailPage() {
                           )}
                         </div>
                         <span className="text-[10px] text-muted-foreground font-mono">{zone.devices.length} TX</span>
+                        <button onClick={() => openEditZone(zone.id)}
+                          className="text-[10px] text-muted-foreground hover:text-foreground transition-colors opacity-0 group-hover:opacity-100"
+                          title="Edit zone name & sides"><MapPin className="h-3 w-3" /></button>
                         <button onClick={() => setEditingZoneId(editingZoneId === zone.id ? null : zone.id)}
                           className={cn("text-[10px] transition-colors", editingZoneId === zone.id ? "text-warning opacity-100" : "text-muted-foreground hover:text-foreground opacity-0 group-hover:opacity-100")}
                           title="Edit zone polygon"><Pencil className="h-3 w-3" /></button>
@@ -980,6 +1113,67 @@ export default function MissionDetailPage() {
           <DialogFooter>
             <Button variant="ghost" size="sm" onClick={() => setZoneDialog(false)}>Cancel</Button>
             <Button size="sm" onClick={saveZone} disabled={!zoneName.trim()}>Save Zone</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Zone edit dialog */}
+      <Dialog open={!!editZoneDialog} onOpenChange={() => setEditZoneDialog(null)}>
+        <DialogContent className="sm:max-w-md z-[10000]">
+          <DialogHeader>
+            <DialogTitle className="text-sm">Edit Zone</DialogTitle>
+            <DialogDescription className="text-xs text-muted-foreground">
+              Modify zone name, type, and facade/side labels.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="flex flex-col gap-4 py-2">
+            <div className="flex flex-col gap-2">
+              <Label className="text-xs text-muted-foreground">Zone Name</Label>
+              <Input
+                placeholder="e.g. Facade Nord"
+                value={editZoneName}
+                onChange={(e) => setEditZoneName(e.target.value)}
+                className="bg-input/50 border-border text-sm"
+                autoFocus
+              />
+            </div>
+            <div className="flex flex-col gap-2">
+              <Label className="text-xs text-muted-foreground">Zone Type</Label>
+              <Select value={editZoneType} onValueChange={setEditZoneType}>
+                <SelectTrigger className="bg-input/50 border-border text-sm"><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  {ZONE_TYPES.map((t) => (<SelectItem key={t.value} value={t.value}>{t.label}</SelectItem>))}
+                </SelectContent>
+              </Select>
+            </div>
+            {Object.keys(editSideLabels).length > 0 && (
+              <div className="flex flex-col gap-2">
+                <Label className="text-xs text-muted-foreground">
+                  Side / Facade Labels ({Object.keys(editSideLabels).length} sides)
+                </Label>
+                <p className="text-[10px] text-muted-foreground">
+                  Nommez chaque cote du polygone (ex: Facade Nord, Mur Garage, Entree...).
+                  Ces noms apparaissent sur la carte et dans les detections.
+                </p>
+                <div className="grid grid-cols-2 gap-2">
+                  {Object.keys(editSideLabels).sort().map((key) => (
+                    <div key={key} className="flex items-center gap-2">
+                      <span className="text-xs font-mono font-bold text-cyan-600 w-4 shrink-0">{key}</span>
+                      <Input
+                        placeholder={`Side ${key}`}
+                        value={editSideLabels[key]}
+                        onChange={(e) => setEditSideLabels((prev) => ({ ...prev, [key]: e.target.value }))}
+                        className="bg-input/50 border-border text-xs h-7"
+                      />
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+          </div>
+          <DialogFooter>
+            <Button variant="ghost" size="sm" onClick={() => setEditZoneDialog(null)}>Cancel</Button>
+            <Button size="sm" onClick={saveEditZone} disabled={!editZoneName.trim()}>Save</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>

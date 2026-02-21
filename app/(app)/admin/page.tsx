@@ -100,12 +100,27 @@ interface TailscaleStatus {
   peers: TailscalePeer[]
 }
 
+interface GitCommit {
+  hash: string
+  message: string
+  date: string
+  author: string
+}
+
 interface VersionInfo {
   branch: string
   commit: string
   commitDate: string | null
   updateAvailable: boolean
   commitsBehind: number
+  latestCommits?: GitCommit[]
+}
+
+interface GitUpdateResult {
+  status: string
+  output: string
+  commands?: string[]
+  commits?: GitCommit[]
 }
 
 interface GitBranches {
@@ -344,16 +359,21 @@ export default function AdminPage() {
     finally { setIsFetchingBranches(false) }
   }, [selectedBranch])
 
+  const [updateResult, setUpdateResult] = useState<GitUpdateResult | null>(null)
+
   const handleUpdate = async () => {
     const branchToUse = selectedBranch || gitBranches?.current || ""
     if (!confirm(`Mettre a jour THEIA depuis la branche "${branchToUse}" ? Les services seront redemarres.`)) return
     setIsUpdating(true)
     setUpdateOutput(null)
+    setUpdateResult(null)
     try {
-      const result = await api.post("git/update", { branch: branchToUse })
-      setUpdateOutput(result.output || result.message)
+      const result: GitUpdateResult = await api.post("git/update", { branch: branchToUse })
+      setUpdateOutput(result.output || "")
+      setUpdateResult(result)
       if (result.status === "success") {
         setSystemMessage("Mise a jour terminee. Redemarrage des services...")
+        await fetchVersionInfo()
         setTimeout(async () => {
           try {
             await fetch("/api/admin/restart-services", { method: "POST" })
@@ -897,12 +917,32 @@ export default function AdminPage() {
                   </div>
 
                   {versionInfo.updateAvailable && (
-                    <Alert className="border-success/50 bg-success/10">
-                      <Download className="h-4 w-4 text-success" />
-                      <AlertDescription className="text-success text-xs">
-                        {versionInfo.commitsBehind} commit(s) disponible(s)
-                      </AlertDescription>
-                    </Alert>
+                    <div className="flex flex-col gap-2">
+                      <Alert className="border-success/50 bg-success/10">
+                        <Download className="h-4 w-4 text-success" />
+                        <AlertDescription className="text-success text-xs">
+                          {versionInfo.commitsBehind} commit(s) disponible(s)
+                        </AlertDescription>
+                      </Alert>
+                      {versionInfo.latestCommits && versionInfo.latestCommits.length > 0 && (
+                        <div className="rounded-md border border-border/50 bg-secondary/20 overflow-hidden">
+                          <p className="text-[10px] text-muted-foreground font-medium uppercase tracking-wider px-3 pt-2 pb-1">
+                            Nouveaux commits
+                          </p>
+                          <div className="flex flex-col">
+                            {versionInfo.latestCommits.map((c) => (
+                              <div key={c.hash} className="flex items-start gap-2 px-3 py-1.5 border-t border-border/30">
+                                <span className="font-mono text-[10px] text-primary shrink-0 mt-0.5">{c.hash.slice(0, 7)}</span>
+                                <div className="flex-1 min-w-0">
+                                  <p className="text-xs text-foreground truncate">{c.message}</p>
+                                  <p className="text-[10px] text-muted-foreground">{c.author} - {c.date}</p>
+                                </div>
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      )}
+                    </div>
                   )}
 
                   <div className="flex gap-2">
@@ -920,10 +960,50 @@ export default function AdminPage() {
                 <p className="text-sm text-muted-foreground">Chargement...</p>
               )}
 
-              {updateOutput && (
-                <ScrollArea className="h-32 rounded-md border border-border/50 bg-secondary/30 p-3">
-                  <pre className="text-xs font-mono text-muted-foreground whitespace-pre-wrap">{updateOutput}</pre>
-                </ScrollArea>
+              {(updateOutput || updateResult) && (
+                <div className="flex flex-col gap-2">
+                  {/* Commands executed */}
+                  {updateResult?.commands && updateResult.commands.length > 0 && (
+                    <div className="rounded-md border border-border/50 bg-secondary/30 p-3">
+                      <p className="text-[10px] text-muted-foreground font-medium uppercase tracking-wider mb-1.5">Commandes executees</p>
+                      <div className="flex flex-col gap-1">
+                        {updateResult.commands.map((cmd, i) => (
+                          <div key={i} className="flex items-center gap-2">
+                            <span className="text-[10px] text-success font-mono">$</span>
+                            <code className="text-xs font-mono text-foreground">{cmd}</code>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Git output */}
+                  {updateOutput && (
+                    <ScrollArea className="h-32 rounded-md border border-border/50 bg-secondary/30 p-3">
+                      <pre className="text-xs font-mono text-muted-foreground whitespace-pre-wrap">{updateOutput}</pre>
+                    </ScrollArea>
+                  )}
+
+                  {/* New commits pulled */}
+                  {updateResult?.commits && updateResult.commits.length > 0 && (
+                    <div className="rounded-md border border-success/30 bg-success/5 overflow-hidden">
+                      <p className="text-[10px] text-success font-medium uppercase tracking-wider px-3 pt-2 pb-1">
+                        Commits integres
+                      </p>
+                      <div className="flex flex-col">
+                        {updateResult.commits.map((c) => (
+                          <div key={c.hash} className="flex items-start gap-2 px-3 py-1.5 border-t border-success/20">
+                            <span className="font-mono text-[10px] text-success shrink-0 mt-0.5">{c.hash.slice(0, 7)}</span>
+                            <div className="flex-1 min-w-0">
+                              <p className="text-xs text-foreground truncate">{c.message}</p>
+                              <p className="text-[10px] text-muted-foreground">{c.author} - {c.date}</p>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                </div>
               )}
             </CardContent>
           </Card>
