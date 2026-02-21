@@ -543,23 +543,37 @@ export default function MissionDetailPage() {
           <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">
             <div className="lg:col-span-2">
               {isFloorMode ? (
-                /* ── Vertical / Underground: FloorManager ── */
-                <Card className="border-border/50 bg-card">
-                  <CardContent className="p-4">
-                    <FloorManager
-                      missionId={id}
-                      mode={floorMode}
-                      floors={missionFloors}
-                      devices={missionDevices}
-                      allDevices={allDevices ?? []}
-                      events={eventList}
-                      liveDetections={liveDetections}
-                      onFloorsChange={handleFloorsChange}
-                      onDeviceAssign={handleFloorDeviceAssign}
-                      onDeviceUnassign={handleFloorDeviceUnassign}
+                /* ── Etages / Garage: mini-map + FloorManager ── */
+                <div className="flex flex-col gap-3">
+                  {/* Read-only mini-map for location context */}
+                  <ErrorBoundary>
+                    <MissionMap
+                      key={`minimap-${mission.id}`}
+                      centerLat={mission.center_lat}
+                      centerLon={mission.center_lon}
+                      zoom={mission.zoom ?? 17}
+                      zones={[]}
+                      className="h-[180px] rounded-lg opacity-90 pointer-events-auto"
                     />
-                  </CardContent>
-                </Card>
+                  </ErrorBoundary>
+
+                  <Card className="border-border/50 bg-card">
+                    <CardContent className="p-4">
+                      <FloorManager
+                        missionId={id}
+                        mode={floorMode}
+                        floors={missionFloors}
+                        devices={missionDevices}
+                        allDevices={allDevices ?? []}
+                        events={eventList}
+                        liveDetections={liveDetections}
+                        onFloorsChange={handleFloorsChange}
+                        onDeviceAssign={handleFloorDeviceAssign}
+                        onDeviceUnassign={handleFloorDeviceUnassign}
+                      />
+                    </CardContent>
+                  </Card>
+                </div>
               ) : (
                 /* ── Horizontal: Map ── */
                 <>

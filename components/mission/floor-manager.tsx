@@ -354,27 +354,37 @@ export function FloorManager({
                     <div
                       key={floor.level}
                       className={cn(
-                        "w-48 border-x-2 border-b flex items-center gap-2 px-3 py-2 transition-all cursor-pointer hover:bg-primary/5",
+                        "w-56 border-x-2 border-b flex items-center gap-2 px-3 py-2 transition-all cursor-pointer hover:bg-primary/5 relative",
                         hasLive ? "bg-success/10 border-success/30" : "bg-card border-border/40",
                         idx === 0 && "border-t-0"
                       )}
                       style={{ borderLeftColor: color, borderRightColor: color }}
                       onClick={() => { setAssignDialog(floor.level); setSelectedDevice("") }}
                     >
+                      {/* Detection glow effect */}
+                      {hasLive && (
+                        <div className="absolute inset-0 bg-success/5 animate-pulse pointer-events-none rounded-sm" />
+                      )}
                       <div
-                        className="h-4 w-4 rounded-sm flex items-center justify-center text-[9px] font-bold text-white shrink-0"
+                        className="h-5 w-5 rounded-sm flex items-center justify-center text-[9px] font-bold text-white shrink-0 relative z-10"
                         style={{ backgroundColor: color }}
                       >
                         {floor.level}
                       </div>
-                      <div className="flex-1 min-w-0">
+                      <div className="flex-1 min-w-0 relative z-10">
                         <p className="text-[10px] font-medium text-foreground truncate">{floor.label}</p>
                         <p className="text-[8px] text-muted-foreground">
                           {floorDevices.length} TX
+                          {hasLive && live.latest && typeof live.latest.distance === "number"
+                            ? ` | ${live.latest.distance.toFixed(1)}m`
+                            : ""}
                         </p>
                       </div>
                       {hasLive && (
-                        <Activity className="h-3 w-3 text-success animate-pulse shrink-0" />
+                        <div className="flex items-center gap-1 relative z-10">
+                          <span className="text-[9px] font-bold text-success">{live.count}</span>
+                          <Activity className="h-3 w-3 text-success animate-pulse shrink-0" />
+                        </div>
                       )}
                     </div>
                   )
@@ -395,22 +405,31 @@ export function FloorManager({
                     <div
                       key={floor.level}
                       className={cn(
-                        "flex-1 min-w-[80px] max-w-[160px] border-t-2 border-r flex flex-col items-center gap-1 px-2 py-3 transition-all cursor-pointer hover:bg-primary/5",
+                        "flex-1 min-w-[100px] max-w-[180px] border-t-3 border-r flex flex-col items-center gap-1 px-3 py-3 transition-all cursor-pointer hover:bg-primary/5 relative",
                         hasLive ? "bg-success/10 border-success/30" : "bg-card border-border/40",
                       )}
                       style={{ borderTopColor: color }}
                       onClick={() => { setAssignDialog(floor.level); setSelectedDevice("") }}
                     >
+                      {hasLive && (
+                        <div className="absolute inset-0 bg-success/5 animate-pulse pointer-events-none" />
+                      )}
                       <div
-                        className="h-5 w-5 rounded flex items-center justify-center text-[9px] font-bold text-white shrink-0"
+                        className="h-6 w-6 rounded flex items-center justify-center text-[10px] font-bold text-white shrink-0 relative z-10"
                         style={{ backgroundColor: color }}
                       >
                         {floor.level}
                       </div>
-                      <p className="text-[10px] font-medium text-foreground text-center truncate w-full">{floor.label}</p>
-                      <p className="text-[8px] text-muted-foreground">{floorDevices.length} TX</p>
+                      <p className="text-[10px] font-medium text-foreground text-center truncate w-full relative z-10">{floor.label}</p>
+                      <p className="text-[8px] text-muted-foreground relative z-10">{floorDevices.length} TX</p>
                       {hasLive && (
-                        <Activity className="h-3 w-3 text-success animate-pulse" />
+                        <div className="flex items-center gap-1 relative z-10">
+                          <span className="text-[9px] font-bold text-success">{live.count}</span>
+                          <Activity className="h-3 w-3 text-success animate-pulse" />
+                        </div>
+                      )}
+                      {hasLive && live.latest && typeof live.latest.distance === "number" && (
+                        <p className="text-[8px] font-mono text-success relative z-10">{live.latest.distance.toFixed(1)}m</p>
                       )}
                     </div>
                   )
