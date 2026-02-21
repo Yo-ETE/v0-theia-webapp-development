@@ -124,6 +124,7 @@ export default function MapInner({
   const [RL, setRL] = useState<Record<string, any> | null>(null)
   const [drawPoints, setDrawPoints] = useState<[number, number][]>([])
   const mapRef = useRef<unknown>(null)
+  const [mapKey, setMapKey] = useState(0)
 
   // ── Detection state management with fade-out ──
   // green = actively receiving presence events
@@ -216,6 +217,16 @@ export default function MapInner({
       document.head.appendChild(link)
     }
     import("react-leaflet").then((mod) => setRL(mod)).catch(() => {})
+    return () => {
+      // Cleanup Leaflet map instance on unmount to prevent "already initialized" error
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const map = mapRef.current as any
+      if (map && typeof map.remove === "function") {
+        try { map.remove() } catch { /* ignore */ }
+      }
+      mapRef.current = null
+      setMapKey((k) => k + 1)
+    }
   }, [])
 
   // Keep map view synced
