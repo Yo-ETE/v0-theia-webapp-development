@@ -26,6 +26,10 @@ export class ErrorBoundary extends Component<Props, State> {
     console.error("[v0] ErrorBoundary caught:", error.message, errorInfo.componentStack)
   }
 
+  handleRetry = () => {
+    this.setState({ hasError: false, error: null })
+  }
+
   render() {
     if (this.state.hasError) {
       return (
@@ -36,6 +40,12 @@ export class ErrorBoundary extends Component<Props, State> {
               <p className="mt-1 text-[10px] text-muted-foreground max-w-xs truncate">
                 {this.state.error?.message}
               </p>
+              <button
+                onClick={this.handleRetry}
+                className="mt-2 rounded bg-primary px-3 py-1 text-xs text-primary-foreground hover:bg-primary/90"
+              >
+                Retry
+              </button>
             </div>
           </div>
         )

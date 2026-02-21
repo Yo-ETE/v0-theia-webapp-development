@@ -24,7 +24,7 @@ import {
 import {
   Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
 } from "@/components/ui/table"
-import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs"
+import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { MissionMap } from "@/components/mission/mission-map"
 import { DetectionTimelapse } from "@/components/mission/detection-timelapse"
 import { ErrorBoundary } from "@/components/error-boundary"
@@ -333,36 +333,34 @@ export default function MissionDetailPage() {
     <>
       <TopHeader title={mission.name} description={mission.description} />
       <main className="flex-1 overflow-auto p-4">
-        <Tabs
-          value={activeTab}
-          onValueChange={(val) => {
-            setActiveTab(val)
-            const entering = val === "timelapse"
-            setTimelapseMode(entering)
-            if (!entering) setReplayDetections({})
-            if (val !== "history") setHeatmapMode(false)
-          }}
-          className="flex flex-col gap-4"
-        >
-          {/* Breadcrumb + actions */}
+        <div className="flex flex-col gap-4">
+          {/* Breadcrumb + tab triggers */}
           <div className="flex items-center justify-between">
             <Button variant="ghost" size="sm" asChild className="text-muted-foreground hover:text-foreground">
               <Link href="/missions"><ArrowLeft className="mr-1.5 h-3.5 w-3.5" />Missions</Link>
             </Button>
-            <TabsList className="h-8">
-              <TabsTrigger value="live" className="text-xs gap-1.5 px-3">
-                <Zap className="h-3 w-3" />Live
-              </TabsTrigger>
-              <TabsTrigger value="history" className="text-xs gap-1.5 px-3">
-                <BarChart3 className="h-3 w-3" />History
-              </TabsTrigger>
-              <TabsTrigger value="sensors" className="text-xs gap-1.5 px-3">
-                <Radio className="h-3 w-3" />Sensors
-              </TabsTrigger>
-              <TabsTrigger value="timelapse" className="text-xs gap-1.5 px-3">
-                <Timer className="h-3 w-3" />Timelapse
-              </TabsTrigger>
-            </TabsList>
+            <Tabs value={activeTab} onValueChange={(val) => {
+              setActiveTab(val)
+              const entering = val === "timelapse"
+              setTimelapseMode(entering)
+              if (!entering) setReplayDetections({})
+              if (val !== "history") setHeatmapMode(false)
+            }}>
+              <TabsList className="h-8">
+                <TabsTrigger value="live" className="text-xs gap-1.5 px-3">
+                  <Zap className="h-3 w-3" />Live
+                </TabsTrigger>
+                <TabsTrigger value="history" className="text-xs gap-1.5 px-3">
+                  <BarChart3 className="h-3 w-3" />History
+                </TabsTrigger>
+                <TabsTrigger value="sensors" className="text-xs gap-1.5 px-3">
+                  <Radio className="h-3 w-3" />Sensors
+                </TabsTrigger>
+                <TabsTrigger value="timelapse" className="text-xs gap-1.5 px-3">
+                  <Timer className="h-3 w-3" />Timelapse
+                </TabsTrigger>
+              </TabsList>
+            </Tabs>
           </div>
 
           {/* Mission info bar */}
@@ -660,7 +658,7 @@ export default function MissionDetailPage() {
           </div>
 
           {/* ── Inline History Panel (below map) ── */}
-          <TabsContent value="history">
+          {activeTab === "history" && (
             <Card className="border-border/50 bg-card">
               <CardHeader className="pb-2">
                 <div className="flex items-center justify-between">
@@ -755,10 +753,10 @@ export default function MissionDetailPage() {
                 )}
               </CardContent>
             </Card>
-          </TabsContent>
+          )}
 
           {/* ── Inline Sensors Panel (below map) ── */}
-          <TabsContent value="sensors">
+          {activeTab === "sensors" && (
             <div className="flex flex-col gap-4">
               {/* Assigned Devices */}
               <Card className="border-border/50 bg-card">
@@ -897,14 +895,8 @@ export default function MissionDetailPage() {
                 </Card>
               )}
             </div>
-          </TabsContent>
-
-          {/* Live tab: detection feed is in the sidebar, nothing extra below map */}
-          <TabsContent value="live" />
-
-          {/* Timelapse tab: content is rendered inline below map */}
-          <TabsContent value="timelapse" />
-        </Tabs>
+          )}
+        </div>
       </main>
 
       {/* Zone creation dialog */}
