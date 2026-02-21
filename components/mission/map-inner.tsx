@@ -40,6 +40,7 @@ interface MapInnerProps {
   events?: DetectionEvent[]
   liveDetections?: Record<string, LiveDetection>
   sensorPlacements?: SensorPlacement[]
+  heatmapMode?: boolean
   className?: string
   drawingMode?: boolean
   onPolygonDrawn?: (polygon: [number, number][]) => void
@@ -102,8 +103,10 @@ export default function MapInner({
   centerLon: rawLon,
   zoom: rawZoom,
   zones = [],
+  events = [],
   liveDetections = {},
   sensorPlacements = [],
+  heatmapMode = false,
   className,
   drawingMode = false,
   onPolygonDrawn,
@@ -434,6 +437,17 @@ export default function MapInner({
     zoneColor: string
   }
 
+  // ── Heatmap data: event count per zone ──
+  const heatmapData = (() => {
+    if (!heatmapMode || !events.length || !zones.length) return null
+    const countByZone: Record<string, number> = {}
+    for (const evt of events) {
+      if (evt.zone_id) countByZone[evt.zone_id] = (countByZone[evt.zone_id] ?? 0) + 1
+    }
+    const maxCount = Math.max(1, ...Object.values(countByZone))
+    return { countByZone, maxCount }
+  })()
+
   const sensorMarkers: SensorMarkerData[] = sensorPlacements.map((sp) => {
     const zone = zones.find((z) => z.id === sp.zone_id)
     if (!zone || !sp.side) return null
@@ -536,6 +550,35 @@ export default function MapInner({
               <Tooltip permanent direction="center" className="zone-label-tip">
                 <span style={{ fontSize: 11, fontWeight: 600, color: zone.color }}>
                   {zone.label}
+                </span>
+              </Tooltip>
+            </Polygon>
+          )
+        })}
+
+        {/* ── Heatmap overlay ── */}
+        {heatmapData && (zones ?? []).map((zone) => {
+          const count = heatmapData.countByZone[zone.id] ?? 0
+          if (count === 0) return null
+          const intensity = count / heatmapData.maxCount // 0..1
+          // Color from green (low) through yellow to red (high)
+          const r = Math.round(255 * Math.min(1, intensity * 2))
+          const g = Math.round(255 * Math.min(1, (1 - intensity) * 2))
+          const heatColor = `rgb(${r},${g},0)`
+          return (
+            <Polygon
+              key={`heatmap-${zone.id}`}
+              positions={zone.polygon}
+              pathOptions={{
+                color: heatColor,
+                fillColor: heatColor,
+                fillOpacity: 0.15 + intensity * 0.4,
+                weight: 2,
+              }}
+            >
+              <Tooltip permanent direction="center" className="zone-label-tip">
+                <span style={{ fontSize: 11, fontWeight: 700, color: heatColor }}>
+                  {count} det.
                 </span>
               </Tooltip>
             </Polygon>

@@ -29,6 +29,7 @@ interface MissionMapProps {
     side: string
     sensor_position: number
   }[]
+  heatmapMode?: boolean
   className?: string
   drawingMode?: boolean
   onPolygonDrawn?: (polygon: [number, number][]) => void

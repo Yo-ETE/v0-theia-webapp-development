@@ -7,6 +7,7 @@ import {
   ArrowLeft, Radio, MapPin, Clock, Users, BarChart3, Plus,
   Pencil, Play, Pause, CheckCircle, Trash2, Building2, Home,
   Activity, Eye, EyeOff, Zap, Timer, Download, Signal, Battery, Wifi, Unlink,
+  Flame,
 } from "lucide-react"
 import { TopHeader } from "@/components/top-header"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
@@ -92,7 +93,9 @@ export default function MissionDetailPage() {
     }, 1500) // debounce 1.5s after last move
   }, [id])
 
+  const [activeTab, setActiveTab] = useState("live")
   const [timelapseMode, setTimelapseMode] = useState(false)
+  const [heatmapMode, setHeatmapMode] = useState(false)
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const [replayDetections, setReplayDetections] = useState<Record<string, any>>({})
 
@@ -331,11 +334,13 @@ export default function MissionDetailPage() {
       <TopHeader title={mission.name} description={mission.description} />
       <main className="flex-1 overflow-auto p-4">
         <Tabs
-          defaultValue="sensors"
+          value={activeTab}
           onValueChange={(val) => {
+            setActiveTab(val)
             const entering = val === "timelapse"
             setTimelapseMode(entering)
             if (!entering) setReplayDetections({})
+            if (val !== "history") setHeatmapMode(false)
           }}
           className="flex flex-col gap-4"
         >
@@ -345,11 +350,14 @@ export default function MissionDetailPage() {
               <Link href="/missions"><ArrowLeft className="mr-1.5 h-3.5 w-3.5" />Missions</Link>
             </Button>
             <TabsList className="h-8">
-              <TabsTrigger value="sensors" className="text-xs gap-1.5 px-3">
-                <Radio className="h-3 w-3" />Sensors
+              <TabsTrigger value="live" className="text-xs gap-1.5 px-3">
+                <Zap className="h-3 w-3" />Live
               </TabsTrigger>
               <TabsTrigger value="history" className="text-xs gap-1.5 px-3">
                 <BarChart3 className="h-3 w-3" />History
+              </TabsTrigger>
+              <TabsTrigger value="sensors" className="text-xs gap-1.5 px-3">
+                <Radio className="h-3 w-3" />Sensors
               </TabsTrigger>
               <TabsTrigger value="timelapse" className="text-xs gap-1.5 px-3">
                 <Timer className="h-3 w-3" />Timelapse
@@ -424,6 +432,7 @@ export default function MissionDetailPage() {
                   events={eventList}
                   liveDetections={effectiveLiveByZone}
                   sensorPlacements={sensorPlacements}
+                  heatmapMode={heatmapMode}
                   className="h-[500px]"
                   drawingMode={drawingMode}
                   onPolygonDrawn={handlePolygonDrawn}
@@ -563,88 +572,90 @@ export default function MissionDetailPage() {
                 </CardContent>
               </Card>
 
-              {/* Live detection feed */}
-              <Card className="border-border/50 bg-card flex-1">
-                <CardHeader className="pb-2">
-                  <div className="flex items-center justify-between">
-                    <CardTitle className="text-xs flex items-center gap-1.5">
-                      <Zap className="h-3 w-3 text-warning" />
-                      Detection Feed
-                    </CardTitle>
-                    {liveDetections.length > 0 && (
-                      <span className="text-[9px] font-mono text-success animate-pulse">LIVE</span>
-                    )}
-                  </div>
-                </CardHeader>
-                <CardContent ref={feedRef} className="flex flex-col gap-1 max-h-64 overflow-y-auto">
-                  {displayDetections.length === 0 ? (
-                    <p className="text-xs text-muted-foreground py-2 text-center">No detections yet</p>
-                  ) : displayDetections.map((det, i) => (
-                    <div
-                      key={`det-${det.timestamp}-${i}`}
-                      className={cn(
-                        "flex items-start gap-2 rounded border p-2 transition-all",
-                        det.presence
-                          ? "border-warning/30 bg-warning/5"
-                          : "border-border/30 bg-transparent"
+              {/* Live detection feed -- only visible on Live tab */}
+              {activeTab === "live" && (
+                <Card className="border-border/50 bg-card flex-1">
+                  <CardHeader className="pb-2">
+                    <div className="flex items-center justify-between">
+                      <CardTitle className="text-xs flex items-center gap-1.5">
+                        <Zap className="h-3 w-3 text-warning" />
+                        Detection Feed
+                      </CardTitle>
+                      {liveDetections.length > 0 && (
+                        <span className="text-[9px] font-mono text-success animate-pulse">LIVE</span>
                       )}
-                    >
-                      <div className={cn(
-                        "mt-0.5 h-2 w-2 rounded-full shrink-0",
-                        det.presence ? "bg-warning animate-pulse" : "bg-success"
-                      )} />
-                      <div className="flex-1 min-w-0">
-                        <div className="flex items-center gap-1.5">
-                          <span className="text-[10px] font-semibold text-foreground">
-                            {det.zone_label || "Unknown"}
-                          </span>
-                          {det.side && (
-                            <span className="text-[9px] font-mono font-bold text-primary">
-                              [{det.side}]
-                            </span>
-                          )}
-                          <span className="text-[9px] text-muted-foreground font-mono ml-auto shrink-0">
-                            {formatTime(det.timestamp)}
-                          </span>
-                        </div>
-                        <div className="flex items-center gap-2 mt-0.5 flex-wrap">
-                          {det.presence ? (
-                            <Badge variant="outline" className="text-[8px] px-1 py-0 border-warning/30 bg-warning/10 text-warning">
-                              PRESENCE
-                            </Badge>
-                          ) : (
-                            <Badge variant="outline" className="text-[8px] px-1 py-0 border-success/30 bg-success/10 text-success">
-                              RAS
-                            </Badge>
-                          )}
-                          <span className="text-[9px] font-mono text-muted-foreground">
-                            {det.distance}cm
-                          </span>
-                          {det.speed > 0 && (
-                            <span className="text-[9px] font-mono text-muted-foreground">
-                              {det.speed}cm/s
-                            </span>
-                          )}
-                          <span className="text-[9px] font-mono text-muted-foreground">
-                            {det.direction === "G" ? "Gauche" : det.direction === "D" ? "Droite" : "Centre"}
-                          </span>
-                          {det.rssi != null && (
-                            <span className="text-[9px] font-mono text-muted-foreground">
-                              {det.rssi}dBm
-                            </span>
-                          )}
-                          {det.vbatt_tx != null && (
-                            <span className="text-[9px] font-mono text-muted-foreground">
-                              {det.vbatt_tx.toFixed(2)}V
-                            </span>
-                          )}
-                        </div>
-                        <span className="text-[9px] text-muted-foreground/60">{det.device_name}</span>
-                      </div>
                     </div>
-                  ))}
-                </CardContent>
-              </Card>
+                  </CardHeader>
+                  <CardContent ref={feedRef} className="flex flex-col gap-1 max-h-64 overflow-y-auto">
+                    {displayDetections.length === 0 ? (
+                      <p className="text-xs text-muted-foreground py-2 text-center">No detections yet</p>
+                    ) : displayDetections.map((det, i) => (
+                      <div
+                        key={`det-${det.timestamp}-${i}`}
+                        className={cn(
+                          "flex items-start gap-2 rounded border p-2 transition-all",
+                          det.presence
+                            ? "border-warning/30 bg-warning/5"
+                            : "border-border/30 bg-transparent"
+                        )}
+                      >
+                        <div className={cn(
+                          "mt-0.5 h-2 w-2 rounded-full shrink-0",
+                          det.presence ? "bg-warning animate-pulse" : "bg-success"
+                        )} />
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-center gap-1.5">
+                            <span className="text-[10px] font-semibold text-foreground">
+                              {det.zone_label || "Unknown"}
+                            </span>
+                            {det.side && (
+                              <span className="text-[9px] font-mono font-bold text-primary">
+                                [{det.side}]
+                              </span>
+                            )}
+                            <span className="text-[9px] text-muted-foreground font-mono ml-auto shrink-0">
+                              {formatTime(det.timestamp)}
+                            </span>
+                          </div>
+                          <div className="flex items-center gap-2 mt-0.5 flex-wrap">
+                            {det.presence ? (
+                              <Badge variant="outline" className="text-[8px] px-1 py-0 border-warning/30 bg-warning/10 text-warning">
+                                PRESENCE
+                              </Badge>
+                            ) : (
+                              <Badge variant="outline" className="text-[8px] px-1 py-0 border-success/30 bg-success/10 text-success">
+                                RAS
+                              </Badge>
+                            )}
+                            <span className="text-[9px] font-mono text-muted-foreground">
+                              {det.distance}cm
+                            </span>
+                            {det.speed > 0 && (
+                              <span className="text-[9px] font-mono text-muted-foreground">
+                                {det.speed}cm/s
+                              </span>
+                            )}
+                            <span className="text-[9px] font-mono text-muted-foreground">
+                              {det.direction === "G" ? "Gauche" : det.direction === "D" ? "Droite" : "Centre"}
+                            </span>
+                            {det.rssi != null && (
+                              <span className="text-[9px] font-mono text-muted-foreground">
+                                {det.rssi}dBm
+                              </span>
+                            )}
+                            {det.vbatt_tx != null && (
+                              <span className="text-[9px] font-mono text-muted-foreground">
+                                {det.vbatt_tx.toFixed(2)}V
+                              </span>
+                            )}
+                          </div>
+                          <span className="text-[9px] text-muted-foreground/60">{det.device_name}</span>
+                        </div>
+                      </div>
+                    ))}
+                  </CardContent>
+                </Card>
+              )}
             </div>
           </div>
 
@@ -655,6 +666,13 @@ export default function MissionDetailPage() {
                 <div className="flex items-center justify-between">
                   <CardTitle className="text-sm">Events ({eventList.length})</CardTitle>
                   <div className="flex items-center gap-2">
+                  <Button
+                    variant={heatmapMode ? "default" : "outline"} size="sm"
+                    disabled={eventList.length === 0}
+                    onClick={() => setHeatmapMode(!heatmapMode)}
+                  >
+                    <Flame className="mr-1.5 h-3.5 w-3.5" />Heatmap
+                  </Button>
                   <Button
                     variant="destructive" size="sm"
                     disabled={eventList.length === 0}
@@ -871,7 +889,10 @@ export default function MissionDetailPage() {
             </div>
           </TabsContent>
 
-          {/* Empty TabsContent for timelapse (content is rendered inline below map) */}
+          {/* Live tab: detection feed is in the sidebar, nothing extra below map */}
+          <TabsContent value="live" />
+
+          {/* Timelapse tab: content is rendered inline below map */}
           <TabsContent value="timelapse" />
         </Tabs>
       </main>
