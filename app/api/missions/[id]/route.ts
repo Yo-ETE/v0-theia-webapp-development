@@ -23,12 +23,14 @@ export async function GET(
     // Merge: local store always has the freshest zones/coords (drawn in the UI).
     // Backend zones are only used if the local store has none.
     const localZones = local?.zones ?? []
+    const localFloors = local?.floors ?? []
     const merged = {
       ...backend,
       center_lat: local?.center_lat ?? backend.center_lat,
       center_lon: local?.center_lon ?? backend.center_lon,
       zoom: local?.zoom ?? backend.zoom,
       zones: localZones.length > 0 ? localZones : (backend.zones ?? []),
+      floors: localFloors.length > 0 ? localFloors : (backend.floors ?? []),
       environment: local?.environment ?? backend.environment ?? "horizontal",
     }
     if (local) store.updateMission(id, merged)
@@ -83,7 +85,7 @@ export async function PATCH(
     if (!res.ok) throw new Error(`Backend ${res.status}`)
     const backend = await res.json()
     // Merge backend response with local (local has definitive zones)
-    const merged = { ...localUpdated, ...backend, zones: localUpdated?.zones ?? backend.zones }
+    const merged = { ...localUpdated, ...backend, zones: localUpdated?.zones ?? backend.zones, floors: localUpdated?.floors ?? backend.floors }
     store.updateMission(id, merged)
     return NextResponse.json(merged)
   } catch {

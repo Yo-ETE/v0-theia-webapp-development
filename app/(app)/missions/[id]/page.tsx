@@ -7,7 +7,7 @@ import {
   ArrowLeft, Radio, MapPin, Clock, Users, BarChart3, Plus,
   Pencil, Play, Pause, CheckCircle, Trash2, Building2, Home,
   Activity, Eye, EyeOff, Zap, Timer, Download, Signal, Battery, Wifi, Unlink,
-  Flame, Layers,
+  Flame,
 } from "lucide-react"
 import { TopHeader } from "@/components/top-header"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
@@ -26,6 +26,7 @@ import {
 } from "@/components/ui/table"
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { MissionMap } from "@/components/mission/mission-map"
+import { FloorManager } from "@/components/mission/floor-manager"
 import { DetectionTimelapse } from "@/components/mission/detection-timelapse"
 import { ErrorBoundary } from "@/components/error-boundary"
 import { useMission, useEvents, useDevices } from "@/hooks/use-api"
@@ -33,7 +34,7 @@ import { useSSE } from "@/hooks/use-sse"
 import { updateMission, updateDevice } from "@/lib/api-client"
 import { missionStatusConfig, eventTypeConfig, deviceStatusConfig, formatRelative, formatTime, formatDateTime } from "@/lib/format"
 import { cn } from "@/lib/utils"
-import type { Zone, DetectionEvent } from "@/lib/types"
+import type { Zone, Floor, DetectionEvent } from "@/lib/types"
 
 const ZONE_COLORS = ["#3b82f6", "#ef4444", "#22c55e", "#f59e0b", "#8b5cf6", "#ec4899", "#06b6d4", "#f97316"]
 const ZONE_TYPES = [
@@ -77,11 +78,6 @@ export default function MissionDetailPage() {
   const [zoneName, setZoneName] = useState("")
   const [zoneType, setZoneType] = useState<string>("facade")
   const [sideLabels, setSideLabels] = useState<Record<string, string>>({})
-  const [manualZoneDialog, setManualZoneDialog] = useState(false)
-  const [manualZoneName, setManualZoneName] = useState("")
-  const [manualZoneType, setManualZoneType] = useState<string>("floor")
-  const [manualSideCount, setManualSideCount] = useState(4)
-  const [manualSideLabels, setManualSideLabels] = useState<Record<string, string>>({})
   const [editZoneDialog, setEditZoneDialog] = useState<string | null>(null) // zone id being edited
   const [editZoneName, setEditZoneName] = useState("")
   const [editZoneType, setEditZoneType] = useState<string>("facade")
@@ -346,69 +342,6 @@ export default function MissionDetailPage() {
     setEditZoneDialog(null)
   }, [mission, editZoneDialog, editZoneName, editZoneType, editSideLabels, id, mutate])
 
-  // ── Manual zone creation (for vertical / underground) ──
-  const openManualZoneDialog = useCallback(() => {
-    const env = mission?.environment ?? "horizontal"
-    setManualZoneName(env === "vertical" ? "Etage 0" : "Section A")
-    setManualZoneType(env === "vertical" ? "floor" : "section")
-    setManualSideCount(4)
-    const labels: Record<string, string> = {}
-    for (let i = 0; i < 4; i++) {
-      labels[String.fromCharCode(65 + i)] = ""
-    }
-    setManualSideLabels(labels)
-    setManualZoneDialog(true)
-  }, [mission])
-
-  const updateManualSideCount = useCallback((count: number) => {
-    const n = Math.max(2, Math.min(26, count))
-    setManualSideCount(n)
-    const labels: Record<string, string> = {}
-    for (let i = 0; i < n; i++) {
-      const key = String.fromCharCode(65 + i)
-      labels[key] = manualSideLabels[key] || ""
-    }
-    setManualSideLabels(labels)
-  }, [manualSideLabels])
-
-  const saveManualZone = useCallback(async () => {
-    if (!mission || !manualZoneName.trim()) return
-    const zones = mission.zones ?? []
-    // Create a small placeholder polygon near the mission center
-    // For vertical/underground, this is just a reference point
-    const lat = mission.center_lat
-    const lon = mission.center_lon
-    const offset = 0.00005 * (zones.length + 1) // Small offset per zone
-    const polygon: [number, number][] = []
-    const n = manualSideCount
-    for (let i = 0; i < n; i++) {
-      const angle = (2 * Math.PI * i) / n - Math.PI / 2
-      polygon.push([
-        lat + Math.sin(angle) * offset,
-        lon + Math.cos(angle) * offset,
-      ])
-    }
-    const newZone: Zone = {
-      id: `zone-${Date.now()}-${Math.random().toString(36).slice(2, 5)}`,
-      mission_id: id,
-      name: manualZoneName.trim().toLowerCase().replace(/\s+/g, "-"),
-      label: manualZoneName.trim(),
-      type: manualZoneType as Zone["type"],
-      polygon,
-      color: ZONE_COLORS[zones.length % ZONE_COLORS.length],
-      devices: [],
-      sides: manualSideLabels,
-      floor: manualZoneType === "floor" ? zones.filter((z) => z.type === "floor").length : undefined,
-    }
-    try {
-      const updated = await updateMission(id, { zones: [...zones, newZone] })
-      mutate(updated, false)
-    } catch (err) {
-      console.warn("[THEIA] Failed to create manual zone:", err)
-    }
-    setManualZoneDialog(false)
-  }, [mission, manualZoneName, manualZoneType, manualSideCount, manualSideLabels, id, mutate])
-
   // ── Status transitions ──
   const changeStatus = useCallback(async (newStatus: string) => {
     if (!mission) return
@@ -448,6 +381,53 @@ export default function MissionDetailPage() {
     if (d.mission_id === id && d.zone_id) return false
     return true
   }) ?? []
+
+  // ── Floor mode (vertical / underground) ──
+  const isFloorMode = mission?.environment === "vertical"
+  const floorMode = isFloorMode ? "floor" as const : "section" as const
+  const missionFloors = mission?.floors ?? []
+
+  const handleFloorsChange = useCallback(async (floors: Floor[]) => {
+    if (!mission) return
+    try {
+      const updated = await updateMission(id, { floors })
+      mutate(updated, false)
+    } catch (err) {
+      console.warn("[THEIA] Failed to update floors:", err)
+    }
+  }, [mission, id, mutate])
+
+  const handleFloorDeviceAssign = useCallback(async (deviceId: string, floor: number) => {
+    try {
+      await updateDevice(deviceId, {
+        mission_id: id,
+        floor,
+        zone_id: "",
+        zone_label: "",
+        side: "",
+        sensor_position: 0.5,
+      } as Partial<import("@/lib/types").Device>)
+      mutateDevices()
+    } catch (err) {
+      console.warn("[THEIA] Failed to assign device to floor:", err)
+    }
+  }, [id, mutateDevices])
+
+  const handleFloorDeviceUnassign = useCallback(async (deviceId: string) => {
+    try {
+      await updateDevice(deviceId, {
+        mission_id: "",
+        floor: null,
+        zone_id: "",
+        zone_label: "",
+        side: "",
+        sensor_position: 0.5,
+      } as Partial<import("@/lib/types").Device>)
+      mutateDevices()
+    } catch (err) {
+      console.warn("[THEIA] Failed to unassign device:", err)
+    }
+  }, [mutateDevices])
 
   // Build sensor placements for map
   const sensorPlacements = missionDevices
@@ -528,7 +508,7 @@ export default function MissionDetailPage() {
                 </span>
               )}
               <div className="flex items-center gap-1.5 ml-auto">
-                {mission.status === "draft" && zones.length > 0 && (
+                {mission.status === "draft" && (isFloorMode ? missionFloors.length > 0 : zones.length > 0) && (
                   <Button size="sm" className="h-7 text-[10px] gap-1" onClick={() => changeStatus("active")} disabled={statusUpdating}>
                     <Play className="h-3 w-3" />Activate
                   </Button>
@@ -557,58 +537,74 @@ export default function MissionDetailPage() {
             </CardContent>
           </Card>
 
-          {/* Map + Sidebar -- always visible */}
+          {/* Map / FloorManager + Sidebar */}
           <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">
             <div className="lg:col-span-2">
-              <ErrorBoundary>
-                <MissionMap
-                  key={mission.id}
-                  centerLat={mission.center_lat}
-                  centerLon={mission.center_lon}
-                  zoom={mission.zoom ?? 19}
-                  zones={zones}
-                  events={eventList}
-                  liveDetections={effectiveLiveByZone}
-                  sensorPlacements={sensorPlacements}
-                  heatmapMode={heatmapMode}
-                  className="h-[500px]"
-                  drawingMode={drawingMode}
-                  onPolygonDrawn={handlePolygonDrawn}
-                  onZoneClick={(zoneId) => !sensorPlaceMode && setAssignDialog(zoneId)}
-                  sensorPlaceMode={sensorPlaceMode}
-                  onSensorPlace={handleSensorPlace}
-                  onMapMove={handleMapMove}
-                  editingZoneId={editingZoneId}
-                  onZonePolygonUpdate={updateZonePolygon}
-                />
-              </ErrorBoundary>
+              {isFloorMode ? (
+                /* ── Vertical / Underground: FloorManager ── */
+                <Card className="border-border/50 bg-card">
+                  <CardContent className="p-4">
+                    <FloorManager
+                      missionId={id}
+                      mode={floorMode}
+                      floors={missionFloors}
+                      devices={missionDevices}
+                      allDevices={allDevices ?? []}
+                      events={eventList}
+                      liveDetections={liveDetections}
+                      onFloorsChange={handleFloorsChange}
+                      onDeviceAssign={handleFloorDeviceAssign}
+                      onDeviceUnassign={handleFloorDeviceUnassign}
+                    />
+                  </CardContent>
+                </Card>
+              ) : (
+                /* ── Horizontal: Map ── */
+                <>
+                  <ErrorBoundary>
+                    <MissionMap
+                      key={mission.id}
+                      centerLat={mission.center_lat}
+                      centerLon={mission.center_lon}
+                      zoom={mission.zoom ?? 19}
+                      zones={zones}
+                      events={eventList}
+                      liveDetections={effectiveLiveByZone}
+                      sensorPlacements={sensorPlacements}
+                      heatmapMode={heatmapMode}
+                      className="h-[500px]"
+                      drawingMode={drawingMode}
+                      onPolygonDrawn={handlePolygonDrawn}
+                      onZoneClick={(zoneId) => !sensorPlaceMode && setAssignDialog(zoneId)}
+                      sensorPlaceMode={sensorPlaceMode}
+                      onSensorPlace={handleSensorPlace}
+                      onMapMove={handleMapMove}
+                      editingZoneId={editingZoneId}
+                      onZonePolygonUpdate={updateZonePolygon}
+                    />
+                  </ErrorBoundary>
 
-              {/* Timelapse panel (rendered inline below map when timelapse tab is active) */}
-              {timelapseMode && (
-                <div className="mt-3">
-                  <DetectionTimelapse
-                    missionId={id}
-                    onDetection={handleReplayDetection}
-                  />
-                </div>
+                  {/* Timelapse panel */}
+                  {timelapseMode && (
+                    <div className="mt-3">
+                      <DetectionTimelapse
+                        missionId={id}
+                        onDetection={handleReplayDetection}
+                      />
+                    </div>
+                  )}
+                </>
               )}
             </div>
 
             <div className="flex flex-col gap-3">
-              {/* Zones panel */}
+              {/* Zones panel -- only for horizontal/map missions */}
+              {!isFloorMode && (
               <Card className="border-border/50 bg-card">
                 <CardHeader className="pb-2">
                   <div className="flex items-center justify-between">
                     <CardTitle className="text-xs">Zones ({zones.length})</CardTitle>
                     <div className="flex items-center gap-1">
-                      <Button
-                        variant="outline" size="sm"
-                        className="h-6 text-[10px] px-2 gap-1"
-                        onClick={openManualZoneDialog}
-                        title="Create zone manually (floors, sections)"
-                      >
-                        <Layers className="h-3 w-3" />Manual
-                      </Button>
                       <Button
                         variant={drawingMode ? "default" : "outline"} size="sm"
                         className="h-6 text-[10px] px-2 gap-1"
@@ -623,14 +619,10 @@ export default function MissionDetailPage() {
                 </CardHeader>
                 <CardContent className="flex flex-col gap-2">
                   {zones.length === 0 ? (
-                    <div className="text-xs text-muted-foreground py-3 text-center flex flex-col gap-1">
-                      <p>
-                        <strong>Draw Zone</strong>: placez les points sur la carte (min 3 pts, formes L/T possibles).
-                      </p>
-                      <p>
-                        <strong>Manual</strong>: pour etages, troncons souterrains ou zones sans plan aerien.
-                      </p>
-                    </div>
+                    <p className="text-xs text-muted-foreground py-3 text-center">
+                      Cliquez &quot;Draw Zone&quot; puis placez les points un par un sur la carte.
+                      Minimum 3 points. Toute forme est possible (L, T, etc.)
+                    </p>
                   ) : zones.map((zone) => {
                     const zoneDetRaw = effectiveLiveByZone[zone.id]
                     // Only treat as active if presence + valid distance
@@ -694,6 +686,7 @@ export default function MissionDetailPage() {
                   })}
                 </CardContent>
               </Card>
+              )}
 
               {/* Assigned devices */}
               <Card className="border-border/50 bg-card">
@@ -1127,74 +1120,6 @@ export default function MissionDetailPage() {
           <DialogFooter>
             <Button variant="ghost" size="sm" onClick={() => setZoneDialog(false)}>Cancel</Button>
             <Button size="sm" onClick={saveZone} disabled={!zoneName.trim()}>Save Zone</Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
-
-      {/* Manual zone creation dialog (for vertical/underground) */}
-      <Dialog open={manualZoneDialog} onOpenChange={setManualZoneDialog}>
-        <DialogContent className="sm:max-w-md z-[10000]">
-          <DialogHeader>
-            <DialogTitle className="text-sm">Create Manual Zone</DialogTitle>
-            <DialogDescription className="text-xs text-muted-foreground">
-              Pour les missions verticales (etages) ou souterraines (troncons), creez des zones manuellement sans dessiner sur la carte.
-            </DialogDescription>
-          </DialogHeader>
-          <div className="flex flex-col gap-4 py-2">
-            <div className="flex flex-col gap-2">
-              <Label className="text-xs text-muted-foreground">Zone Name</Label>
-              <Input
-                placeholder="e.g. Etage 1, Section B..."
-                value={manualZoneName}
-                onChange={(e) => setManualZoneName(e.target.value)}
-                className="bg-input/50 border-border text-sm"
-                autoFocus
-              />
-            </div>
-            <div className="flex flex-col gap-2">
-              <Label className="text-xs text-muted-foreground">Zone Type</Label>
-              <Select value={manualZoneType} onValueChange={setManualZoneType}>
-                <SelectTrigger className="bg-input/50 border-border text-sm"><SelectValue /></SelectTrigger>
-                <SelectContent>
-                  {ZONE_TYPES.map((t) => (<SelectItem key={t.value} value={t.value}>{t.label}</SelectItem>))}
-                </SelectContent>
-              </Select>
-            </div>
-            <div className="flex flex-col gap-2">
-              <Label className="text-xs text-muted-foreground">Number of Sides</Label>
-              <div className="flex items-center gap-2">
-                <Button variant="outline" size="sm" className="h-7 w-7 p-0"
-                  onClick={() => updateManualSideCount(manualSideCount - 1)} disabled={manualSideCount <= 2}>-</Button>
-                <span className="text-sm font-mono w-8 text-center">{manualSideCount}</span>
-                <Button variant="outline" size="sm" className="h-7 w-7 p-0"
-                  onClick={() => updateManualSideCount(manualSideCount + 1)} disabled={manualSideCount >= 20}>+</Button>
-              </div>
-            </div>
-            <div className="flex flex-col gap-2">
-              <Label className="text-xs text-muted-foreground">
-                Side / Facade Labels ({manualSideCount} sides)
-              </Label>
-              <p className="text-[10px] text-muted-foreground">
-                Nommez chaque cote (ex: Facade Nord, Mur Garage, Entree...). Le polygone sera genere automatiquement et modifiable ensuite sur la carte.
-              </p>
-              <div className="grid grid-cols-2 gap-2 max-h-40 overflow-y-auto">
-                {Object.keys(manualSideLabels).sort().map((key) => (
-                  <div key={key} className="flex items-center gap-2">
-                    <span className="text-xs font-mono font-bold text-cyan-600 w-4 shrink-0">{key}</span>
-                    <Input
-                      placeholder={`Side ${key}`}
-                      value={manualSideLabels[key]}
-                      onChange={(e) => setManualSideLabels((prev) => ({ ...prev, [key]: e.target.value }))}
-                      className="bg-input/50 border-border text-xs h-7"
-                    />
-                  </div>
-                ))}
-              </div>
-            </div>
-          </div>
-          <DialogFooter>
-            <Button variant="ghost" size="sm" onClick={() => setManualZoneDialog(false)}>Cancel</Button>
-            <Button size="sm" onClick={saveManualZone} disabled={!manualZoneName.trim()}>Create Zone</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>

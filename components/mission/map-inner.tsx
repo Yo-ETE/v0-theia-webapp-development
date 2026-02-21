@@ -125,7 +125,9 @@ export default function MapInner({
 
   const [mounted, setMounted] = useState(false)
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const [RL, setRL] = useState<Record<string, any> | null>(null)
+> const [RL, setRL] = useState<Record<string, any> | null>(null)
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const [leafletL, setLeafletL] = useState<any>(null)
   const [drawPoints, setDrawPoints] = useState<[number, number][]>([])
   const mapRef = useRef<unknown>(null)
   const [mapKey, setMapKey] = useState(0)
@@ -221,6 +223,7 @@ export default function MapInner({
       document.head.appendChild(link)
     }
     import("react-leaflet").then((mod) => setRL(mod)).catch(() => {})
+    import("leaflet").then((mod) => setLeafletL(mod.default || mod)).catch(() => {})
     return () => {
       // Cleanup Leaflet map instance on unmount to prevent "already initialized" error
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -586,20 +589,16 @@ export default function MapInner({
         {/* ── Zone editing overlay ── */}
         {editingZoneId && (() => {
           const zone = (zones ?? []).find(z => z.id === editingZoneId)
-          if (!zone || !zone.polygon?.length || !RL) return null
-          const { Marker: RLMarker } = RL as Record<string, React.ComponentType<Record<string, unknown>>>
+          if (!zone || !zone.polygon?.length || !RL || !leafletL) return null
+          const RLMarker = RL.Marker
 
-          // Dynamic import for L.divIcon
-          const L = (typeof window !== "undefined" && (window as Record<string, unknown>).L) as { divIcon: (opts: Record<string, unknown>) => unknown } | undefined
-          if (!L) return null
-
-          const vertexIcon = L.divIcon({
+          const vertexIcon = leafletL.divIcon({
             className: "",
             html: '<div style="width:12px;height:12px;background:#f59e0b;border:2px solid white;border-radius:50%;cursor:grab;box-shadow:0 1px 4px rgba(0,0,0,0.3)"></div>',
             iconSize: [12, 12],
             iconAnchor: [6, 6],
           })
-          const midpointIcon = L.divIcon({
+          const midpointIcon = leafletL.divIcon({
             className: "",
             html: '<div style="width:10px;height:10px;background:white;border:2px solid #f59e0b;border-radius:50%;cursor:pointer;box-shadow:0 1px 3px rgba(0,0,0,0.2)"></div>',
             iconSize: [10, 10],

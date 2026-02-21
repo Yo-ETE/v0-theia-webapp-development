@@ -373,11 +373,11 @@ export default function NewMissionPage() {
                     </div>
                   </div>
                   <p className="text-xs text-muted-foreground leading-relaxed">
-                    House, garage row, corridor, perimeter. TX on facades/walls.
+                    Maison, rangee de garages, couloir, perimetre. Dessinez les zones sur la carte avec les facades.
                   </p>
                   <div className="flex flex-wrap gap-1">
+                    <Badge variant="outline" className="text-[9px] py-0">Zones sur carte</Badge>
                     <Badge variant="outline" className="text-[9px] py-0">Facades A/B/C/D</Badge>
-                    <Badge variant="outline" className="text-[9px] py-0">Triangulation 2D</Badge>
                   </div>
                 </button>
 
@@ -394,16 +394,16 @@ export default function NewMissionPage() {
                       <Building2 className="h-5 w-5" />
                     </div>
                     <div>
-                      <p className="text-sm font-medium text-foreground">Vertical</p>
-                      <p className="text-[10px] text-muted-foreground">Multi-floor / stairwell</p>
+                      <p className="text-sm font-medium text-foreground">Vertical / Souterrain</p>
+                      <p className="text-[10px] text-muted-foreground">Etages, troncons de garage</p>
                     </div>
                   </div>
                   <p className="text-xs text-muted-foreground leading-relaxed">
-                    Staircase, building floors. TX per floor/landing.
+                    Immeuble, cage d'escalier, parking souterrain. Definissez le nombre d'etages ou troncons et assignez les TX.
                   </p>
                   <div className="flex flex-wrap gap-1">
-                    <Badge variant="outline" className="text-[9px] py-0">Floors</Badge>
-                    <Badge variant="outline" className="text-[9px] py-0">Vertical tracking</Badge>
+                    <Badge variant="outline" className="text-[9px] py-0">Etages / Troncons</Badge>
+                    <Badge variant="outline" className="text-[9px] py-0">TX par niveau</Badge>
                   </div>
                 </button>
               </CardContent>
