@@ -209,6 +209,7 @@ export default function AdminPage() {
   const [isFetchingBranches, setIsFetchingBranches] = useState(false)
   const [isUpdating, setIsUpdating] = useState(false)
   const [updateOutput, setUpdateOutput] = useState<string | null>(null)
+  const [selectedCommit, setSelectedCommit] = useState<string>("") // empty = latest
 
   // Backup
   const [backups, setBackups] = useState<BackupInfo[]>([])
@@ -361,14 +362,33 @@ export default function AdminPage() {
 
   const [updateResult, setUpdateResult] = useState<GitUpdateResult | null>(null)
 
+  const handleRefreshCommits = useCallback(async () => {
+    setIsCheckingVersion(true)
+    setSelectedCommit("")
+    try {
+      // Fetch + version info in one go
+      const branchToUse = selectedBranch || gitBranches?.current || ""
+      if (branchToUse) {
+        await api.post("git/fetch", { branch: branchToUse })
+      }
+      const res = await fetch("/api/admin/version")
+      const data = await res.json()
+      setVersionInfo(data)
+    } catch { /* ignore */ }
+    finally { setIsCheckingVersion(false) }
+  }, [selectedBranch, gitBranches])
+
   const handleUpdate = async () => {
     const branchToUse = selectedBranch || gitBranches?.current || ""
-    if (!confirm(`Mettre a jour THEIA depuis la branche "${branchToUse}" ? Les services seront redemarres.`)) return
+    const commitInfo = selectedCommit ? ` au commit ${selectedCommit.slice(0, 7)}` : ""
+    if (!confirm(`Mettre a jour THEIA depuis la branche "${branchToUse}"${commitInfo} ? Les services seront redemarres.`)) return
     setIsUpdating(true)
     setUpdateOutput(null)
     setUpdateResult(null)
     try {
-      const result: GitUpdateResult = await api.post("git/update", { branch: branchToUse })
+      const body: Record<string, string> = { branch: branchToUse }
+      if (selectedCommit) body.commit = selectedCommit
+      const result: GitUpdateResult = await api.post("git/update", body)
       setUpdateOutput(result.output || "")
       setUpdateResult(result)
       if (result.status === "success") {
@@ -916,6 +936,17 @@ export default function AdminPage() {
                     )}
                   </div>
 
+                  {/* Refresh button to check for new commits */}
+                  <Button
+                    variant="outline" size="sm"
+                    onClick={handleRefreshCommits}
+                    disabled={isCheckingVersion}
+                    className="w-full gap-2 bg-transparent"
+                  >
+                    <RefreshCw className={cn("h-3.5 w-3.5", isCheckingVersion && "animate-spin")} />
+                    {isCheckingVersion ? "Verification..." : "Verifier les mises a jour"}
+                  </Button>
+
                   {versionInfo.updateAvailable && (
                     <div className="flex flex-col gap-2">
                       <Alert className="border-success/50 bg-success/10">
@@ -926,18 +957,43 @@ export default function AdminPage() {
                       </Alert>
                       {versionInfo.latestCommits && versionInfo.latestCommits.length > 0 && (
                         <div className="rounded-md border border-border/50 bg-secondary/20 overflow-hidden">
-                          <p className="text-[10px] text-muted-foreground font-medium uppercase tracking-wider px-3 pt-2 pb-1">
-                            Nouveaux commits
-                          </p>
+                          <div className="flex items-center justify-between px-3 pt-2 pb-1">
+                            <p className="text-[10px] text-muted-foreground font-medium uppercase tracking-wider">
+                              Commits disponibles (cliquer pour selectionner)
+                            </p>
+                            {selectedCommit && (
+                              <button
+                                onClick={() => setSelectedCommit("")}
+                                className="text-[10px] text-primary hover:underline"
+                              >
+                                Dernier commit
+                              </button>
+                            )}
+                          </div>
                           <div className="flex flex-col">
                             {versionInfo.latestCommits.map((c) => (
-                              <div key={c.hash} className="flex items-start gap-2 px-3 py-1.5 border-t border-border/30">
-                                <span className="font-mono text-[10px] text-primary shrink-0 mt-0.5">{c.hash.slice(0, 7)}</span>
+                              <button
+                                key={c.hash}
+                                onClick={() => setSelectedCommit(selectedCommit === c.hash ? "" : c.hash)}
+                                className={cn(
+                                  "flex items-start gap-2 px-3 py-1.5 border-t border-border/30 text-left transition-all hover:bg-primary/5",
+                                  selectedCommit === c.hash && "bg-primary/10 border-primary/30"
+                                )}
+                              >
+                                <span className={cn(
+                                  "font-mono text-[10px] shrink-0 mt-0.5",
+                                  selectedCommit === c.hash ? "text-primary font-bold" : "text-primary"
+                                )}>
+                                  {c.hash.slice(0, 7)}
+                                </span>
                                 <div className="flex-1 min-w-0">
                                   <p className="text-xs text-foreground truncate">{c.message}</p>
                                   <p className="text-[10px] text-muted-foreground">{c.author} - {c.date}</p>
                                 </div>
-                              </div>
+                                {selectedCommit === c.hash && (
+                                  <CheckCircle2 className="h-3.5 w-3.5 text-primary shrink-0 mt-0.5" />
+                                )}
+                              </button>
                             ))}
                           </div>
                         </div>
@@ -948,11 +1004,11 @@ export default function AdminPage() {
                   <div className="flex gap-2">
                     <Button onClick={handleUpdate} disabled={isUpdating} className="flex-1 gap-2">
                       {isUpdating ? <Loader2 className="h-4 w-4 animate-spin" /> : <Download className="h-4 w-4" />}
-                      {isUpdating ? "Mise a jour..." : "Mettre a jour"}
+                      {isUpdating ? "Mise a jour en cours..." : selectedCommit ? `Deployer ${selectedCommit.slice(0, 7)}` : "Mettre a jour (dernier commit)"}
                     </Button>
                     <Button variant="outline" onClick={handleRestartServices} disabled={isRestarting} className="gap-2 bg-transparent">
                       {isRestarting ? <Loader2 className="h-4 w-4 animate-spin" /> : <RotateCcw className="h-4 w-4" />}
-                      Redemarrer services
+                      Redemarrer
                     </Button>
                   </div>
                 </>
@@ -961,34 +1017,41 @@ export default function AdminPage() {
               )}
 
               {(updateOutput || updateResult) && (
-                <div className="flex flex-col gap-2">
-                  {/* Commands executed */}
-                  {updateResult?.commands && updateResult.commands.length > 0 && (
-                    <div className="rounded-md border border-border/50 bg-secondary/30 p-3">
-                      <p className="text-[10px] text-muted-foreground font-medium uppercase tracking-wider mb-1.5">Commandes executees</p>
-                      <div className="flex flex-col gap-1">
+                <div className="flex flex-col gap-2 rounded-lg border border-border/50 bg-secondary/5 overflow-hidden">
+                  {/* Terminal header */}
+                  <div className="flex items-center gap-2 px-3 py-2 bg-secondary/30 border-b border-border/30">
+                    <Terminal className="h-3.5 w-3.5 text-muted-foreground" />
+                    <span className="text-[10px] font-medium text-muted-foreground uppercase tracking-wider">Terminal</span>
+                    {updateResult?.status === "success" && (
+                      <Badge variant="outline" className="ml-auto h-4 text-[8px] border-success/50 text-success">OK</Badge>
+                    )}
+                    {updateResult?.status === "error" && (
+                      <Badge variant="outline" className="ml-auto h-4 text-[8px] border-destructive/50 text-destructive">ERREUR</Badge>
+                    )}
+                  </div>
+
+                  {/* Commands + output */}
+                  <ScrollArea className="h-48 px-3 pb-3">
+                    {updateResult?.commands && updateResult.commands.length > 0 && (
+                      <div className="flex flex-col gap-0.5 mb-2">
                         {updateResult.commands.map((cmd, i) => (
                           <div key={i} className="flex items-center gap-2">
-                            <span className="text-[10px] text-success font-mono">$</span>
-                            <code className="text-xs font-mono text-foreground">{cmd}</code>
+                            <span className="text-[10px] text-success font-mono font-bold select-none">$</span>
+                            <code className="text-[11px] font-mono text-foreground">{cmd}</code>
                           </div>
                         ))}
                       </div>
-                    </div>
-                  )}
-
-                  {/* Git output */}
-                  {updateOutput && (
-                    <ScrollArea className="h-32 rounded-md border border-border/50 bg-secondary/30 p-3">
-                      <pre className="text-xs font-mono text-muted-foreground whitespace-pre-wrap">{updateOutput}</pre>
-                    </ScrollArea>
-                  )}
+                    )}
+                    {updateOutput && (
+                      <pre className="text-[11px] font-mono text-muted-foreground whitespace-pre-wrap leading-relaxed">{updateOutput}</pre>
+                    )}
+                  </ScrollArea>
 
                   {/* New commits pulled */}
                   {updateResult?.commits && updateResult.commits.length > 0 && (
-                    <div className="rounded-md border border-success/30 bg-success/5 overflow-hidden">
+                    <div className="border-t border-success/20 bg-success/5">
                       <p className="text-[10px] text-success font-medium uppercase tracking-wider px-3 pt-2 pb-1">
-                        Commits integres
+                        Commits integres ({updateResult.commits.length})
                       </p>
                       <div className="flex flex-col">
                         {updateResult.commits.map((c) => (

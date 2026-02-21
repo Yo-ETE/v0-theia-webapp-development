@@ -58,7 +58,7 @@ export interface Alert {
 // ─── Missions ────────────────────────────────────────────────────
 
 export type MissionStatus = "draft" | "active" | "paused" | "completed" | "archived"
-export type EnvironmentType = "horizontal" | "vertical"
+export type EnvironmentType = "horizontal" | "vertical" | "habitation" | "garage" | "etages"
 
 export interface Mission {
   id: string

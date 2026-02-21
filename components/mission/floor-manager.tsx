@@ -2,7 +2,7 @@
 
 import { useState, useCallback, useMemo } from "react"
 import type { Floor, Device, DetectionEvent } from "@/lib/types"
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
+import { Card, CardContent } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { Input } from "@/components/ui/input"
@@ -12,11 +12,8 @@ import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter,
 } from "@/components/ui/dialog"
 import {
-  Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
-} from "@/components/ui/select"
-import {
   Building2, Plus, Trash2, Signal, Activity, ChevronUp, ChevronDown,
-  Radio, Layers,
+  Radio, Warehouse, X,
 } from "lucide-react"
 
 // ── Terminology helper ──
@@ -73,7 +70,7 @@ export function FloorManager({
   const [addDialog, setAddDialog] = useState(false)
   const [addLabel, setAddLabel] = useState("")
   const [addLevel, setAddLevel] = useState(floors.length)
-  const [assignDialog, setAssignDialog] = useState<number | null>(null) // floor level
+  const [assignDialog, setAssignDialog] = useState<number | null>(null)
   const [selectedDevice, setSelectedDevice] = useState("")
 
   // Compute live detection state per floor
@@ -105,11 +102,18 @@ export function FloorManager({
     return map
   }, [events, devices])
 
-  // Available (unassigned) devices
+  // Available (unassigned) devices -- any device not already assigned to a floor in this mission
+  const assignedDeviceIds = useMemo(() => {
+    const set = new Set<string>()
+    for (const f of floors) {
+      for (const did of f.devices) set.add(did)
+    }
+    return set
+  }, [floors])
+
   const availableDevices = useMemo(() =>
-    allDevices.filter(d => !d.mission_id || d.mission_id === missionId)
-      .filter(d => !floors.some(f => f.devices.includes(d.id))),
-    [allDevices, missionId, floors]
+    allDevices.filter(d => !assignedDeviceIds.has(d.id)),
+    [allDevices, assignedDeviceIds]
   )
 
   const addFloor = useCallback(() => {
@@ -126,7 +130,6 @@ export function FloorManager({
   }, [addLabel, addLevel, floors, onFloorsChange])
 
   const removeFloor = useCallback((level: number) => {
-    // Unassign devices on this floor first
     const floor = floors.find(f => f.level === level)
     if (floor) {
       for (const devId of floor.devices) {
@@ -139,7 +142,6 @@ export function FloorManager({
   const assignToFloor = useCallback(() => {
     if (assignDialog == null || !selectedDevice) return
     onDeviceAssign(selectedDevice, assignDialog)
-    // Update floors list
     const updated = floors.map(f =>
       f.level === assignDialog
         ? { ...f, devices: [...f.devices, selectedDevice] }
@@ -171,20 +173,137 @@ export function FloorManager({
     setAddDialog(true)
   }, [floors, mode])
 
-  // Sort floors: for buildings, highest floor first; for sections, alphabetical order
+  // Sort floors: for buildings, highest floor first; for sections, order by level
   const sortedFloors = useMemo(() =>
     [...floors].sort((a, b) => mode === "floor" ? b.level - a.level : a.level - b.level),
     [floors, mode]
   )
 
+  // ── Render a single floor/section card ──
+  function renderFloorCard(floor: Floor) {
+    const color = FLOOR_COLORS[Math.abs(floor.level) % FLOOR_COLORS.length]
+    const floorDevices = devices.filter(d => floor.devices.includes(d.id))
+    const live = liveByFloor[floor.level]
+    const floorEvents = eventsByFloor[floor.level] ?? []
+    const hasLive = live && live.count > 0
+
+    return (
+      <div
+        key={floor.level}
+        className={cn(
+          "rounded-lg border transition-all flex flex-col",
+          mode === "section" ? "min-w-[200px] flex-1" : "w-full",
+          hasLive ? "border-success/50 bg-success/5" : "border-border/50 bg-card"
+        )}
+      >
+        {/* Header bar with color accent */}
+        <div className="flex items-center justify-between px-3 py-2 border-b border-border/30"
+          style={{ borderTopColor: color, borderTopWidth: 3 }}>
+          <div className="flex items-center gap-2">
+            <div
+              className="h-5 w-5 rounded flex items-center justify-center text-[10px] font-bold text-white shrink-0"
+              style={{ backgroundColor: color }}
+            >
+              {floor.level}
+            </div>
+            <span className="text-xs font-semibold text-foreground">{floor.label}</span>
+            {hasLive && (
+              <Badge variant="outline" className="h-4 text-[8px] px-1 border-success/50 text-success gap-0.5">
+                <Activity className="h-2 w-2 animate-pulse" />
+                {live.count}
+              </Badge>
+            )}
+          </div>
+          <div className="flex items-center gap-0.5">
+            <Button
+              variant="ghost" size="sm"
+              className="h-5 w-5 p-0 text-primary hover:text-primary/80"
+              onClick={() => { setAssignDialog(floor.level); setSelectedDevice("") }}
+              title="Assigner un TX"
+            >
+              <Plus className="h-3 w-3" />
+            </Button>
+            <Button
+              variant="ghost" size="sm"
+              className="h-5 w-5 p-0 text-destructive hover:text-destructive/80"
+              onClick={() => removeFloor(floor.level)}
+              title="Supprimer"
+            >
+              <Trash2 className="h-3 w-3" />
+            </Button>
+          </div>
+        </div>
+
+        {/* Content */}
+        <div className="px-3 py-2 flex-1 flex flex-col gap-1.5">
+          {floorDevices.length === 0 ? (
+            <button
+              onClick={() => { setAssignDialog(floor.level); setSelectedDevice("") }}
+              className="flex items-center justify-center gap-1.5 py-3 text-[10px] text-muted-foreground hover:text-primary transition-colors border border-dashed border-border/50 rounded"
+            >
+              <Plus className="h-3 w-3" />
+              Assigner un TX
+            </button>
+          ) : (
+            floorDevices.map((dev) => {
+              const isOnline = dev.status === "online"
+              const devLive = liveDetections.find(
+                d => d.device_id === dev.id || d.device_name === dev.name
+              )
+              return (
+                <div
+                  key={dev.id}
+                  className={cn(
+                    "flex items-center justify-between rounded px-2 py-1 text-[10px]",
+                    "border border-border/40 bg-secondary/20",
+                    devLive?.presence && "border-success/40 bg-success/5"
+                  )}
+                >
+                  <div className="flex items-center gap-1.5">
+                    <Signal className={cn(
+                      "h-3 w-3",
+                      isOnline ? "text-success" : "text-muted-foreground"
+                    )} />
+                    <span className="font-mono font-medium text-foreground">{dev.name}</span>
+                  </div>
+                  <div className="flex items-center gap-1">
+                    {devLive?.presence && (
+                      <span className="text-success font-semibold text-[9px]">
+                        {typeof devLive.distance === "number" ? `${devLive.distance.toFixed(1)}m` : "DETECT"}
+                      </span>
+                    )}
+                    <button
+                      onClick={() => unassignFromFloor(dev.id, floor.level)}
+                      className="text-muted-foreground hover:text-destructive transition-colors"
+                      title="Retirer"
+                    >
+                      <X className="h-3 w-3" />
+                    </button>
+                  </div>
+                </div>
+              )
+            })
+          )}
+
+          {/* Event count */}
+          {floorEvents.length > 0 && (
+            <p className="text-[9px] text-muted-foreground mt-auto pt-1 border-t border-border/20">
+              {floorEvents.length} detection{floorEvents.length > 1 ? "s" : ""}
+            </p>
+          )}
+        </div>
+      </div>
+    )
+  }
+
   return (
-    <div className="flex flex-col gap-3">
+    <div className="flex flex-col gap-4">
       {/* Header */}
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-2">
           {mode === "floor"
             ? <Building2 className="h-4 w-4 text-primary" />
-            : <Layers className="h-4 w-4 text-primary" />}
+            : <Warehouse className="h-4 w-4 text-primary" />}
           <h3 className="text-sm font-semibold text-foreground">
             {modeLabel(mode, true)} ({floors.length})
           </h3>
@@ -198,146 +317,118 @@ export function FloorManager({
       {/* Empty state */}
       {floors.length === 0 && (
         <Card className="border-border/50 bg-card">
-          <CardContent className="flex flex-col items-center justify-center py-8 gap-2">
+          <CardContent className="flex flex-col items-center justify-center py-10 gap-3">
             {mode === "floor"
-              ? <Building2 className="h-8 w-8 text-muted-foreground/40" />
-              : <Layers className="h-8 w-8 text-muted-foreground/40" />}
+              ? <Building2 className="h-10 w-10 text-muted-foreground/30" />
+              : <Warehouse className="h-10 w-10 text-muted-foreground/30" />}
             <p className="text-xs text-muted-foreground text-center max-w-xs">
               {mode === "floor"
                 ? "Ajoutez des etages pour configurer la surveillance verticale. Chaque etage peut avoir un ou plusieurs TX."
                 : "Ajoutez des troncons pour configurer la surveillance souterraine. Chaque troncon peut avoir un ou plusieurs TX."}
             </p>
+            <Button variant="outline" size="sm" className="text-xs gap-1" onClick={openAddDialog}>
+              <Plus className="h-3 w-3" />
+              {mode === "floor" ? "Creer le premier etage" : "Creer le premier troncon"}
+            </Button>
           </CardContent>
         </Card>
       )}
 
-      {/* Floor/Section cards */}
-      <div className="flex flex-col gap-2">
-        {sortedFloors.map((floor) => {
-          const color = FLOOR_COLORS[Math.abs(floor.level) % FLOOR_COLORS.length]
-          const floorDevices = devices.filter(d => floor.devices.includes(d.id))
-          const live = liveByFloor[floor.level]
-          const floorEvents = eventsByFloor[floor.level] ?? []
-          const hasLive = live && live.count > 0
+      {/* ── Visual layout ── */}
+      {floors.length > 0 && (
+        <>
+          {/* Visual representation */}
+          <div className="relative rounded-lg border border-border/50 bg-secondary/10 p-4 overflow-x-auto">
+            {mode === "floor" ? (
+              /* ── Vertical: building visualization ── */
+              <div className="flex flex-col items-center gap-0">
+                {/* Roof */}
+                <div className="w-48 h-2 bg-muted-foreground/20 rounded-t-lg" />
+                {sortedFloors.map((floor, idx) => {
+                  const color = FLOOR_COLORS[Math.abs(floor.level) % FLOOR_COLORS.length]
+                  const live = liveByFloor[floor.level]
+                  const hasLive = live && live.count > 0
+                  const floorDevices = devices.filter(d => floor.devices.includes(d.id))
 
-          return (
-            <Card
-              key={floor.level}
-              className={cn(
-                "border-border/50 bg-card transition-all",
-                hasLive && "ring-1 ring-success/50"
-              )}
-            >
-              <CardHeader className="pb-2 pt-3 px-4">
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-2">
+                  return (
                     <div
-                      className="h-4 w-4 rounded-sm flex items-center justify-center text-[9px] font-bold text-white shrink-0"
-                      style={{ backgroundColor: color }}
-                    >
-                      {floor.level}
-                    </div>
-                    <CardTitle className="text-xs">{floor.label}</CardTitle>
-                    {hasLive && (
-                      <Badge variant="outline" className="h-4 text-[9px] px-1.5 border-success/50 text-success gap-1">
-                        <Activity className="h-2.5 w-2.5 animate-pulse" />
-                        {live.count} detection{live.count > 1 ? "s" : ""}
-                      </Badge>
-                    )}
-                  </div>
-                  <div className="flex items-center gap-1">
-                    <Button
-                      variant="ghost" size="sm"
-                      className="h-5 w-5 p-0 text-primary hover:text-primary/80"
+                      key={floor.level}
+                      className={cn(
+                        "w-48 border-x-2 border-b flex items-center gap-2 px-3 py-2 transition-all cursor-pointer hover:bg-primary/5",
+                        hasLive ? "bg-success/10 border-success/30" : "bg-card border-border/40",
+                        idx === 0 && "border-t-0"
+                      )}
+                      style={{ borderLeftColor: color, borderRightColor: color }}
                       onClick={() => { setAssignDialog(floor.level); setSelectedDevice("") }}
-                      title="Assigner un TX"
                     >
-                      <Plus className="h-3 w-3" />
-                    </Button>
-                    <Button
-                      variant="ghost" size="sm"
-                      className="h-5 w-5 p-0 text-destructive hover:text-destructive/80"
-                      onClick={() => removeFloor(floor.level)}
-                      title="Supprimer"
-                    >
-                      <Trash2 className="h-3 w-3" />
-                    </Button>
-                  </div>
-                </div>
-              </CardHeader>
-              <CardContent className="px-4 pb-3 pt-0">
-                {/* Devices on this floor */}
-                {floorDevices.length === 0 ? (
-                  <p className="text-[10px] text-muted-foreground italic">Aucun TX assigne</p>
-                ) : (
-                  <div className="flex flex-col gap-1.5">
-                    {floorDevices.map((dev) => {
-                      const isOnline = dev.status === "online"
-                      const devLive = liveDetections.find(
-                        d => d.device_id === dev.id || d.device_name === dev.name
-                      )
-                      return (
-                        <div
-                          key={dev.id}
-                          className={cn(
-                            "flex items-center justify-between rounded-md px-2 py-1.5 text-[10px]",
-                            "border border-border/40 bg-secondary/20",
-                            devLive?.presence && "border-success/40 bg-success/5"
-                          )}
-                        >
-                          <div className="flex items-center gap-2">
-                            <Signal className={cn(
-                              "h-3 w-3",
-                              isOnline ? "text-success" : "text-muted-foreground"
-                            )} />
-                            <span className="font-mono font-medium text-foreground">{dev.name}</span>
-                            {dev.rssi != null && (
-                              <span className="text-muted-foreground">{dev.rssi}dBm</span>
-                            )}
-                          </div>
-                          <div className="flex items-center gap-1.5">
-                            {devLive?.presence && (
-                              <span className="text-success font-semibold">
-                                {typeof devLive.distance === "number" ? `${devLive.distance.toFixed(1)}m` : "DETECT"}
-                              </span>
-                            )}
-                            <button
-                              onClick={() => unassignFromFloor(dev.id, floor.level)}
-                              className="text-muted-foreground hover:text-destructive transition-colors"
-                              title="Retirer"
-                            >
-                              <Trash2 className="h-3 w-3" />
-                            </button>
-                          </div>
-                        </div>
-                      )
-                    })}
-                  </div>
-                )}
-
-                {/* Recent events summary */}
-                {floorEvents.length > 0 && (
-                  <div className="mt-2 pt-2 border-t border-border/30">
-                    <p className="text-[9px] text-muted-foreground uppercase tracking-wider mb-1">
-                      {floorEvents.length} detection{floorEvents.length > 1 ? "s" : ""} recente{floorEvents.length > 1 ? "s" : ""}
-                    </p>
-                    <div className="flex flex-col gap-0.5">
-                      {floorEvents.slice(0, 3).map((evt) => (
-                        <div key={evt.id} className="flex items-center justify-between text-[9px]">
-                          <span className="font-mono text-muted-foreground">{evt.device_name}</span>
-                          <span className="text-muted-foreground">
-                            {new Date(evt.timestamp).toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit" })}
-                          </span>
-                        </div>
-                      ))}
+                      <div
+                        className="h-4 w-4 rounded-sm flex items-center justify-center text-[9px] font-bold text-white shrink-0"
+                        style={{ backgroundColor: color }}
+                      >
+                        {floor.level}
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <p className="text-[10px] font-medium text-foreground truncate">{floor.label}</p>
+                        <p className="text-[8px] text-muted-foreground">
+                          {floorDevices.length} TX
+                        </p>
+                      </div>
+                      {hasLive && (
+                        <Activity className="h-3 w-3 text-success animate-pulse shrink-0" />
+                      )}
                     </div>
-                  </div>
-                )}
-              </CardContent>
-            </Card>
-          )
-        })}
-      </div>
+                  )
+                })}
+                {/* Foundation */}
+                <div className="w-56 h-2 bg-muted-foreground/30 rounded-b" />
+              </div>
+            ) : (
+              /* ── Horizontal: garage/tunnel visualization ── */
+              <div className="flex items-end gap-0">
+                {sortedFloors.map((floor) => {
+                  const color = FLOOR_COLORS[Math.abs(floor.level) % FLOOR_COLORS.length]
+                  const live = liveByFloor[floor.level]
+                  const hasLive = live && live.count > 0
+                  const floorDevices = devices.filter(d => floor.devices.includes(d.id))
+
+                  return (
+                    <div
+                      key={floor.level}
+                      className={cn(
+                        "flex-1 min-w-[80px] max-w-[160px] border-t-2 border-r flex flex-col items-center gap-1 px-2 py-3 transition-all cursor-pointer hover:bg-primary/5",
+                        hasLive ? "bg-success/10 border-success/30" : "bg-card border-border/40",
+                      )}
+                      style={{ borderTopColor: color }}
+                      onClick={() => { setAssignDialog(floor.level); setSelectedDevice("") }}
+                    >
+                      <div
+                        className="h-5 w-5 rounded flex items-center justify-center text-[9px] font-bold text-white shrink-0"
+                        style={{ backgroundColor: color }}
+                      >
+                        {floor.level}
+                      </div>
+                      <p className="text-[10px] font-medium text-foreground text-center truncate w-full">{floor.label}</p>
+                      <p className="text-[8px] text-muted-foreground">{floorDevices.length} TX</p>
+                      {hasLive && (
+                        <Activity className="h-3 w-3 text-success animate-pulse" />
+                      )}
+                    </div>
+                  )
+                })}
+              </div>
+            )}
+          </div>
+
+          {/* Floor/Section detail cards */}
+          <div className={cn(
+            mode === "section"
+              ? "flex gap-2 overflow-x-auto pb-1"
+              : "flex flex-col gap-2"
+          )}>
+            {sortedFloors.map(renderFloorCard)}
+          </div>
+        </>
+      )}
 
       {/* Live summary bar */}
       {Object.keys(liveByFloor).length > 0 && (
@@ -425,31 +516,41 @@ export function FloorManager({
             <DialogDescription className="text-xs text-muted-foreground">
               {(() => {
                 const f = floors.find(fl => fl.level === assignDialog)
-                return f ? `Assigner un device a "${f.label}"` : ""
+                return f ? `Assigner un device au "${f.label}"` : ""
               })()}
             </DialogDescription>
           </DialogHeader>
           <div className="py-2">
             {availableDevices.length === 0 ? (
               <p className="text-xs text-muted-foreground text-center py-4">
-                Aucun device disponible. Assignez d'abord des devices a cette mission depuis l'onglet Sensors.
+                Aucun device disponible. Tous les TX sont deja assignes.
               </p>
             ) : (
-              <Select value={selectedDevice} onValueChange={setSelectedDevice}>
-                <SelectTrigger className="bg-input/50 border-border text-sm">
-                  <SelectValue placeholder="Choisir un TX..." />
-                </SelectTrigger>
-                <SelectContent>
-                  {availableDevices.map(dev => (
-                    <SelectItem key={dev.id} value={dev.id}>
-                      <span className="font-mono">{dev.name}</span>
-                      <span className="text-muted-foreground ml-2 text-xs">
-                        {dev.status === "online" ? "online" : "offline"}
-                      </span>
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+              <div className="flex flex-col gap-1">
+                {availableDevices.map(dev => (
+                  <button
+                    key={dev.id}
+                    onClick={() => setSelectedDevice(dev.id)}
+                    className={cn(
+                      "flex items-center justify-between rounded-md px-3 py-2 text-xs transition-all border",
+                      selectedDevice === dev.id
+                        ? "border-primary bg-primary/10 text-primary"
+                        : "border-border/40 bg-card hover:border-border text-foreground"
+                    )}
+                  >
+                    <div className="flex items-center gap-2">
+                      <Signal className={cn("h-3 w-3", dev.status === "online" ? "text-success" : "text-muted-foreground")} />
+                      <span className="font-mono font-medium">{dev.name}</span>
+                    </div>
+                    <span className={cn(
+                      "text-[10px]",
+                      dev.status === "online" ? "text-success" : "text-muted-foreground"
+                    )}>
+                      {dev.status}
+                    </span>
+                  </button>
+                ))}
+              </div>
             )}
           </div>
           <DialogFooter>

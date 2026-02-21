@@ -16,7 +16,7 @@ import { createMission } from "@/lib/api-client"
 import type { EnvironmentType } from "@/lib/types"
 import {
   ArrowLeft, ArrowRight, Save, Search, Crosshair,
-  Building2, Home, Loader2, MapPin, Check,
+  Building2, Home, Loader2, MapPin, Check, Warehouse,
 } from "lucide-react"
 
 const STEPS = ["Info", "Location", "Type", "Review"] as const
@@ -41,7 +41,7 @@ export default function NewMissionPage() {
     name: "",
     description: "",
     location: "",
-    environment: "horizontal" as EnvironmentType,
+    environment: "habitation" as EnvironmentType,
     center_lat: 48.8566,
     center_lon: 2.3522,
     zoom: 19,
@@ -349,31 +349,32 @@ export default function NewMissionPage() {
           {step === 2 && (
             <Card className="border-border/50 bg-card">
               <CardHeader>
-                <CardTitle className="text-sm">Environment Type</CardTitle>
+                <CardTitle className="text-sm">Type de mission</CardTitle>
                 <CardDescription className="text-xs">
-                  Determines sensor arrangement, zone layout, and triangulation mode.
+                  Determine le mode de configuration des capteurs et le layout de visualisation.
                 </CardDescription>
               </CardHeader>
-              <CardContent className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+              <CardContent className="grid grid-cols-1 gap-4 sm:grid-cols-3">
+                {/* Habitation */}
                 <button
-                  onClick={() => setForm({ ...form, environment: "horizontal" })}
+                  onClick={() => setForm({ ...form, environment: "habitation" })}
                   className={`flex flex-col gap-3 rounded-lg border-2 p-5 text-left transition-all ${
-                    form.environment === "horizontal"
+                    form.environment === "habitation"
                       ? "border-primary bg-primary/5"
                       : "border-border/50 bg-card hover:border-border"
                   }`}
                 >
                   <div className="flex items-center gap-3">
-                    <div className={`rounded-lg p-2 ${form.environment === "horizontal" ? "bg-primary/20 text-primary" : "bg-muted text-muted-foreground"}`}>
+                    <div className={`rounded-lg p-2 ${form.environment === "habitation" ? "bg-primary/20 text-primary" : "bg-muted text-muted-foreground"}`}>
                       <Home className="h-5 w-5" />
                     </div>
                     <div>
-                      <p className="text-sm font-medium text-foreground">Horizontal</p>
-                      <p className="text-[10px] text-muted-foreground">Plan view / ground level</p>
+                      <p className="text-sm font-medium text-foreground">Habitation</p>
+                      <p className="text-[10px] text-muted-foreground">Maison, villa, batiment</p>
                     </div>
                   </div>
                   <p className="text-xs text-muted-foreground leading-relaxed">
-                    Maison, rangee de garages, couloir, perimetre. Dessinez les zones sur la carte avec les facades.
+                    Dessinez les zones sur la carte, definissez les facades et placez les TX sur chaque cote.
                   </p>
                   <div className="flex flex-wrap gap-1">
                     <Badge variant="outline" className="text-[9px] py-0">Zones sur carte</Badge>
@@ -381,29 +382,57 @@ export default function NewMissionPage() {
                   </div>
                 </button>
 
+                {/* Garage / Souterrain */}
                 <button
-                  onClick={() => setForm({ ...form, environment: "vertical" })}
+                  onClick={() => setForm({ ...form, environment: "garage" })}
                   className={`flex flex-col gap-3 rounded-lg border-2 p-5 text-left transition-all ${
-                    form.environment === "vertical"
+                    form.environment === "garage"
                       ? "border-primary bg-primary/5"
                       : "border-border/50 bg-card hover:border-border"
                   }`}
                 >
                   <div className="flex items-center gap-3">
-                    <div className={`rounded-lg p-2 ${form.environment === "vertical" ? "bg-primary/20 text-primary" : "bg-muted text-muted-foreground"}`}>
-                      <Building2 className="h-5 w-5" />
+                    <div className={`rounded-lg p-2 ${form.environment === "garage" ? "bg-primary/20 text-primary" : "bg-muted text-muted-foreground"}`}>
+                      <Warehouse className="h-5 w-5" />
                     </div>
                     <div>
-                      <p className="text-sm font-medium text-foreground">Vertical / Souterrain</p>
-                      <p className="text-[10px] text-muted-foreground">Etages, troncons de garage</p>
+                      <p className="text-sm font-medium text-foreground">Garage / Souterrain</p>
+                      <p className="text-[10px] text-muted-foreground">Parking, tunnel, rangee</p>
                     </div>
                   </div>
                   <p className="text-xs text-muted-foreground leading-relaxed">
-                    Immeuble, cage d'escalier, parking souterrain. Definissez le nombre d'etages ou troncons et assignez les TX.
+                    Definissez le nombre de troncons cote a cote et assignez les TX par troncon.
                   </p>
                   <div className="flex flex-wrap gap-1">
-                    <Badge variant="outline" className="text-[9px] py-0">Etages / Troncons</Badge>
-                    <Badge variant="outline" className="text-[9px] py-0">TX par niveau</Badge>
+                    <Badge variant="outline" className="text-[9px] py-0">Troncons horizontaux</Badge>
+                    <Badge variant="outline" className="text-[9px] py-0">TX par troncon</Badge>
+                  </div>
+                </button>
+
+                {/* Etages */}
+                <button
+                  onClick={() => setForm({ ...form, environment: "etages" })}
+                  className={`flex flex-col gap-3 rounded-lg border-2 p-5 text-left transition-all ${
+                    form.environment === "etages"
+                      ? "border-primary bg-primary/5"
+                      : "border-border/50 bg-card hover:border-border"
+                  }`}
+                >
+                  <div className="flex items-center gap-3">
+                    <div className={`rounded-lg p-2 ${form.environment === "etages" ? "bg-primary/20 text-primary" : "bg-muted text-muted-foreground"}`}>
+                      <Building2 className="h-5 w-5" />
+                    </div>
+                    <div>
+                      <p className="text-sm font-medium text-foreground">Etages</p>
+                      <p className="text-[10px] text-muted-foreground">Immeuble, cage d'escalier</p>
+                    </div>
+                  </div>
+                  <p className="text-xs text-muted-foreground leading-relaxed">
+                    Definissez le nombre d'etages empiles verticalement et assignez les TX par etage.
+                  </p>
+                  <div className="flex flex-wrap gap-1">
+                    <Badge variant="outline" className="text-[9px] py-0">Etages empiles</Badge>
+                    <Badge variant="outline" className="text-[9px] py-0">TX par etage</Badge>
                   </div>
                 </button>
               </CardContent>
@@ -427,10 +456,12 @@ export default function NewMissionPage() {
                       <p className="text-sm font-mono text-foreground">{form.name}</p>
                     </div>
                     <div className="rounded border border-border/50 p-3">
-                      <p className="text-[10px] text-muted-foreground mb-1">Environment</p>
+                      <p className="text-[10px] text-muted-foreground mb-1">Type</p>
                       <div className="flex items-center gap-1.5">
-                        {form.environment === "horizontal" ? <Home className="h-3.5 w-3.5 text-primary" /> : <Building2 className="h-3.5 w-3.5 text-primary" />}
-                        <p className="text-sm text-foreground capitalize">{form.environment}</p>
+                        {form.environment === "habitation" && <Home className="h-3.5 w-3.5 text-primary" />}
+                        {form.environment === "garage" && <Warehouse className="h-3.5 w-3.5 text-primary" />}
+                        {form.environment === "etages" && <Building2 className="h-3.5 w-3.5 text-primary" />}
+                        <p className="text-sm text-foreground capitalize">{form.environment === "habitation" ? "Habitation" : form.environment === "garage" ? "Garage / Souterrain" : "Etages"}</p>
                       </div>
                     </div>
                     <div className="rounded border border-border/50 p-3 col-span-2">

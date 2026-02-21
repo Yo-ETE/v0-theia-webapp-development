@@ -357,40 +357,11 @@ export default function MissionDetailPage() {
     }
   }, [mission, id, mutate])
 
-  if (isLoading || !mission) {
-    return (
-      <>
-        <TopHeader title="Mission" description="Loading..." />
-        <main className="flex-1 p-4">
-          <div className="animate-pulse space-y-4">
-            <div className="h-8 w-48 rounded bg-muted" />
-            <div className="h-[400px] rounded bg-muted" />
-          </div>
-        </main>
-      </>
-    )
-  }
-
-  const statusCfg = missionStatusConfig[mission.status] ?? missionStatusConfig.draft
-  const zones = mission.zones ?? []
-  const eventList = events ?? []
-  const missionDevices = allDevices?.filter((d) => d.mission_id === id) ?? []
-  // Devices available to assign: not currently assigned to THIS mission's zones
-  const unassigned = allDevices?.filter((d) => {
-    // Already assigned to this mission with a zone
-    if (d.mission_id === id && d.zone_id) return false
-    return true
-  }) ?? []
-
-  // ── Floor mode (vertical / underground) ──
-  const isFloorMode = mission?.environment === "vertical"
-  const floorMode = isFloorMode ? "floor" as const : "section" as const
-  const missionFloors = mission?.floors ?? []
-
-  const handleFloorsChange = useCallback(async (floors: Floor[]) => {
+  // ── Floor mode callbacks (must be above early return) ──
+  const handleFloorsChange = useCallback(async (updatedFloors: Floor[]) => {
     if (!mission) return
     try {
-      const updated = await updateMission(id, { floors })
+      const updated = await updateMission(id, { floors: updatedFloors })
       mutate(updated, false)
     } catch (err) {
       console.warn("[THEIA] Failed to update floors:", err)
@@ -428,6 +399,37 @@ export default function MissionDetailPage() {
       console.warn("[THEIA] Failed to unassign device:", err)
     }
   }, [mutateDevices])
+
+  if (isLoading || !mission) {
+    return (
+      <>
+        <TopHeader title="Mission" description="Loading..." />
+        <main className="flex-1 p-4">
+          <div className="animate-pulse space-y-4">
+            <div className="h-8 w-48 rounded bg-muted" />
+            <div className="h-[400px] rounded bg-muted" />
+          </div>
+        </main>
+      </>
+    )
+  }
+
+  const statusCfg = missionStatusConfig[mission.status] ?? missionStatusConfig.draft
+  const zones = mission.zones ?? []
+  const eventList = events ?? []
+  const missionDevices = allDevices?.filter((d) => d.mission_id === id) ?? []
+  // Devices available to assign: not currently assigned to THIS mission's zones
+  const unassigned = allDevices?.filter((d) => {
+    // Already assigned to this mission with a zone
+    if (d.mission_id === id && d.zone_id) return false
+    return true
+  }) ?? []
+
+  // ── Floor mode (etages / garage) ──
+  const env = mission?.environment ?? "habitation"
+  const isFloorMode = env === "vertical" || env === "etages" || env === "garage"
+  const floorMode: "floor" | "section" = (env === "garage") ? "section" : "floor"
+  const missionFloors = mission?.floors ?? []
 
   // Build sensor placements for map
   const sensorPlacements = missionDevices
@@ -490,8 +492,8 @@ export default function MissionDetailPage() {
                 {statusCfg.label}
               </Badge>
               <span className="flex items-center gap-1 text-xs text-muted-foreground">
-                {mission.environment === "vertical" ? <Building2 className="h-3 w-3" /> : <Home className="h-3 w-3" />}
-                {mission.environment ?? "horizontal"}
+                {env === "etages" || env === "vertical" ? <Building2 className="h-3 w-3" /> : env === "garage" ? <Building2 className="h-3 w-3" /> : <Home className="h-3 w-3" />}
+                {env === "habitation" || env === "horizontal" ? "Habitation" : env === "garage" ? "Garage / Souterrain" : env === "etages" || env === "vertical" ? "Etages" : env}
               </span>
               <span className="flex items-center gap-1 text-xs text-muted-foreground">
                 <MapPin className="h-3 w-3" />{mission.location || "No location"}

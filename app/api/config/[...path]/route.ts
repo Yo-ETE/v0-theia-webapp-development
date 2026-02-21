@@ -71,6 +71,7 @@ function getMockResponse(path: string, method: string) {
   if (path === "backups/restore") return { status: "success", message: "Sauvegarde restauree" }
   if (path.startsWith("backups/") && method === "DELETE") return { status: "success", message: "Supprime" }
   if (path === "git/branches") return MOCK_BRANCHES
+  if (path === "git/fetch") return { status: "success", message: "Fetched latest from remote" }
   if (path === "git/update") return {
     status: "success",
     commands: [
