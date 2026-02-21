@@ -225,8 +225,20 @@ export default function MapInner({
       // Cleanup Leaflet map instance on unmount to prevent "already initialized" error
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const map = mapRef.current as any
-      if (map && typeof map.remove === "function") {
-        try { map.remove() } catch { /* ignore */ }
+      if (map) {
+        try {
+          // Remove all layers, event listeners, and the map itself
+          if (typeof map.eachLayer === "function") {
+            map.eachLayer((layer: { remove: () => void }) => { try { layer.remove() } catch { /* */ } })
+          }
+          if (typeof map.remove === "function") map.remove()
+          // Also clean the container DOM element's _leaflet_id
+          const container = map.getContainer?.()
+          if (container) {
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any
+            delete (container as any)._leaflet_id
+          }
+        } catch { /* ignore */ }
       }
       mapRef.current = null
       setMapKey((k) => k + 1)

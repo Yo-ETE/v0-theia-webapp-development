@@ -7,7 +7,7 @@ import {
   ArrowLeft, Radio, MapPin, Clock, Users, BarChart3, Plus,
   Pencil, Play, Pause, CheckCircle, Trash2, Building2, Home,
   Activity, Eye, EyeOff, Zap, Timer, Download, Signal, Battery, Wifi, Unlink,
-  Flame,
+  Flame, Layers,
 } from "lucide-react"
 import { TopHeader } from "@/components/top-header"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
@@ -600,23 +600,37 @@ export default function MissionDetailPage() {
                 <CardHeader className="pb-2">
                   <div className="flex items-center justify-between">
                     <CardTitle className="text-xs">Zones ({zones.length})</CardTitle>
-                    <Button
-                      variant={drawingMode ? "default" : "outline"} size="sm"
-                      className="h-6 text-[10px] px-2 gap-1"
-                      onClick={() => setDrawingMode(!drawingMode)}
-                    >
-                      {drawingMode
-                        ? <><Pencil className="h-3 w-3 animate-pulse" />Drawing...</>
-                        : <><Plus className="h-3 w-3" />Draw Zone</>}
-                    </Button>
+                    <div className="flex items-center gap-1">
+                      <Button
+                        variant="outline" size="sm"
+                        className="h-6 text-[10px] px-2 gap-1"
+                        onClick={openManualZoneDialog}
+                        title="Create zone manually (floors, sections)"
+                      >
+                        <Layers className="h-3 w-3" />Manual
+                      </Button>
+                      <Button
+                        variant={drawingMode ? "default" : "outline"} size="sm"
+                        className="h-6 text-[10px] px-2 gap-1"
+                        onClick={() => setDrawingMode(!drawingMode)}
+                      >
+                        {drawingMode
+                          ? <><Pencil className="h-3 w-3 animate-pulse" />Drawing...</>
+                          : <><Plus className="h-3 w-3" />Draw Zone</>}
+                      </Button>
+                    </div>
                   </div>
                 </CardHeader>
                 <CardContent className="flex flex-col gap-2">
                   {zones.length === 0 ? (
-                    <p className="text-xs text-muted-foreground py-3 text-center">
-                      Cliquez &quot;Draw Zone&quot; puis placez les points un par un sur la carte.
-                      Minimum 3 points. Toute forme est possible (L, T, etc.)
-                    </p>
+                    <div className="text-xs text-muted-foreground py-3 text-center flex flex-col gap-1">
+                      <p>
+                        <strong>Draw Zone</strong>: placez les points sur la carte (min 3 pts, formes L/T possibles).
+                      </p>
+                      <p>
+                        <strong>Manual</strong>: pour etages, troncons souterrains ou zones sans plan aerien.
+                      </p>
+                    </div>
                   ) : zones.map((zone) => {
                     const zoneDetRaw = effectiveLiveByZone[zone.id]
                     // Only treat as active if presence + valid distance
@@ -1113,6 +1127,74 @@ export default function MissionDetailPage() {
           <DialogFooter>
             <Button variant="ghost" size="sm" onClick={() => setZoneDialog(false)}>Cancel</Button>
             <Button size="sm" onClick={saveZone} disabled={!zoneName.trim()}>Save Zone</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Manual zone creation dialog (for vertical/underground) */}
+      <Dialog open={manualZoneDialog} onOpenChange={setManualZoneDialog}>
+        <DialogContent className="sm:max-w-md z-[10000]">
+          <DialogHeader>
+            <DialogTitle className="text-sm">Create Manual Zone</DialogTitle>
+            <DialogDescription className="text-xs text-muted-foreground">
+              Pour les missions verticales (etages) ou souterraines (troncons), creez des zones manuellement sans dessiner sur la carte.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="flex flex-col gap-4 py-2">
+            <div className="flex flex-col gap-2">
+              <Label className="text-xs text-muted-foreground">Zone Name</Label>
+              <Input
+                placeholder="e.g. Etage 1, Section B..."
+                value={manualZoneName}
+                onChange={(e) => setManualZoneName(e.target.value)}
+                className="bg-input/50 border-border text-sm"
+                autoFocus
+              />
+            </div>
+            <div className="flex flex-col gap-2">
+              <Label className="text-xs text-muted-foreground">Zone Type</Label>
+              <Select value={manualZoneType} onValueChange={setManualZoneType}>
+                <SelectTrigger className="bg-input/50 border-border text-sm"><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  {ZONE_TYPES.map((t) => (<SelectItem key={t.value} value={t.value}>{t.label}</SelectItem>))}
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="flex flex-col gap-2">
+              <Label className="text-xs text-muted-foreground">Number of Sides</Label>
+              <div className="flex items-center gap-2">
+                <Button variant="outline" size="sm" className="h-7 w-7 p-0"
+                  onClick={() => updateManualSideCount(manualSideCount - 1)} disabled={manualSideCount <= 2}>-</Button>
+                <span className="text-sm font-mono w-8 text-center">{manualSideCount}</span>
+                <Button variant="outline" size="sm" className="h-7 w-7 p-0"
+                  onClick={() => updateManualSideCount(manualSideCount + 1)} disabled={manualSideCount >= 20}>+</Button>
+              </div>
+            </div>
+            <div className="flex flex-col gap-2">
+              <Label className="text-xs text-muted-foreground">
+                Side / Facade Labels ({manualSideCount} sides)
+              </Label>
+              <p className="text-[10px] text-muted-foreground">
+                Nommez chaque cote (ex: Facade Nord, Mur Garage, Entree...). Le polygone sera genere automatiquement et modifiable ensuite sur la carte.
+              </p>
+              <div className="grid grid-cols-2 gap-2 max-h-40 overflow-y-auto">
+                {Object.keys(manualSideLabels).sort().map((key) => (
+                  <div key={key} className="flex items-center gap-2">
+                    <span className="text-xs font-mono font-bold text-cyan-600 w-4 shrink-0">{key}</span>
+                    <Input
+                      placeholder={`Side ${key}`}
+                      value={manualSideLabels[key]}
+                      onChange={(e) => setManualSideLabels((prev) => ({ ...prev, [key]: e.target.value }))}
+                      className="bg-input/50 border-border text-xs h-7"
+                    />
+                  </div>
+                ))}
+              </div>
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="ghost" size="sm" onClick={() => setManualZoneDialog(false)}>Cancel</Button>
+            <Button size="sm" onClick={saveManualZone} disabled={!manualZoneName.trim()}>Create Zone</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>

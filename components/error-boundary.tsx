@@ -27,6 +27,14 @@ export class ErrorBoundary extends Component<Props, State> {
   }
 
   handleRetry = () => {
+    // Clean any leftover Leaflet container state before retrying
+    const container = (this as unknown as { base?: HTMLElement }).base
+    if (container) {
+      container.querySelectorAll("[class*='leaflet']").forEach((el) => {
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        delete (el as any)._leaflet_id
+      })
+    }
     this.setState({ hasError: false, error: null })
   }
 

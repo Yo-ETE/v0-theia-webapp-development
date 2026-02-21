@@ -85,7 +85,7 @@ export interface Zone {
   mission_id: string
   name: string
   label: string
-  type: "facade" | "perimeter" | "interior" | "roof" | "floor" | "custom"
+  type: "facade" | "perimeter" | "interior" | "roof" | "floor" | "section" | "custom"
   polygon: [number, number][]
   color: string
   floor?: number
