@@ -29,7 +29,7 @@ export class ErrorBoundary extends Component<Props, State> {
     // Auto-retry once for Leaflet "already initialized" errors (transient HMR issue)
     if (
       error.message?.includes("already initialized") &&
-      this.state.retryCount < 2
+      this.state.retryCount < 1
     ) {
       setTimeout(() => {
         this.setState((prev) => ({
@@ -37,7 +37,7 @@ export class ErrorBoundary extends Component<Props, State> {
           error: null,
           retryCount: prev.retryCount + 1,
         }))
-      }, 300)
+      }, 800)
     }
   }
 

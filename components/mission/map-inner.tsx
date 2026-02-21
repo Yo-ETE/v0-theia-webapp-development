@@ -235,13 +235,17 @@ export default function MapInner({
         } catch { /* ignore */ }
       }
       mapRef.current = null
-      // Also clean _leaflet_id from any child divs in the container
+      // Clean _leaflet_id from the container AND all child elements
       const div = containerDivRef.current
       if (div) {
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        delete (div as any)._leaflet_id
         div.querySelectorAll("*").forEach((el) => {
           // eslint-disable-next-line @typescript-eslint/no-explicit-any
           if ((el as any)._leaflet_id) delete (el as any)._leaflet_id
         })
+        // Remove all Leaflet-injected children so the div is fully clean
+        div.innerHTML = ""
       }
       setMapKey((k) => k + 1)
     }
@@ -541,6 +545,17 @@ export default function MapInner({
       zoneColor: zone.color,
     }
   }).filter(Boolean) as SensorMarkerData[]
+
+  // Clean stale Leaflet state from container before each render
+  // This prevents "already initialized" on HMR / ErrorBoundary retry
+  if (containerDivRef.current) {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const el = containerDivRef.current as any
+    if (el._leaflet_id && !mapRef.current) {
+      delete el._leaflet_id
+      el.innerHTML = ""
+    }
+  }
 
   return (
     <div key={mapKey} ref={containerDivRef} className={cn("relative rounded-lg overflow-hidden border border-border/50", className)}>
