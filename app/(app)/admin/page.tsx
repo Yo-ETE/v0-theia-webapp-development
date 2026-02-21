@@ -11,6 +11,7 @@ import {
   AlertCircle,
   Terminal,
   GitBranch,
+  GitCommitHorizontal,
   RotateCcw,
   Globe,
   Download,
@@ -111,10 +112,12 @@ interface VersionInfo {
   branch: string
   commit: string
   commitDate: string | null
+  commitMessage?: string
+  commitAuthor?: string
   updateAvailable: boolean
   commitsBehind: number
   latestCommits?: GitCommit[]
-}
+  }
 
 interface GitUpdateStep {
   name: string
@@ -373,12 +376,14 @@ export default function AdminPage() {
     setIsCheckingVersion(true)
     setSelectedCommit("")
     try {
-      // Fetch + version info in one go
       const branchToUse = selectedBranch || gitBranches?.current || ""
+      // 1. Tell backend to git fetch the latest from remote
       if (branchToUse) {
         await api.post("git/fetch", { branch: branchToUse })
       }
-      const res = await fetch("/api/admin/version")
+      // 2. Re-read version info (backend will now see new remote commits)
+      const qs = branchToUse ? `?branch=${encodeURIComponent(branchToUse)}` : ""
+      const res = await fetch(`/api/admin/version${qs}`)
       const data = await res.json()
       setVersionInfo(data)
     } catch { /* ignore */ }
@@ -890,19 +895,30 @@ export default function AdminPage() {
             <CardContent className="flex flex-col gap-4">
               {versionInfo ? (
                 <>
-                  <div className="grid grid-cols-2 gap-3 text-sm">
-                    <div>
-                      <p className="text-[10px] text-muted-foreground">Branche actuelle</p>
-                      <p className="font-mono text-xs text-foreground">{versionInfo.branch}</p>
+                  {/* Current version info */}
+                  <div className="rounded-lg border border-border/50 bg-secondary/10 p-3 flex flex-col gap-2">
+                    <div className="flex items-center gap-2">
+                      <div className="h-2 w-2 rounded-full bg-success animate-pulse" />
+                      <p className="text-[10px] text-muted-foreground font-medium uppercase tracking-wider">Version actuelle</p>
                     </div>
-                    <div>
-                      <p className="text-[10px] text-muted-foreground">Commit</p>
-                      <p className="font-mono text-xs text-foreground">{versionInfo.commit}</p>
+                    <div className="flex items-center gap-3">
+                      <div className="flex items-center gap-1.5 rounded-md bg-secondary/40 px-2 py-1">
+                        <GitBranch className="h-3 w-3 text-primary" />
+                        <span className="font-mono text-xs text-foreground font-medium">{versionInfo.branch}</span>
+                      </div>
+                      <div className="flex items-center gap-1.5 rounded-md bg-secondary/40 px-2 py-1">
+                        <GitCommitHorizontal className="h-3 w-3 text-primary" />
+                        <span className="font-mono text-xs text-primary font-bold">{versionInfo.commit}</span>
+                      </div>
                     </div>
-                    {versionInfo.commitDate && (
-                      <div className="col-span-2">
-                        <p className="text-[10px] text-muted-foreground">Date</p>
-                        <p className="text-xs text-foreground">{versionInfo.commitDate}</p>
+                    {(versionInfo.commitMessage || versionInfo.commitDate) && (
+                      <div className="flex flex-col gap-0.5 ml-0.5">
+                        {versionInfo.commitMessage && (
+                          <p className="text-xs text-foreground">{versionInfo.commitMessage}</p>
+                        )}
+                        <p className="text-[10px] text-muted-foreground">
+                          {versionInfo.commitAuthor && `${versionInfo.commitAuthor} - `}{versionInfo.commitDate}
+                        </p>
                       </div>
                     )}
                   </div>
