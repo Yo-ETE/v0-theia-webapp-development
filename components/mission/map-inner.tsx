@@ -130,6 +130,7 @@ export default function MapInner({
   const [leafletL, setLeafletL] = useState<any>(null)
   const [drawPoints, setDrawPoints] = useState<[number, number][]>([])
   const mapRef = useRef<unknown>(null)
+  const containerDivRef = useRef<HTMLDivElement>(null)
   const [mapKey, setMapKey] = useState(0)
 
   // ── Detection state management with fade-out ──
@@ -230,20 +231,18 @@ export default function MapInner({
       const map = mapRef.current as any
       if (map) {
         try {
-          // Remove all layers, event listeners, and the map itself
-          if (typeof map.eachLayer === "function") {
-            map.eachLayer((layer: { remove: () => void }) => { try { layer.remove() } catch { /* */ } })
-          }
           if (typeof map.remove === "function") map.remove()
-          // Also clean the container DOM element's _leaflet_id
-          const container = map.getContainer?.()
-          if (container) {
-            // eslint-disable-next-line @typescript-eslint/no-explicit-any
-            delete (container as any)._leaflet_id
-          }
         } catch { /* ignore */ }
       }
       mapRef.current = null
+      // Also clean _leaflet_id from any child divs in the container
+      const div = containerDivRef.current
+      if (div) {
+        div.querySelectorAll("*").forEach((el) => {
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          if ((el as any)._leaflet_id) delete (el as any)._leaflet_id
+        })
+      }
       setMapKey((k) => k + 1)
     }
   }, [])
@@ -544,7 +543,7 @@ export default function MapInner({
   }).filter(Boolean) as SensorMarkerData[]
 
   return (
-    <div className={cn("relative rounded-lg overflow-hidden border border-border/50", className)}>
+    <div key={mapKey} ref={containerDivRef} className={cn("relative rounded-lg overflow-hidden border border-border/50", className)}>
       <MapContainer
         ref={mapRef}
         center={[centerLat, centerLon]}

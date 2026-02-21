@@ -10,32 +10,39 @@ interface Props {
 interface State {
   hasError: boolean
   error: Error | null
+  retryCount: number
 }
 
 export class ErrorBoundary extends Component<Props, State> {
   constructor(props: Props) {
     super(props)
-    this.state = { hasError: false, error: null }
+    this.state = { hasError: false, error: null, retryCount: 0 }
   }
 
-  static getDerivedStateFromError(error: Error): State {
+  static getDerivedStateFromError(error: Error): Partial<State> {
     return { hasError: true, error }
   }
 
   componentDidCatch(error: Error, errorInfo: ErrorInfo) {
     console.error("[v0] ErrorBoundary caught:", error.message, errorInfo.componentStack)
+
+    // Auto-retry once for Leaflet "already initialized" errors (transient HMR issue)
+    if (
+      error.message?.includes("already initialized") &&
+      this.state.retryCount < 2
+    ) {
+      setTimeout(() => {
+        this.setState((prev) => ({
+          hasError: false,
+          error: null,
+          retryCount: prev.retryCount + 1,
+        }))
+      }, 300)
+    }
   }
 
   handleRetry = () => {
-    // Clean any leftover Leaflet container state before retrying
-    const container = (this as unknown as { base?: HTMLElement }).base
-    if (container) {
-      container.querySelectorAll("[class*='leaflet']").forEach((el) => {
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        delete (el as any)._leaflet_id
-      })
-    }
-    this.setState({ hasError: false, error: null })
+    this.setState({ hasError: false, error: null, retryCount: this.state.retryCount + 1 })
   }
 
   render() {
