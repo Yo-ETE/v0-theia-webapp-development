@@ -125,7 +125,7 @@ export default function MapInner({
 
   const [mounted, setMounted] = useState(false)
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-> const [RL, setRL] = useState<Record<string, any> | null>(null)
+  const [RL, setRL] = useState<Record<string, any> | null>(null)
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const [leafletL, setLeafletL] = useState<any>(null)
   const [drawPoints, setDrawPoints] = useState<[number, number][]>([])
