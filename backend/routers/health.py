@@ -47,6 +47,9 @@ async def status():
             "lan_ip": next(iter(net_data.get("interfaces", {}).values()), "---"),
             "tailscale_ip": net_data.get("tailscale_ip"),
             "interfaces": net_data.get("interfaces", {}),
+            "internet": net_data.get("internet", {"connected": False, "ping_ms": 0}),
+            "wifi": net_data.get("wifi", {"connected": False, "ssid": "", "signal": 0}),
+            "ethernet": net_data.get("ethernet", {"connected": False, "ip": ""}),
         },
         "alerts": [],
     }

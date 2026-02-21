@@ -16,7 +16,7 @@ from backend.database import get_db, close_db
 from backend.services.system_monitor import system_monitor
 from backend.services.gps_reader import gps_reader
 from backend.services.lora_bridge import lora_bridge
-from backend.routers import health, missions, devices, events, logs, stream, tiles, admin
+from backend.routers import health, missions, devices, events, logs, stream, tiles, admin, config
 
 _tasks: list[asyncio.Task] = []
 
@@ -78,6 +78,7 @@ app.include_router(logs.router, prefix="/api")
 app.include_router(stream.router, prefix="/api")
 app.include_router(tiles.router, prefix="/api")
 app.include_router(admin.router)  # admin has its own /api/admin prefix
+app.include_router(config.router)  # config has its own /api/config prefix
 
 
 THEIA_BUILD = "2026-02-20-v5-final-phantom-gate"

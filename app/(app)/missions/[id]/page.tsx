@@ -869,14 +869,24 @@ export default function MissionDetailPage() {
                                 <Badge variant="outline" className={cn("text-[9px] px-1 py-0", sCfg.className)}>{sCfg.label}</Badge>
                               </TableCell>
                               <TableCell>
-                                <Button variant="outline" size="sm" className="h-6 text-[10px] px-2" onClick={async () => {
-                                  await updateDevice(device.id, { mission_id: id })
-                                  const updated = await updateMission(id, { device_count: (mission.device_count ?? 0) + 1 })
-                                  mutate(updated, false)
-                                  mutateDevices()
-                                }}>
-                                  <Signal className="mr-1 h-3 w-3" />{isElsewhere ? "Reassign" : "Assign"}
-                                </Button>
+                                <div className="flex items-center gap-1">
+                                  <Button variant="outline" size="sm" className="h-6 text-[10px] px-2" onClick={async () => {
+                                    await updateDevice(device.id, { mission_id: id })
+                                    const updated = await updateMission(id, { device_count: (mission.device_count ?? 0) + 1 })
+                                    mutate(updated, false)
+                                    mutateDevices()
+                                  }}>
+                                    <Signal className="mr-1 h-3 w-3" />{isElsewhere ? "Reassign" : "Assign"}
+                                  </Button>
+                                  {isElsewhere && (
+                                    <Button variant="ghost" size="sm" className="h-6 text-[10px] px-2 text-destructive hover:text-destructive/80" onClick={async () => {
+                                      await updateDevice(device.id, { mission_id: "", zone_id: "", zone_label: "", side: "", sensor_position: 0.5 } as Partial<import("@/lib/types").Device>)
+                                      mutateDevices()
+                                    }}>
+                                      <Unlink className="mr-1 h-3 w-3" />Remove
+                                    </Button>
+                                  )}
+                                </div>
                               </TableCell>
                             </TableRow>
                           )

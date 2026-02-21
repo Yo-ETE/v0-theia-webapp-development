@@ -53,6 +53,53 @@ class SystemMonitor:
         except Exception:
             pass
 
+        # Internet connectivity check (ping)
+        internet = {"connected": False, "ping_ms": 0}
+        try:
+            result = subprocess.run(
+                ["ping", "-c", "1", "-W", "2", "8.8.8.8"],
+                capture_output=True, text=True, timeout=4
+            )
+            if result.returncode == 0:
+                internet["connected"] = True
+                # Parse ping time from output
+                for line in result.stdout.split("\n"):
+                    if "time=" in line:
+                        t = line.split("time=")[1].split(" ")[0]
+                        internet["ping_ms"] = round(float(t), 1)
+                        break
+        except Exception:
+            pass
+
+        # WiFi info
+        wifi_info: dict = {"connected": False, "ssid": "", "signal": 0, "tx_rate": "", "rx_rate": ""}
+        try:
+            iw = subprocess.run(
+                ["iwconfig", "wlan0"], capture_output=True, text=True, timeout=3
+            )
+            if iw.returncode == 0 and "ESSID:" in iw.stdout:
+                essid = iw.stdout.split('ESSID:"')[1].split('"')[0] if 'ESSID:"' in iw.stdout else ""
+                if essid:
+                    wifi_info["connected"] = True
+                    wifi_info["ssid"] = essid
+                if "Signal level=" in iw.stdout:
+                    sig = iw.stdout.split("Signal level=")[1].split(" ")[0]
+                    wifi_info["signal"] = int(sig)
+                if "Bit Rate=" in iw.stdout:
+                    rate = iw.stdout.split("Bit Rate=")[1].split(" ")[0]
+                    wifi_info["tx_rate"] = f"{rate} Mb/s"
+        except Exception:
+            pass
+
+        # Ethernet info
+        eth_info: dict = {"connected": False, "ip": ""}
+        try:
+            if "eth0" in ips:
+                eth_info["connected"] = True
+                eth_info["ip"] = ips["eth0"]
+        except Exception:
+            pass
+
         return {
             "cpu_percent": psutil.cpu_percent(interval=0.5),
             "ram_percent": mem.percent,
@@ -66,6 +113,9 @@ class SystemMonitor:
             "network": {
                 "interfaces": ips,
                 "tailscale_ip": tailscale_ip,
+                "internet": internet,
+                "wifi": wifi_info,
+                "ethernet": eth_info,
             },
         }
 
