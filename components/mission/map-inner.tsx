@@ -609,7 +609,6 @@ export default function MapInner({
         arcs.push({ zoneId: zId, bandIdx: i, polygon: arcPoly, count: band.count, intensity, innerR: i === 0 ? Math.round(padMin) : HEAT_BANDS[i - 1], outerR: HEAT_BANDS[i] })
       }
     }
-    console.log("[v0] heatmap arcs:", arcs.length, "zones with events:", Object.keys(byZone), "sensorPlacements:", sensorPlacements.map(s => ({ zone_id: s.zone_id, side: s.side })))
     return { arcs, zoneStats, maxBand }
   })()
 

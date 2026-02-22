@@ -20,20 +20,23 @@ export async function GET(
     const res = await proxyToBackend(`/api/missions/${id}`)
     if (!res.ok) throw new Error(`Backend ${res.status}`)
     const backend = await res.json()
-    // Merge: local store always has the freshest zones/coords (drawn in the UI).
-    // Backend zones are only used if the local store has none.
+    // Merge: local store has freshest geo/zones (drawn in the UI).
+    // Backend is authoritative for status, event_count, device_count.
     const localZones = local?.zones ?? []
     const localFloors = local?.floors ?? []
     const merged = {
       ...backend,
-      center_lat: local?.center_lat ?? backend.center_lat,
-      center_lon: local?.center_lon ?? backend.center_lon,
-      zoom: local?.zoom ?? backend.zoom,
+      ...(local ?? {}),
+      // Backend authoritative fields
+      status: backend.status ?? local?.status,
+      event_count: backend.event_count ?? local?.event_count ?? 0,
+      device_count: backend.device_count ?? local?.device_count ?? 0,
+      // Zones/floors: local wins if present
       zones: localZones.length > 0 ? localZones : (backend.zones ?? []),
       floors: localFloors.length > 0 ? localFloors : (backend.floors ?? []),
       environment: local?.environment ?? backend.environment ?? "horizontal",
     }
-    if (local) store.updateMission(id, merged)
+    store.updateMission(id, merged)
     return NextResponse.json(merged)
   } catch {
     if (local) return NextResponse.json(local)
@@ -94,13 +97,15 @@ export async function PATCH(
       }
       const backend = await res.json()
       console.log(`[THEIA] Mission PATCH OK: id=${id} status=${backend.status}`)
-      // Merge: backend wins for status/metadata, local wins for zones/coords/floors
+      // Merge: backend wins for status/counts, local wins for geo/zones/floors
       const merged = {
-        ...localUpdated,
         ...backend,
-        center_lat: localUpdated?.center_lat ?? backend.center_lat,
-        center_lon: localUpdated?.center_lon ?? backend.center_lon,
-        zoom: localUpdated?.zoom ?? backend.zoom,
+        ...localUpdated,
+        // Backend wins for these fields (authoritative source)
+        status: backend.status ?? localUpdated?.status,
+        event_count: backend.event_count ?? localUpdated?.event_count ?? 0,
+        device_count: backend.device_count ?? localUpdated?.device_count ?? 0,
+        // Local wins for zones/floors (never stored in backend properly)
         zones: localUpdated?.zones?.length ? localUpdated.zones : (backend.zones ?? []),
         floors: localUpdated?.floors?.length ? localUpdated.floors : (backend.floors ?? []),
       }
