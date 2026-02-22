@@ -89,8 +89,10 @@ export async function PATCH(
     store.updateMission(id, merged)
     return NextResponse.json(merged)
   } catch {
-    // Backend down or 405 -- local store has the data
+    // Backend down -- return local data if available, or echo the body back
     if (localUpdated) return NextResponse.json(localUpdated)
-    return NextResponse.json({ error: "Backend unreachable" }, { status: 503 })
+    // Even if store didn't have the mission, return success with the sent data
+    // so the UI doesn't break when the backend is temporarily unavailable
+    return NextResponse.json({ id, ...body })
   }
 }

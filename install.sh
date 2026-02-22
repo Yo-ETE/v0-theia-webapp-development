@@ -124,6 +124,10 @@ setup_env() {
     # Force Pi mode
     sed -i 's/^NEXT_PUBLIC_MODE=.*/NEXT_PUBLIC_MODE=pi/' "$env_file"
 
+    # Clear hardcoded serial ports so auto-detection works
+    sed -i 's|^GPS_DEVICE=/dev/ttyUSB.*|GPS_DEVICE=|' "$env_file"
+    sed -i 's|^LORA_SERIAL_PORT=/dev/ttyACM.*|LORA_SERIAL_PORT=|' "$env_file"
+
     # Ensure all required keys exist (add missing ones from example)
     while IFS= read -r line; do
         if [[ "$line" =~ ^[A-Z_]+= ]]; then
@@ -184,27 +188,57 @@ setup_nodejs() {
 }
 
 # ============================================
-# STEP 8: Configure GPSD
+# STEP 8a: Setup udev rules for stable USB names
+# ============================================
+setup_udev() {
+    info "Setting up udev rules for stable USB device names..."
+    if [[ -f "$APP_DIR/scripts/setup-udev-rules.sh" ]]; then
+        bash "$APP_DIR/scripts/setup-udev-rules.sh"
+        ok "udev rules configured"
+    else
+        warn "scripts/setup-udev-rules.sh not found, skipping udev setup"
+    fi
+}
+
+# ============================================
+# STEP 8b: Configure GPSD
 # ============================================
 setup_gpsd() {
-    local gps_device
-    gps_device=$(grep '^GPS_DEVICE=' "$APP_DIR/.env" | cut -d'=' -f2)
-    gps_device="${gps_device:-/dev/ttyUSB0}"
+    # Prefer /dev/theia-gps (udev symlink), then GPS_DEVICE from .env, then skip
+    local gps_device=""
 
-    if [[ -c "$gps_device" ]]; then
+    if [[ -e "/dev/theia-gps" ]]; then
+        gps_device="/dev/theia-gps"
+    else
+        gps_device=$(grep '^GPS_DEVICE=' "$APP_DIR/.env" 2>/dev/null | cut -d'=' -f2)
+    fi
+
+    if [[ -n "$gps_device" && -e "$gps_device" ]]; then
         info "Configuring gpsd for $gps_device..."
 
         cat > /etc/default/gpsd <<EOF
 START_DAEMON="true"
 GPSD_OPTIONS="-n"
 DEVICES="$gps_device"
-USBAUTO="true"
+USBAUTO="false"
 EOF
         systemctl restart gpsd 2>/dev/null || true
         systemctl enable gpsd 2>/dev/null || true
         ok "gpsd configured for $gps_device"
     else
-        warn "GPS device $gps_device not found, skipping gpsd config"
+        # No GPS device found -- configure gpsd with no device
+        # CRITICAL: USBAUTO=false prevents gpsd from grabbing the LoRa port!
+        info "No GPS device found. Configuring gpsd with no device..."
+
+        cat > /etc/default/gpsd <<EOF
+START_DAEMON="true"
+GPSD_OPTIONS="-n"
+DEVICES=""
+USBAUTO="false"
+EOF
+        systemctl restart gpsd 2>/dev/null || true
+        systemctl enable gpsd 2>/dev/null || true
+        ok "gpsd configured (no device -- LoRa port protected)"
     fi
 }
 
@@ -341,6 +375,7 @@ main() {
     setup_env
     setup_python
     setup_nodejs
+    setup_udev
     setup_gpsd
     install_services
     verify_install
