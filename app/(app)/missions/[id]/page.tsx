@@ -239,10 +239,10 @@ export default function MissionDetailPage() {
   const unassignDevice = useCallback(async (deviceId: string) => {
     if (!mission) return
 
-    // Optimistic: immediately remove from device list & zones in UI
+    // Optimistic: immediately remove from device list, zones, and floors in UI
     mutateDevices(
       (prev) => prev?.map((d) =>
-        d.id === deviceId ? { ...d, mission_id: "", zone_id: "", zone_label: "", side: "" } : d
+        d.id === deviceId ? { ...d, mission_id: "", zone_id: "", zone_label: "", side: "", floor: undefined } : d
       ),
       false,
     )
@@ -250,28 +250,34 @@ export default function MissionDetailPage() {
       ...z,
       devices: z.devices.filter((did) => did !== deviceId),
     }))
+    // Also remove device from any floor's device list
+    const updatedFloors = (mission.floors ?? []).map((f) => ({
+      ...f,
+      devices: (f.devices ?? []).filter((did: string) => did !== deviceId),
+    }))
     mutate(
-      { ...mission, zones: updatedZones, device_count: Math.max(0, (mission.device_count ?? 1) - 1) },
+      { ...mission, zones: updatedZones, floors: updatedFloors, device_count: Math.max(0, (mission.device_count ?? 1) - 1) },
       false,
     )
 
-    // Persist device unassignment
+    // Persist device unassignment (clear ALL assignment fields including floor)
     try {
       await updateDevice(deviceId, {
         mission_id: "",
         zone_id: "",
         zone_label: "",
         side: "",
+        floor: null,
         sensor_position: 0.5,
       } as Partial<import("@/lib/types").Device>)
     } catch (err) {
       console.warn("[THEIA] Failed to update device:", err)
     }
-    // Persist zone update
+    // Persist zone + floor update
     try {
-      await updateMission(id, { zones: updatedZones, device_count: Math.max(0, (mission.device_count ?? 1) - 1) })
+      await updateMission(id, { zones: updatedZones, floors: updatedFloors, device_count: Math.max(0, (mission.device_count ?? 1) - 1) })
     } catch (err) {
-      console.warn("[THEIA] Failed to update mission zones:", err)
+      console.warn("[THEIA] Failed to update mission:", err)
     }
     // Re-fetch both to sync
     mutate()
@@ -736,10 +742,10 @@ export default function MissionDetailPage() {
                         )}
                         <button
                           onClick={() => unassignDevice(d.id)}
-                          className="opacity-0 group-hover:opacity-100 transition-opacity text-destructive hover:text-destructive/80 shrink-0"
-                          title="Remove from mission"
+                          className="text-destructive/60 hover:text-destructive transition-colors shrink-0 p-0.5"
+                          title="Retirer de la mission"
                         >
-                          <Trash2 className="h-3 w-3" />
+                          <Trash2 className="h-3.5 w-3.5" />
                         </button>
                       </div>
                     )

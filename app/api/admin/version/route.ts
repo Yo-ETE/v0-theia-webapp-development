@@ -22,9 +22,8 @@ export async function GET(request: NextRequest) {
   }
   try {
     const qs = branch ? `?branch=${encodeURIComponent(branch)}` : ""
-    const res = await proxyToBackend(`/api/admin/version${qs}`)
+    const res = await proxyToBackend(`/api/config/git/version${qs}`)
     const data = await res.json()
-    console.log("[v0] Backend /api/admin/version raw response:", JSON.stringify(data))
     // Normalize field names from backend (may use different naming)
     const normalized = {
       branch: data.branch || data.current_branch || data.git_branch || "unknown",

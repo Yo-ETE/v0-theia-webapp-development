@@ -549,9 +549,19 @@ class LoRaBridge:
     def data(self) -> dict:
         total_ok = sum(r.packets_ok for r in self._readers.values())
         total_err = sum(r.packets_err for r in self._readers.values())
-        # Pick the first active reader for primary port/rssi display
-        first_reader = next(iter(self._readers.values()), None)
-        first_port = next(iter(self._readers.keys()), "---")
+        # Pick the reader with the most packets as the primary (active LoRa port)
+        first_port = "---"
+        first_reader = None
+        best_packets = -1
+        for port, reader in self._readers.items():
+            if reader.packets_ok > best_packets:
+                best_packets = reader.packets_ok
+                first_port = port
+                first_reader = reader
+        # Fallback: if no packets yet, pick the first port
+        if first_reader is None and self._readers:
+            first_port = next(iter(self._readers.keys()))
+            first_reader = next(iter(self._readers.values()))
         ports = {
             port: {
                 "packets_ok": r.packets_ok,

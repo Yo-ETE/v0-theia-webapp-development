@@ -515,6 +515,104 @@ async def git_update(body: dict = None):
         return {"status": "error", "output": str(e), "commands": [], "commits": []}
 
 
+# ── Git Version Info ──────────────────────────────────────────────
+
+@router.get("/git/version")
+async def git_version():
+    """Get current git version info (branch, commit, etc.)."""
+    try:
+        repo_dir = os.getenv("THEIA_REPO", os.path.expanduser("~/theia"))
+
+        def _version():
+            # Current branch
+            branch = subprocess.run(
+                ["git", "rev-parse", "--abbrev-ref", "HEAD"],
+                capture_output=True, text=True, cwd=repo_dir, timeout=5
+            ).stdout.strip()
+
+            # Current commit hash (short)
+            commit = subprocess.run(
+                ["git", "rev-parse", "--short", "HEAD"],
+                capture_output=True, text=True, cwd=repo_dir, timeout=5
+            ).stdout.strip()
+
+            # Current commit message
+            commit_message = subprocess.run(
+                ["git", "log", "-1", "--format=%s"],
+                capture_output=True, text=True, cwd=repo_dir, timeout=5
+            ).stdout.strip()
+
+            # Current commit author
+            commit_author = subprocess.run(
+                ["git", "log", "-1", "--format=%an"],
+                capture_output=True, text=True, cwd=repo_dir, timeout=5
+            ).stdout.strip()
+
+            # Current commit date
+            commit_date = subprocess.run(
+                ["git", "log", "-1", "--format=%ai"],
+                capture_output=True, text=True, cwd=repo_dir, timeout=5
+            ).stdout.strip()
+
+            # Check if behind remote
+            commits_behind = 0
+            update_available = False
+            try:
+                subprocess.run(["git", "fetch", "--quiet"], capture_output=True, text=True, cwd=repo_dir, timeout=15)
+                behind = subprocess.run(
+                    ["git", "rev-list", "--count", f"{branch}..origin/{branch}"],
+                    capture_output=True, text=True, cwd=repo_dir, timeout=5
+                )
+                if behind.returncode == 0:
+                    commits_behind = int(behind.stdout.strip() or "0")
+                    update_available = commits_behind > 0
+            except Exception:
+                pass
+
+            # Latest commits on remote (for display)
+            latest_commits = []
+            try:
+                log_result = subprocess.run(
+                    ["git", "log", f"origin/{branch}", "--pretty=format:%h|%s|%ai|%an", "--max-count=10"],
+                    capture_output=True, text=True, cwd=repo_dir, timeout=5
+                )
+                if log_result.returncode == 0 and log_result.stdout.strip():
+                    for line in log_result.stdout.strip().split("\n"):
+                        parts = line.split("|", 3)
+                        if len(parts) >= 4:
+                            latest_commits.append({
+                                "hash": parts[0],
+                                "message": parts[1],
+                                "date": parts[2][:16],
+                                "author": parts[3],
+                            })
+            except Exception:
+                pass
+
+            return {
+                "branch": branch,
+                "commit": commit,
+                "commitDate": commit_date,
+                "commitMessage": commit_message,
+                "commitAuthor": commit_author,
+                "updateAvailable": update_available,
+                "commitsBehind": commits_behind,
+                "latestCommits": latest_commits,
+            }
+
+        data = await asyncio.get_event_loop().run_in_executor(None, _version)
+        return data
+    except Exception as e:
+        return {
+            "branch": "unknown",
+            "commit": "unknown",
+            "commitDate": None,
+            "updateAvailable": False,
+            "commitsBehind": 0,
+            "error": str(e),
+        }
+
+
 # ── System ────────────────────────────────────────────────────────
 
 @router.post("/apt/update")
