@@ -27,17 +27,17 @@ interface HeatmapCanvasProps {
 function buildPalette(): Uint8ClampedArray {
   const p = new Uint8ClampedArray(256 * 4)
   const stops: [number, number, number, number, number][] = [
-    [0,   0,   0,   0,   0],     // transparent
-    [25,  0,   0,   0,   0],     // transparent (noise floor)
-    [50,  10,  20,  140, 80],    // deep blue
-    [80,  20,  80,  200, 140],   // blue
-    [110, 20,  160, 220, 170],   // cyan
-    [140, 40,  200, 100, 190],   // green
-    [165, 170, 220, 30,  210],   // yellow-green
-    [190, 240, 200, 0,   225],   // yellow
-    [215, 255, 140, 0,   240],   // orange
-    [238, 255, 50,  0,   250],   // red
-    [255, 160, 0,   0,   255],   // dark red / maroon
+    [0,   0,   0,   0,   0],
+    [20,  0,   0,   0,   0],     // noise floor: transparent
+    [45,  10,  20,  140, 120],   // deep blue
+    [75,  20,  80,  200, 160],   // blue
+    [100, 20,  160, 220, 180],   // cyan
+    [125, 40,  200, 100, 200],   // green
+    [150, 170, 220, 30,  215],   // yellow-green
+    [175, 240, 200, 0,   230],   // yellow
+    [200, 255, 140, 0,   240],   // orange
+    [230, 255, 50,  0,   250],   // red
+    [255, 160, 0,   0,   255],   // dark red
   ]
   for (let i = 0; i < stops.length - 1; i++) {
     const [p0, r0, g0, b0, a0] = stops[i]
@@ -55,6 +55,26 @@ function buildPalette(): Uint8ClampedArray {
 
 const PALETTE = buildPalette()
 
+/**
+ * Compute how many pixels correspond to `meters` at the current map zoom & center.
+ */
+function metersToPixels(
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  map: any,
+  meters: number,
+): number {
+  const center = map.getCenter()
+  const lat = center.lat
+  // At any zoom, Leaflet uses: pixelsPerDeg = 256 * 2^zoom / 360 (for longitude)
+  // Meters per degree longitude = 111320 * cos(lat)
+  // So pixelsPerMeter = pixelsPerDeg / metersPerDeg
+  const zoom = map.getZoom()
+  const metersPerDegLon = 111320 * Math.cos(lat * Math.PI / 180)
+  const pixelsPerDegLon = (256 * Math.pow(2, zoom)) / 360
+  const pixelsPerMeter = pixelsPerDegLon / metersPerDegLon
+  return meters * pixelsPerMeter
+}
+
 export default function HeatmapCanvas({
   map,
   points,
@@ -65,7 +85,7 @@ export default function HeatmapCanvas({
 }: HeatmapCanvasProps) {
   const canvasRef = useRef<HTMLCanvasElement | null>(null)
 
-  // Create/destroy the canvas element
+  // Create / destroy the canvas element on the map container
   useEffect(() => {
     if (!map || !enabled) return
     const container = map.getContainer() as HTMLElement
@@ -88,14 +108,7 @@ export default function HeatmapCanvas({
 
   const draw = useCallback(() => {
     const canvas = canvasRef.current
-    if (!canvas || !map || !enabled || points.length === 0) {
-      if (canvas) {
-        const ctx = canvas.getContext("2d")
-        if (ctx) ctx.clearRect(0, 0, canvas.width, canvas.height)
-      }
-      return
-    }
-
+    if (!canvas || !map) return
     const container = map.getContainer() as HTMLElement
     const w = container.clientWidth
     const h = container.clientHeight
@@ -103,113 +116,75 @@ export default function HeatmapCanvas({
     canvas.height = h
     const ctx = canvas.getContext("2d")
     if (!ctx) return
+    ctx.clearRect(0, 0, w, h)
+    if (!enabled || points.length === 0) return
 
-    // Compute meters-per-pixel at current zoom using map's built-in method
-    const center = map.getCenter()
-    const p1 = map.latLngToContainerPoint(center)
-    const p2LL = map.containerPointToLatLng({ x: p1.x + 100, y: p1.y })
-    const dLon = Math.abs(p2LL.lng - center.lng)
-    const metersPerPixel = (dLon * (Math.PI / 180) * 6371000 * Math.cos(center.lat * Math.PI / 180)) / 100
-    const radiusPx = Math.max(12, Math.round(radiusMeters / metersPerPixel))
+    const radiusPx = Math.max(8, Math.round(metersToPixels(map, radiusMeters)))
 
-    // Debug first draw
-    const debugPts = points.slice(0, 3).map(pt => {
-      const px = map.latLngToContainerPoint([pt.lat, pt.lon])
-      return { lat: pt.lat.toFixed(6), lon: pt.lon.toFixed(6), px: [Math.round(px.x), Math.round(px.y)], w: pt.weight }
-    })
-    console.log("[v0] HeatmapCanvas:", { w, h, radiusPx, mpp: metersPerPixel.toFixed(4), pts: points.length, debugPts, zones: zonePolygons.length })
+    // ── Phase 1: Draw gray-scale intensity on an offscreen canvas ──
+    // Use radialGradient circles (GPU-accelerated) with additive blending
+    const offscreen = document.createElement("canvas")
+    offscreen.width = w
+    offscreen.height = h
+    const octx = offscreen.getContext("2d")!
 
-    // ── Build zone clip mask (1 = inside zone, 0 = outside) ──
-    let clipMask: Uint8Array | null = null
+    // Clip to zone polygons so we only draw inside zones
     if (zonePolygons.length > 0) {
-      // Draw zone polygons to a temporary canvas as white-on-black
-      const maskCanvas = document.createElement("canvas")
-      maskCanvas.width = w
-      maskCanvas.height = h
-      const mctx = maskCanvas.getContext("2d")!
-      mctx.fillStyle = "black"
-      mctx.fillRect(0, 0, w, h)
-      mctx.fillStyle = "white"
+      octx.beginPath()
       for (const poly of zonePolygons) {
-        mctx.beginPath()
         for (let i = 0; i < poly.length; i++) {
           const px = map.latLngToContainerPoint([poly[i][0], poly[i][1]])
-          if (i === 0) mctx.moveTo(px.x, px.y)
-          else mctx.lineTo(px.x, px.y)
+          if (i === 0) octx.moveTo(px.x, px.y)
+          else octx.lineTo(px.x, px.y)
         }
-        mctx.closePath()
-        mctx.fill()
+        octx.closePath()
       }
-      // Read mask
-      const maskData = mctx.getImageData(0, 0, w, h).data
-      clipMask = new Uint8Array(w * h)
-      for (let i = 0; i < w * h; i++) {
-        clipMask[i] = maskData[i * 4] > 128 ? 1 : 0  // white = inside
-      }
+      octx.clip()
     }
 
-    // ── Pass 1: accumulate Gaussian splats into float intensity buffer ──
-    const intensity = new Float32Array(w * h)
-
-    // Find max weight for normalization
+    // Find max weight for intensity scaling
     let maxW = 1
-    for (const pt of points) { if (pt.weight > maxW) maxW = pt.weight }
+    for (const pt of points) if (pt.weight > maxW) maxW = pt.weight
 
+    // Draw each point as a radialGradient circle (white center -> transparent edge)
+    // Using "lighter" composite: overlapping splats accumulate brightness
+    octx.globalCompositeOperation = "lighter"
     for (const pt of points) {
       const px = map.latLngToContainerPoint([pt.lat, pt.lon])
-      const cx = Math.round(px.x)
-      const cy = Math.round(px.y)
-      // Skip if outside viewport with margin
+      const cx = px.x
+      const cy = px.y
+      // Skip off-screen points
       if (cx < -radiusPx || cy < -radiusPx || cx > w + radiusPx || cy > h + radiusPx) continue
 
-      const strength = pt.weight / maxW
+      const strength = Math.min(1, pt.weight / maxW)
+      // Use intensity 0.3-1.0 based on weight (avoid pure black for low-weight points)
+      const alpha = 0.3 + 0.7 * strength
 
-      // Stamp Gaussian splat
-      const x0 = cx - radiusPx
-      const y0 = cy - radiusPx
-      const size = radiusPx * 2
-      for (let by = 0; by < size; by++) {
-        const iy = y0 + by
-        if (iy < 0 || iy >= h) continue
-        const rowOffset = iy * w
-        for (let bx = 0; bx < size; bx++) {
-          const ix = x0 + bx
-          if (ix < 0 || ix >= w) continue
-          // Gaussian falloff
-          const dx = (bx - radiusPx) / radiusPx
-          const dy = (by - radiusPx) / radiusPx
-          const r2 = dx * dx + dy * dy
-          if (r2 > 1) continue
-          const g = Math.exp(-3 * r2) * strength
-          intensity[rowOffset + ix] += g
-        }
-      }
+      const gradient = octx.createRadialGradient(cx, cy, 0, cx, cy, radiusPx)
+      gradient.addColorStop(0, `rgba(255,255,255,${alpha.toFixed(2)})`)
+      gradient.addColorStop(0.4, `rgba(255,255,255,${(alpha * 0.6).toFixed(2)})`)
+      gradient.addColorStop(1, "rgba(255,255,255,0)")
+      octx.fillStyle = gradient
+      octx.fillRect(cx - radiusPx, cy - radiusPx, radiusPx * 2, radiusPx * 2)
     }
 
-    // ── Pass 2: find max intensity, apply noise floor, colorize ──
-    let maxI = 0
-    for (let i = 0; i < intensity.length; i++) {
-      if (intensity[i] > maxI) maxI = intensity[i]
-    }
-    if (maxI < 0.001) return  // nothing to draw
-
+    // ── Phase 2: Read grayscale intensity and map through thermal palette ──
+    const offData = octx.getImageData(0, 0, w, h)
+    const offPx = offData.data
     const imageData = ctx.createImageData(w, h)
-    const pixels = imageData.data
-    const noiseFloor = maxI * 0.05  // ignore anything below 5% of peak
+    const out = imageData.data
 
-    for (let i = 0; i < intensity.length; i++) {
-      const val = intensity[i]
-      if (val <= noiseFloor) continue
-      // Zone clip check
-      if (clipMask && !clipMask[i]) continue
+    for (let i = 0; i < w * h; i++) {
+      // The red channel captures the accumulated brightness (all channels are equal for white)
+      const gray = offPx[i * 4]  // 0-255
+      if (gray < 5) continue  // skip near-zero (noise floor)
 
-      const norm = Math.min(1, val / maxI)
-      const idx = Math.round(norm * 255) * 4
-      const pi = i * 4
-      pixels[pi]     = PALETTE[idx]
-      pixels[pi + 1] = PALETTE[idx + 1]
-      pixels[pi + 2] = PALETTE[idx + 2]
-      pixels[pi + 3] = Math.round(PALETTE[idx + 3] * opacity)
+      const idx = gray * 4
+      const oi = i * 4
+      out[oi]     = PALETTE[idx]
+      out[oi + 1] = PALETTE[idx + 1]
+      out[oi + 2] = PALETTE[idx + 2]
+      out[oi + 3] = Math.round(PALETTE[idx + 3] * opacity)
     }
 
     ctx.putImageData(imageData, 0, 0)
@@ -229,7 +204,7 @@ export default function HeatmapCanvas({
     }
   }, [map, draw, enabled])
 
-  // Redraw when points change
+  // Redraw whenever points change
   useEffect(() => { draw() }, [draw])
 
   return null
