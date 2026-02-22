@@ -3,6 +3,7 @@
 import { useEffect, useState, useCallback, useRef } from "react"
 import type { Zone, DetectionEvent } from "@/lib/types"
 import { cn } from "@/lib/utils"
+import HeatmapCanvas from "./heatmap-canvas"
 
 interface LiveDetection {
   presence: boolean
@@ -130,6 +131,8 @@ export default function MapInner({
   const [leafletL, setLeafletL] = useState<any>(null)
   const [drawPoints, setDrawPoints] = useState<[number, number][]>([])
   const mapRef = useRef<unknown>(null)
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const [mapInstance, setMapInstance] = useState<any>(null)
   const containerDivRef = useRef<HTMLDivElement>(null)
   const [mapKey, setMapKey] = useState(0)
 
@@ -476,146 +479,108 @@ export default function MapInner({
     zoneColor: string
   }
 
-  // ── Heatmap data: spatial arcs per zone, grouped by ADAPTIVE distance bands ──
-  const heatmapArcs = (() => {
-    if (!heatmapMode || !zones.length) return null
-    const allEvents = events.length > 0 ? events : []
-    if (allEvents.length === 0) return null
+  // ── Heatmap: project each detection event to a lat/lon point ──
+  // LD2450 sensors have x,y (mm) giving exact 2D position relative to sensor.
+  // Depth-only sensors have only distance: we use the inward normal for projection.
+  // For triangulation with multiple depth-only sensors, we intersect circles.
+  type HeatPoint = { lat: number; lon: number; weight: number }
+  const heatPoints: HeatPoint[] = (() => {
+    if (!heatmapMode || !zones.length || events.length === 0) return []
 
-    // First pass: find min/max distance across all events to build adaptive bands
-    let minDist = Infinity, maxDist = 0
-    const distances: number[] = []
-    for (const evt of allEvents) {
-      const p = evt.payload ?? {}
-      const dist = Number(p.distance ?? 0)
-      if (dist > 0) {
-        distances.push(dist)
-        if (dist < minDist) minDist = dist
-        if (dist > maxDist) maxDist = dist
-      }
+    // Build a lookup: zone_id -> sensor info (position, normal, left vectors in meters)
+    type SensorGeo = {
+      sensorM: [number, number]
+      sensorLL: [number, number]
+      normalM: [number, number]
+      leftM: [number, number]
     }
-    if (distances.length === 0) return null
-
-    // Build 8 equal-width bands between min and max distance (with some padding)
-    const padMin = Math.max(0, minDist - 30)
-    const padMax = maxDist + 30
-    const NUM_BANDS = 8
-    const bandWidth = (padMax - padMin) / NUM_BANDS
-    const HEAT_BANDS: number[] = []
-    for (let i = 0; i < NUM_BANDS; i++) {
-      HEAT_BANDS.push(Math.round(padMin + bandWidth * (i + 1)))
-    }
-
-    // Group events by zone + distance band
-    type BandData = { count: number; directions: Record<string, number> }
-    type ZoneHeat = { bands: BandData[]; total: number; devices: Set<string>; totalDist: number }
-    const byZone: Record<string, ZoneHeat> = {}
-    for (const evt of allEvents) {
-      const zId = evt.zone_id
-      if (!zId) continue
-      const p = evt.payload ?? {}
-      const dist = Number(p.distance ?? 0)
-      const dir = String(p.direction ?? "C")
-      if (!byZone[zId]) {
-        byZone[zId] = {
-          bands: HEAT_BANDS.map(() => ({ count: 0, directions: {} })),
-          total: 0, devices: new Set(), totalDist: 0,
-        }
-      }
-      const zh = byZone[zId]
-      zh.total++
-      zh.totalDist += dist
-      if (evt.device_id) zh.devices.add(evt.device_id)
-      // Find the right band
-      for (let i = 0; i < HEAT_BANDS.length; i++) {
-        if (dist <= HEAT_BANDS[i]) {
-          zh.bands[i].count++
-          zh.bands[i].directions[dir] = (zh.bands[i].directions[dir] ?? 0) + 1
-          break
-        }
-      }
-    }
-    // Find max band count across ALL zones for consistent coloring
-    let maxBand = 1
-    for (const zh of Object.values(byZone)) {
-      for (const b of zh.bands) {
-        if (b.count > maxBand) maxBand = b.count
-      }
-    }
-
-    // Build arc polygons for each zone + band
-    type ArcEntry = {
-      zoneId: string
-      bandIdx: number
-      polygon: [number, number][]
-      count: number
-      intensity: number // 0..1
-      innerR: number // cm
-      outerR: number // cm
-    }
-    const arcs: ArcEntry[] = []
-    const zoneStats: Record<string, { total: number; avgDist: number; devices: number }> = {}
-
-    for (const [zId, zh] of Object.entries(byZone)) {
-      zoneStats[zId] = {
-        total: zh.total,
-        avgDist: zh.total > 0 ? Math.round(zh.totalDist / zh.total) : 0,
-        devices: zh.devices.size,
-      }
-      // Find the sensor placement for this zone
-      const sp = sensorPlacements.find(s => s.zone_id === zId)
-      const zone = zones.find(z => z.id === zId)
-      if (!sp || !zone) continue
+    const sensorGeo: Record<string, SensorGeo[]> = {}
+    for (const sp of sensorPlacements) {
+      const zone = zones.find(z => z.id === sp.zone_id)
+      if (!zone) continue
       const edge = getSideEdge(zone, sp.side)
       if (!edge) continue
       const centroid = zoneCentroids[zone.id]
       if (!centroid) continue
-      const sensorLL = pointAlongSide(edge[0], edge[1], sp.sensor_position)
-      const normalM = inwardNormalM(edge[0], edge[1], centroid)
-      const leftM: [number, number] = [-normalM[1], normalM[0]]
-      const sensorM = toMeters(sensorLL)
-
-      for (let i = 0; i < HEAT_BANDS.length; i++) {
-        const band = zh.bands[i]
-        if (band.count === 0) continue
-        const innerR = i === 0 ? padMin / 100 : HEAT_BANDS[i - 1] / 100 // meters
-        const outerR = HEAT_BANDS[i] / 100 // meters
-        const intensity = band.count / maxBand
-
-        // Build an arc polygon: sweep from -60deg to +60deg (120deg FOV of LD2450)
-        // relative to the inward normal, at inner and outer radius
-        const ARC_STEPS = 16
-        const FOV_HALF = Math.PI / 3 // 60 degrees each side = 120 deg total
-        const outerPts: [number, number][] = []
-        const innerPts: [number, number][] = []
-
-        // Adjust arc based on direction distribution within this band
-        const gCount = band.directions["G"] ?? band.directions["Gauche"] ?? 0
-        const dCount = band.directions["D"] ?? band.directions["Droite"] ?? 0
-        const cCount = band.directions["C"] ?? band.directions["Centre"] ?? 0
-        const totalDir = gCount + dCount + cCount || 1
-        // Weight the angular center: G shifts left, D shifts right
-        const dirBias = ((gCount - dCount) / totalDir) * 0.3
-
-        for (let s = 0; s <= ARC_STEPS; s++) {
-          const t = s / ARC_STEPS // 0..1
-          const angle = -FOV_HALF + t * (2 * FOV_HALF) + dirBias
-          const dx = normalM[0] * Math.cos(angle) + leftM[0] * Math.sin(angle)
-          const dy = normalM[1] * Math.cos(angle) + leftM[1] * Math.sin(angle)
-          outerPts.push(toLatLon([sensorM[0] + dx * outerR, sensorM[1] + dy * outerR]))
-          if (innerR > 0) {
-            innerPts.push(toLatLon([sensorM[0] + dx * innerR, sensorM[1] + dy * innerR]))
-          }
-        }
-
-        // Build closed polygon: outer arc forward, inner arc reversed (annular ring)
-        const arcPoly: [number, number][] = innerPts.length > 0
-          ? [...outerPts, ...innerPts.reverse()]
-          : [sensorLL, ...outerPts, sensorLL]
-        arcs.push({ zoneId: zId, bandIdx: i, polygon: arcPoly, count: band.count, intensity, innerR: i === 0 ? Math.round(padMin) : HEAT_BANDS[i - 1], outerR: HEAT_BANDS[i] })
-      }
+      const sLL = pointAlongSide(edge[0], edge[1], sp.sensor_position)
+      const nM = inwardNormalM(edge[0], edge[1], centroid)
+      const lM: [number, number] = [-nM[1], nM[0]]
+      const sM = toMeters(sLL)
+      if (!sensorGeo[sp.zone_id]) sensorGeo[sp.zone_id] = []
+      sensorGeo[sp.zone_id].push({ sensorM: sM, sensorLL: sLL, normalM: nM, leftM: lM })
     }
-    return { arcs, zoneStats, maxBand }
+
+    const pts: HeatPoint[] = []
+    // Count occurrences at each grid cell for weight accumulation
+    const gridCounts: Record<string, number> = {}
+
+    for (const evt of events) {
+      const p = evt.payload ?? {}
+      const dist = Number(p.distance ?? 0)
+      if (dist <= 0) continue
+      const zId = evt.zone_id
+      if (!zId) continue
+      const sensors = sensorGeo[zId]
+      if (!sensors || sensors.length === 0) continue
+
+      const x_mm = Number(p.x ?? 0)
+      const y_mm = Number(p.y ?? 0)
+      const hasXY = x_mm !== 0 || y_mm !== 0
+      const sensorType = String(p.sensor_type ?? "")
+
+      // Use first sensor for this zone (TODO: multi-sensor triangulation)
+      const sg = sensors[0]
+
+      let ptM: [number, number]
+      if (hasXY && sensorType === "ld2450") {
+        // LD2450: x (mm) = lateral offset (positive = right of sensor looking inward)
+        // y (mm) = depth from sensor along inward normal
+        // Project: sensor_pos + y*normal + x*left  (both in meters)
+        const xm = x_mm / 1000  // mm to meters
+        const ym = y_mm / 1000
+        ptM = [
+          sg.sensorM[0] + ym * sg.normalM[0] + xm * sg.leftM[0],
+          sg.sensorM[1] + ym * sg.normalM[1] + xm * sg.leftM[1],
+        ]
+      } else {
+        // Depth-only sensor: project along inward normal by distance
+        // If multiple sensors exist, try triangulation
+        const dm = dist / 100 // cm to meters
+        if (sensors.length >= 2) {
+          // Simple triangulation: intersection of two circles
+          // For now, just use the first sensor with distance along normal
+          ptM = [
+            sg.sensorM[0] + dm * sg.normalM[0],
+            sg.sensorM[1] + dm * sg.normalM[1],
+          ]
+        } else {
+          ptM = [
+            sg.sensorM[0] + dm * sg.normalM[0],
+            sg.sensorM[1] + dm * sg.normalM[1],
+          ]
+        }
+      }
+
+      // Snap to a small grid to accumulate weight at the same location
+      const gx = Math.round(ptM[0] * 20) / 20  // 5cm grid
+      const gy = Math.round(ptM[1] * 20) / 20
+      const gk = `${gx},${gy}`
+      gridCounts[gk] = (gridCounts[gk] ?? 0) + 1
+
+      const ll = toLatLon(ptM)
+      pts.push({ lat: ll[0], lon: ll[1], weight: 1 })
+    }
+
+    // Assign accumulated weight: points at the same grid cell get the cell count as weight
+    for (const pt of pts) {
+      const ptM = toMeters([pt.lat, pt.lon])
+      const gx = Math.round(ptM[0] * 20) / 20
+      const gy = Math.round(ptM[1] * 20) / 20
+      const gk = `${gx},${gy}`
+      pt.weight = gridCounts[gk] ?? 1
+    }
+
+    return pts
   })()
 
   const sensorMarkers: SensorMarkerData[] = sensorPlacements.map((sp) => {
@@ -697,7 +662,11 @@ export default function MapInner({
   return (
     <div key={mapKey} ref={containerDivRef} className={cn("relative rounded-lg overflow-hidden border border-border/50", className)}>
       <MapContainer
-        ref={mapRef}
+        ref={(instance) => {
+          mapRef.current = instance
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          if (instance && (instance as any)._leaflet_id) setMapInstance(instance)
+        }}
         center={[centerLat, centerLon]}
         zoom={zoom}
         maxZoom={22}
@@ -848,66 +817,7 @@ export default function MapInner({
           )
         })()}
 
-        {/* ── Heatmap overlay: concentric arcs per zone ── */}
-        {heatmapArcs && heatmapArcs.arcs.map((arc) => {
-          // Color gradient: green (low) -> yellow (mid) -> red (high)
-          const t = arc.intensity
-          let r: number, g: number, b: number
-          if (t < 0.33) {
-            const p = t / 0.33
-            r = Math.round(30 + 200 * p)
-            g = Math.round(180 - 30 * p)
-            b = Math.round(80 * (1 - p))
-          } else if (t < 0.66) {
-            const p = (t - 0.33) / 0.33
-            r = Math.round(230 + 25 * p)
-            g = Math.round(150 - 100 * p)
-            b = 0
-          } else {
-            const p = (t - 0.66) / 0.34
-            r = 255
-            g = Math.round(50 - 50 * p)
-            b = 0
-          }
-          const heatColor = `rgb(${r},${g},${b})`
-          return (
-            <Polygon
-              key={`heat-${arc.zoneId}-${arc.bandIdx}`}
-              positions={arc.polygon}
-              pathOptions={{
-                color: heatColor,
-                fillColor: heatColor,
-                fillOpacity: 0.15 + t * 0.55,
-                weight: 0.5,
-              }}
-            >
-              <Tooltip direction="center" className="zone-label-tip">
-                <span style={{ fontSize: 10, fontWeight: 700, color: heatColor }}>
-                  {arc.count} det. ({arc.innerR}-{arc.outerR}cm)
-                </span>
-              </Tooltip>
-            </Polygon>
-          )
-        })}
-        {/* Zone stat labels in heatmap mode */}
-        {heatmapArcs && zones.map((zone) => {
-          const stats = heatmapArcs.zoneStats[zone.id]
-          if (!stats || stats.total === 0) return null
-          const centroid = zoneCentroids[zone.id]
-          if (!centroid) return null
-          return RL ? (
-            <RL.Marker
-              key={`heatstat-${zone.id}`}
-              position={centroid}
-              icon={leafletL?.divIcon({
-                className: "",
-                html: `<div style="background:rgba(0,0,0,0.75);color:#fff;padding:3px 6px;border-radius:4px;font-size:11px;font-weight:700;white-space:nowrap;text-align:center">${stats.total} det.<br/><span style="font-size:9px;font-weight:400;opacity:0.8">${stats.avgDist}cm avg${stats.devices > 1 ? ` | ${stats.devices} TX` : ""}</span></div>`,
-                iconSize: [0, 0],
-                iconAnchor: [0, 0],
-              })}
-            />
-          ) : null
-        })}
+        {/* ── Canvas heatmap overlay (rendered outside React tree into Leaflet pane) ── */}
 
         {/* ── Highlighted side for sensor placement mode ── */}
         {sensorPlaceMode && (() => {
@@ -1153,6 +1063,15 @@ export default function MapInner({
           </CircleMarker>
         ))}
       </MapContainer>
+
+      {/* Canvas-based Gaussian heatmap overlay */}
+      <HeatmapCanvas
+        map={mapInstance}
+        points={heatPoints}
+        radius={35}
+        opacity={0.78}
+        enabled={heatmapMode && heatPoints.length > 0}
+      />
 
       {/* Coords overlay */}
       <div className="absolute bottom-2 left-2 z-[500] rounded bg-card/90 backdrop-blur px-2 py-1 shadow-sm">
