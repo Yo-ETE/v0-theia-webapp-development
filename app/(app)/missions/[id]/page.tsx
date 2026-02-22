@@ -119,6 +119,7 @@ export default function MissionDetailPage() {
   const feedRef = useRef<HTMLDivElement>(null)
 
   // SSE handler: accumulate live detections for this mission
+  const sseCountRef = useRef(0)
   const handleSSE = useCallback((event: { type: string; data: Record<string, unknown> }) => {
     if (event.type !== "detection") return
     const d = event.data as unknown as LiveDetection
@@ -130,6 +131,11 @@ export default function MissionDetailPage() {
         const next = [d, ...prev]
         return next.slice(0, 50)
       })
+      // Periodically refresh DB events list so history tab stays in sync
+      sseCountRef.current += 1
+      if (sseCountRef.current % 10 === 0) {
+        mutateEvents()
+      }
     }
 
     // Always update liveByZone so map-inner sees the latest state
@@ -137,7 +143,7 @@ export default function MissionDetailPage() {
     if (d.zone_id) {
       setLiveByZone(prev => ({ ...prev, [d.zone_id!]: d }))
     }
-  }, [id])
+  }, [id, mutateEvents])
 
   useSSE(handleSSE)
 
@@ -172,7 +178,7 @@ export default function MissionDetailPage() {
           angle: Number((p as Record<string, unknown>).angle ?? 0),
           direction: (p as Record<string, unknown>).direction as string ?? "C",
           rssi: Number(e.rssi ?? -120),
-          timestamp: e.created_at as string ?? new Date().toISOString(),
+          timestamp: (e.timestamp ?? e.created_at ?? new Date().toISOString()) as string,
         } as LiveDetection
       })
     if (recent.length > 0) {
@@ -303,7 +309,7 @@ export default function MissionDetailPage() {
 
     // Persist BOTH to backend, then revalidate
     try {
-      await Promise.all([
+      const [devRes, missRes] = await Promise.all([
         updateDevice(deviceId, {
           mission_id: "",
           zone_id: "",
@@ -314,14 +320,15 @@ export default function MissionDetailPage() {
         } as Partial<import("@/lib/types").Device>),
         updateMission(id, { zones: updatedZones, floors: updatedFloors, device_count: newDeviceCount }),
       ])
+      console.log("[v0] Unassign PATCH results - device:", JSON.stringify(devRes), "mission:", !!missRes)
     } catch (err) {
-      console.warn("[THEIA] Failed to unassign device:", err)
+      console.log("[v0] Unassign PATCH FAILED:", err)
     }
 
     // Revalidate from backend (PATCH is done, backend has correct data)
     await Promise.all([mutate(), mutateDevices()])
-    // Keep filtering the device for 2 more SWR refresh cycles to prevent flicker
-    setTimeout(() => setUnassigning(null), 6000)
+    // Keep filtering device until well past the next SWR refresh (30s interval)
+    setTimeout(() => setUnassigning(null), 35000)
   }, [mission, id, mutate, mutateDevices, unassigning])
 
   // ── Zone polygon editing ──
@@ -572,11 +579,21 @@ export default function MissionDetailPage() {
                 <MapPin className="h-3 w-3" />{mission.location || "No location"}
               </span>
               <span className="flex items-center gap-1 text-xs text-muted-foreground">
-                <Users className="h-3 w-3" />{missionDevices.length} devices
+                <Radio className="h-3 w-3" />{missionDevices.length} TX
               </span>
               <span className="flex items-center gap-1 text-xs text-muted-foreground">
-                <BarChart3 className="h-3 w-3" />{eventList.length} events
+                <BarChart3 className="h-3 w-3" />{Math.max(eventList.length, liveDetections.length)} events
               </span>
+              {mission.status === "active" && (
+                <span className="flex items-center gap-1 text-xs text-red-500 font-mono">
+                  <span className="h-2 w-2 rounded-full bg-red-500 animate-pulse" />REC
+                </span>
+              )}
+              {mission.status === "paused" && (
+                <span className="flex items-center gap-1 text-xs text-orange-400 font-mono">
+                  <Pause className="h-3 w-3" />PAUSED
+                </span>
+              )}
               {liveDetections.length > 0 && (
                 <span className="flex items-center gap-1 text-xs text-success font-mono">
                   <Activity className="h-3 w-3 animate-pulse" />LIVE

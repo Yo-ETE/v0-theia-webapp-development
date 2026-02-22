@@ -212,6 +212,13 @@ class PortReader:
         zone = row["zone"] if row else ""
         zone_id = row["zone_id"] if row else None
         zone_label = row["zone_label"] if row else ""
+
+        # Check mission status: only record events if mission is "active"
+        mission_active = False
+        if mission_id:
+            mc = await db.execute("SELECT status FROM missions WHERE id=?", (mission_id,))
+            mrow = await mc.fetchone()
+            mission_active = (mrow["status"] == "active") if mrow else False
         side = row["side"] if row else ""
         device_name = row["name"] if row else (tx_id or self.port)
 
@@ -261,7 +268,8 @@ class PortReader:
             self._presence_count[phantom_key] = 0
 
         # Store detection in DB (rate-limited: 1 per 8s per device)
-        if mission_id and presence and d > 15:
+        # Only record when mission status is "active" (Pause stops recording)
+        if mission_id and mission_active and presence and d > 15:
             device_key = device_id or self.port
             now_ts = time.time()
             last_insert_ts = self._last_insert_ts.get(device_key, 0)
@@ -279,8 +287,10 @@ class PortReader:
                         (mission_id, device_id, "detection", zone, self.last_rssi, 0, payload_json),
                     )
                 print(f"[THEIA-DB] INSERT event: d={d} dir={direction} zone_id={zone_id} mission={mission_id}")
+        elif presence and mission_id and not mission_active:
+            pass  # Mission paused/completed -- SSE still broadcasts but no DB insert
         elif presence and not mission_id:
-            print(f"[THEIA-DB] SKIP (no mission): dev={device_id} d={d}")
+            pass  # No mission assigned -- skip silently
 
         await db.commit()
 
@@ -385,6 +395,13 @@ class PortReader:
         mission_id = row["mission_id"] if row else None
         zone = row["zone"] if row else ""
 
+        # Check mission status for recording gate
+        mission_active = False
+        if mission_id:
+            mc = await db.execute("SELECT status FROM missions WHERE id=?", (mission_id,))
+            mrow = await mc.fetchone()
+            mission_active = (mrow["status"] == "active") if mrow else False
+
         presence = payload.get("presence", False) if isinstance(payload, dict) else False
         distance = 0
         if isinstance(payload, dict):
@@ -402,7 +419,7 @@ class PortReader:
                 distance = 0
         elif not presence:
             self._presence_count[phantom_key] = 0
-        if mission_id and event_type == "detection" and presence and distance > 15:
+        if mission_id and mission_active and event_type == "detection" and presence and distance > 15:
             device_key = device_id or dev_eui
             now_ts = time.time()
             last_insert_ts = self._last_insert_ts.get(device_key, 0)

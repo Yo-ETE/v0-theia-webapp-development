@@ -86,7 +86,18 @@ async def list_missions():
     db = await get_db()
     cursor = await db.execute("SELECT * FROM missions ORDER BY created_at DESC")
     rows = await cursor.fetchall()
-    return [_row_to_dict(r) for r in rows]
+    missions = [_row_to_dict(r) for r in rows]
+
+    # Bulk-count devices and events per mission
+    dc = await db.execute("SELECT mission_id, COUNT(*) FROM devices WHERE mission_id != '' GROUP BY mission_id")
+    dev_counts = {r[0]: r[1] for r in await dc.fetchall()}
+    ec = await db.execute("SELECT mission_id, COUNT(*) FROM events GROUP BY mission_id")
+    evt_counts = {r[0]: r[1] for r in await ec.fetchall()}
+
+    for m in missions:
+        m["device_count"] = dev_counts.get(m["id"], 0)
+        m["event_count"] = evt_counts.get(m["id"], 0)
+    return missions
 
 
 @router.get("/{mission_id}")
