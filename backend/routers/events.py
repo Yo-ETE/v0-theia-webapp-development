@@ -23,19 +23,19 @@ async def list_events(
     params: list = []
 
     if mission_id:
-        conditions.append("mission_id=?")
+        conditions.append("e.mission_id=?")
         params.append(mission_id)
     if device_id:
-        conditions.append("device_id=?")
+        conditions.append("e.device_id=?")
         params.append(device_id)
     if event_type:
-        conditions.append("event_type=?")
+        conditions.append("e.event_type=?")
         params.append(event_type)
     if from_ts:
-        conditions.append("timestamp>=?")
+        conditions.append("e.timestamp>=?")
         params.append(from_ts)
     if to_ts:
-        conditions.append("timestamp<=?")
+        conditions.append("e.timestamp<=?")
         params.append(to_ts)
 
     where = " AND ".join(conditions) if conditions else "1=1"

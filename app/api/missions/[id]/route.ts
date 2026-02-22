@@ -77,22 +77,38 @@ export async function PATCH(
     return NextResponse.json(localUpdated)
   }
 
-  try {
-    const res = await proxyToBackend(`/api/missions/${id}`, {
-      method: "PATCH",
-      body: JSON.stringify(body),
-    })
-    if (!res.ok) throw new Error(`Backend ${res.status}`)
-    const backend = await res.json()
-    // Merge backend response with local (local has definitive zones)
-    const merged = { ...localUpdated, ...backend, zones: localUpdated?.zones ?? backend.zones, floors: localUpdated?.floors ?? backend.floors }
-    store.updateMission(id, merged)
-    return NextResponse.json(merged)
-  } catch {
-    // Backend down -- return local data if available, or echo the body back
-    if (localUpdated) return NextResponse.json(localUpdated)
-    // Even if store didn't have the mission, return success with the sent data
-    // so the UI doesn't break when the backend is temporarily unavailable
-    return NextResponse.json({ id, ...body })
+  // Retry up to 2 times for critical status changes
+  const maxRetries = body.status ? 2 : 1
+  let lastErr: unknown = null
+
+  for (let attempt = 0; attempt < maxRetries; attempt++) {
+    try {
+      const res = await proxyToBackend(`/api/missions/${id}`, {
+        method: "PATCH",
+        body: JSON.stringify(body),
+      })
+      if (!res.ok) {
+        const errText = await res.text().catch(() => "")
+        console.error(`[THEIA] Mission PATCH backend error ${res.status}: ${errText}`)
+        throw new Error(`Backend ${res.status}`)
+      }
+      const backend = await res.json()
+      console.log(`[THEIA] Mission PATCH OK: id=${id} status=${backend.status}`)
+      // Merge backend response with local (local has definitive zones)
+      const merged = { ...localUpdated, ...backend, zones: localUpdated?.zones ?? backend.zones, floors: localUpdated?.floors ?? backend.floors }
+      store.updateMission(id, merged)
+      return NextResponse.json(merged)
+    } catch (err) {
+      lastErr = err
+      console.error(`[THEIA] Mission PATCH attempt ${attempt + 1}/${maxRetries} FAILED for ${id}:`, err)
+      if (attempt < maxRetries - 1) {
+        await new Promise(r => setTimeout(r, 500))
+      }
+    }
   }
+
+  // All retries failed
+  console.error(`[THEIA] Mission PATCH ALL RETRIES FAILED for ${id}, body:`, JSON.stringify(body), "error:", lastErr)
+  if (localUpdated) return NextResponse.json(localUpdated)
+  return NextResponse.json({ id, ...body })
 }

@@ -153,10 +153,22 @@ async def patch_mission(mission_id: str, body: MissionUpdate):
 
     updates["updated_at"] = datetime.now(timezone.utc).isoformat()
 
+    if "status" in updates:
+        print(f"[THEIA] Mission {mission_id} status -> {updates['status']}")
+
     set_clause = ", ".join(f"{k}=?" for k in updates)
     values = list(updates.values()) + [mission_id]
     await db.execute(f"UPDATE missions SET {set_clause} WHERE id=?", values)
     await db.commit()
+
+    # Invalidate LoRa bridge mission status cache so recording starts/stops immediately
+    if "status" in updates:
+        try:
+            from backend.services.lora_bridge import lora_bridge
+            lora_bridge.invalidate_mission_cache(mission_id)
+        except Exception:
+            pass
+
     return await _get_full_mission(db, mission_id)
 
 

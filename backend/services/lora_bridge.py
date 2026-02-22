@@ -43,6 +43,7 @@ class PortReader:
         self._presence_count: dict[str, int] = {}
         self._tx_validated: dict[str, bool] = {}
         self._PRESENCE_WITHOUT_EMPTY_LIMIT = 200
+        self._mission_status_cache: dict[str, tuple[str, float]] = {}  # mission_id -> (status, timestamp)
 
     async def start(self):
         import serial
@@ -214,11 +215,24 @@ class PortReader:
         zone_label = row["zone_label"] if row else ""
 
         # Check mission status: only record events if mission is "active"
+        # Use a 5-second cache to avoid querying SQLite on every frame
         mission_active = False
+        mission_status_db = None
         if mission_id and mission_id.strip():
-            mc = await db.execute("SELECT status FROM missions WHERE id=?", (mission_id,))
-            mrow = await mc.fetchone()
-            mission_active = (mrow["status"] == "active") if mrow else False
+            cached = self._mission_status_cache.get(mission_id)
+            now_cache = time.time()
+            if cached and (now_cache - cached[1]) < 5.0:
+                mission_status_db = cached[0]
+                mission_active = (mission_status_db == "active")
+            else:
+                mc = await db.execute("SELECT status FROM missions WHERE id=?", (mission_id,))
+                mrow = await mc.fetchone()
+                if mrow:
+                    mission_status_db = mrow["status"]
+                    mission_active = (mission_status_db == "active")
+                else:
+                    mission_status_db = "NOT_FOUND"
+                self._mission_status_cache[mission_id] = (mission_status_db, now_cache)
         else:
             mission_id = None  # Normalize empty string to None
         side = row["side"] if row else ""
@@ -271,7 +285,7 @@ class PortReader:
         elif presence and not mission_id:
             print(f"[THEIA-DBG] SKIP INSERT: no mission_id, device={device_id}")
         elif presence and mission_id and not mission_active:
-            print(f"[THEIA-DBG] SKIP INSERT: mission not active, status query returned mission_active={mission_active}")
+            print(f"[THEIA-DBG] SKIP INSERT: mission {mission_id} status='{mission_status_db}' (need 'active')")
         if mission_id and mission_active and presence and d > 15:
             device_key = device_id or self.port
             now_ts = time.time()
@@ -464,6 +478,12 @@ class LoRaBridge:
         self._running = False
         self._readers: dict[str, PortReader] = {}
         self._tasks: list[asyncio.Task] = []
+
+    def invalidate_mission_cache(self, mission_id: str):
+        """Clear cached mission status so readers pick up the new status immediately."""
+        for reader in self._readers.values():
+            reader._mission_status_cache.pop(mission_id, None)
+        print(f"[THEIA] Mission cache invalidated: {mission_id}")
 
     @property
     def data(self) -> dict:
