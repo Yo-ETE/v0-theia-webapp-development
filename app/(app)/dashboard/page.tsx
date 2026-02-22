@@ -366,9 +366,11 @@ export default function DashboardPage() {
                     <div>
                       <span className="text-[10px] text-muted-foreground">Port</span>
                       <p className="font-mono text-sm text-foreground truncate" title={lora.port}>
-                        {lora.port?.includes("/by-id/")
-                          ? lora.port.split("/by-id/")[1]?.replace(/-port\d+$/, "").replace(/^usb-/, "") || lora.port
-                          : lora.port}
+                        {lora.port === "/dev/theia-rx"
+                          ? "/dev/theia-rx"
+                          : lora.port?.includes("/by-id/")
+                            ? lora.port.split("/by-id/")[1]?.replace(/-port\d+$/, "").replace(/^usb-/, "") || lora.port
+                            : lora.port}
                       </p>
                     </div>
                     <div>

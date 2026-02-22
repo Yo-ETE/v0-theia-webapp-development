@@ -13,10 +13,11 @@ Device identification:
   that port are attributed to that device (and its mission/zone).
 - If no device matches the port, frames are logged but not attributed.
 
-Multi-port:
-- Prefers /dev/serial/by-id/* (stable across reboots), falls back to /dev/ttyUSB* + /dev/ttyACM*.
+Port detection:
+- Best: /dev/theia-rx udev symlink (stable, survives reboots). Run setup-udev-rules.sh.
+- Override: LORA_SERIAL_PORT env var (e.g. /dev/ttyUSB0).
+- Fallback: scans /dev/ttyUSB* + /dev/ttyACM*, excludes GPS_DEVICE if set.
 - Auto-scans every 10s for new devices. Each port gets its own reader coroutine.
-- Set GPS_DEVICE env var (e.g. /dev/serial/by-id/usb-u-blox_...) to exclude the GPS port.
 """
 import asyncio
 import glob
@@ -583,27 +584,33 @@ class LoRaBridge:
             "packets_errors": total_err,
         }
 
-    # Chip names commonly used by ESP32 LoRa boards (case-insensitive match)
-    _LORA_CHIPS = ["cp210", "ch340", "ch341", "ch9102", "ftdi"]
-    # Chip names commonly used by GPS dongles (excluded from LoRa scan)
-    _GPS_CHIPS = ["prolific", "u-blox", "ublox", "gps", "gnss", "pl2303"]
+    # udev symlink created by /etc/udev/rules.d/99-theia-usb.rules
+    THEIA_RX_SYMLINK = "/dev/theia-rx"
 
     def _scan_ports(self) -> list[str]:
-        """Find all available serial ports.
+        """Find the LoRa RX serial port.
 
         Priority order:
-        1. LORA_SERIAL_PORT env var (explicit override, can be a by-id path)
-        2. /dev/serial/by-id/* filtered by chip name:
-           - Include: CP2102, CH340, FTDI (ESP32 LoRa boards)
-           - Exclude: Prolific, u-blox (GPS dongles)
-        3. /dev/ttyUSB* + /dev/ttyACM* (fallback if no by-id found)
+        1. LORA_SERIAL_PORT env var (explicit override)
+        2. /dev/theia-rx  (stable udev symlink -- see setup script)
+        3. /dev/ttyUSB* + /dev/ttyACM* minus GPS_DEVICE (legacy fallback)
 
-        GPS_DEVICE env var is also excluded if set.
+        To create the udev symlink, run on the Pi:
+          sudo tee /etc/udev/rules.d/99-theia-usb.rules > /dev/null <<'EOF'
+          SUBSYSTEM=="tty", ATTRS{idVendor}=="10c4", ATTRS{idProduct}=="ea60", \\
+            SYMLINK+="theia-rx", GROUP="dialout", MODE="0660"
+          EOF
+          sudo udevadm control --reload-rules && sudo udevadm trigger
         """
-        # Explicit override
+        # 1. Explicit env var override
         if LORA_SERIAL_PORT and os.path.exists(LORA_SERIAL_PORT):
             return [LORA_SERIAL_PORT]
 
+        # 2. Stable udev symlink (best option)
+        if os.path.exists(self.THEIA_RX_SYMLINK):
+            return [self.THEIA_RX_SYMLINK]
+
+        # 3. Fallback: scan /dev/ttyUSB* and /dev/ttyACM*
         gps_port = os.getenv("GPS_DEVICE", "")
         gps_real = ""
         if gps_port:
@@ -612,45 +619,13 @@ class LoRaBridge:
             except Exception:
                 gps_real = gps_port
 
-        # Scan /dev/serial/by-id/ for stable device paths
-        by_id = sorted(glob.glob("/dev/serial/by-id/*"))
-        if by_id:
-            lora_ports = []
-            for p in by_id:
-                real = os.path.realpath(p)
-                name_lower = os.path.basename(p).lower()
-
-                # Skip explicitly configured GPS device
-                if gps_port and (p == gps_port or real == gps_real):
-                    continue
-
-                # Skip known GPS chip names
-                if any(gps in name_lower for gps in self._GPS_CHIPS):
-                    continue
-
-                # Accept known LoRa/ESP32 chip names
-                if any(chip in name_lower for chip in self._LORA_CHIPS):
-                    lora_ports.append(p)
-
-            if lora_ports:
-                return lora_ports
-
-            # No known LoRa chips found -- return all non-GPS by-id devices
-            fallback_by_id = [
-                p for p in by_id
-                if not (gps_port and (p == gps_port or os.path.realpath(p) == gps_real))
-                and not any(gps in os.path.basename(p).lower() for gps in self._GPS_CHIPS)
-            ]
-            if fallback_by_id:
-                return fallback_by_id
-
-        # Fallback: /dev/ttyUSB* + /dev/ttyACM*
         found = []
         for pattern in ["/dev/ttyUSB*", "/dev/ttyACM*"]:
             found.extend(sorted(glob.glob(pattern)))
 
         if gps_real:
-            return [p for p in found if os.path.realpath(p) != gps_real]
+            found = [p for p in found if os.path.realpath(p) != gps_real]
+
         return found
 
     async def start(self):
@@ -662,9 +637,15 @@ class LoRaBridge:
         while self._running:
             ports = self._scan_ports()
             if _first_scan:
-                by_id = glob.glob("/dev/serial/by-id/*")
-                by_id_names = [os.path.basename(p) for p in by_id]
-                print(f"[THEIA] Port scan: by-id={by_id_names}, selected={ports}")
+                udev_ok = os.path.exists(self.THEIA_RX_SYMLINK)
+                if udev_ok:
+                    real = os.path.realpath(self.THEIA_RX_SYMLINK)
+                    print(f"[THEIA] Port scan: /dev/theia-rx -> {real}")
+                else:
+                    by_id = [os.path.basename(p) for p in glob.glob("/dev/serial/by-id/*")]
+                    print(f"[THEIA] Port scan: /dev/theia-rx NOT found, by-id={by_id}, selected={ports}")
+                    if not ports:
+                        print("[THEIA] WARNING: No serial ports found! Run: sudo bash scripts/setup-udev-rules.sh")
                 _first_scan = False
 
             # Start readers for new ports
