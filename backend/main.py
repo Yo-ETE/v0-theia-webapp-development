@@ -31,12 +31,11 @@ async def lifespan(app: FastAPI):
     _tasks.append(asyncio.create_task(system_monitor.start(interval=5.0)))
     print("[THEIA] System monitor started")
 
-    # GPS and LoRa are optional - only start if devices exist
-    if os.path.exists(os.getenv("GPS_DEVICE", "/dev/ttyUSB0")):
-        _tasks.append(asyncio.create_task(gps_reader.start(interval=2.0)))
-        print("[THEIA] GPS reader started")
-    else:
-        print("[THEIA] GPS device not found, skipping GPS reader")
+    # GPS reader uses gpsd (not direct serial) -- always try to start it.
+    # gpsd manages the serial device independently; the reader just connects
+    # to gpsd's socket, so no serial port check is needed here.
+    _tasks.append(asyncio.create_task(gps_reader.start(interval=2.0)))
+    print("[THEIA] GPS reader started (via gpsd)")
 
     # LoRa bridge: always start -- it auto-scans for USB serial ports
     _tasks.append(asyncio.create_task(lora_bridge.start()))

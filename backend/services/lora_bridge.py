@@ -574,7 +574,7 @@ class LoRaBridge:
 
     def _scan_ports(self) -> list[str]:
         """Find all available serial ports."""
-        # If env var is set, use only that
+        # If LORA_SERIAL_PORT is explicitly set, use only that port
         if LORA_SERIAL_PORT and os.path.exists(LORA_SERIAL_PORT):
             return [LORA_SERIAL_PORT]
 
@@ -582,9 +582,13 @@ class LoRaBridge:
         for pattern in ["/dev/ttyUSB*", "/dev/ttyACM*"]:
             found.extend(sorted(glob.glob(pattern)))
 
-        # Exclude GPS port -- default to /dev/ttyUSB0 if not configured
-        gps_port = os.getenv("GPS_DEVICE", "/dev/ttyUSB0")
-        return [p for p in found if p != gps_port]
+        # Only exclude GPS port if GPS_DEVICE is explicitly set by the user.
+        # The GPS uses gpsd (not direct serial), so by default we don't
+        # exclude any port -- the RX may be on /dev/ttyUSB0.
+        gps_port = os.getenv("GPS_DEVICE", "")
+        if gps_port:
+            return [p for p in found if p != gps_port]
+        return found
 
     async def start(self):
         """Main loop: scans ports periodically and starts readers for new ones."""
@@ -601,8 +605,8 @@ class LoRaBridge:
                     self._readers[port] = reader
                     task = asyncio.create_task(reader.start())
                     self._tasks.append(task)
-                    gps_port = os.getenv("GPS_DEVICE", "/dev/ttyUSB0")
-                    print(f"[THEIA] Started reader for {port} (GPS={gps_port}, phantom_gate=ACTIVE)")
+                    gps_excl = os.getenv("GPS_DEVICE", "")
+                    print(f"[THEIA] Started reader for {port} (GPS_exclude={gps_excl or 'none'}, phantom_gate=ACTIVE)")
 
             # Remove readers for disconnected ports
             for port in list(self._readers.keys()):
