@@ -147,43 +147,47 @@ export default function MissionDetailPage() {
 
   useSSE(handleSSE)
 
-  // Seed detection feed from DB events on mount (so feed survives navigation)
-  const seededRef = useRef(false)
+  // Merge DB events into the detection feed whenever events change.
+  // This ensures the feed survives page navigation (DB events are persistent).
+  const lastEventCountRef = useRef(0)
   useEffect(() => {
-    if (seededRef.current || !events || events.length === 0) return
-    seededRef.current = true
-    // Convert recent DB events to LiveDetection format for the feed
-    const recent: LiveDetection[] = events
-      .filter((e: Record<string, unknown>) => {
-        const p = typeof e.payload === "string" ? (() => { try { return JSON.parse(e.payload as string) } catch { return null } })() : e.payload
-        return p?.presence && Number(p?.distance ?? 0) > 0
-      })
-      .slice(0, 20)
-      .map((e: Record<string, unknown>) => {
-        const p = typeof e.payload === "string" ? (() => { try { return JSON.parse(e.payload as string) } catch { return {} } })() : (e.payload ?? {})
-        return {
-          device_id: e.device_id as string,
-          device_name: (p as Record<string, unknown>).device_name as string ?? e.device_id as string,
-          tx_id: (p as Record<string, unknown>).tx_id as string ?? "",
-          sensor_type: (p as Record<string, unknown>).sensor_type as string ?? "ld2450",
-          serial_port: "",
-          mission_id: e.mission_id as string,
-          zone: e.zone as string ?? "",
-          zone_id: e.zone_id as string ?? "",
-          zone_label: (p as Record<string, unknown>).zone_label as string ?? "",
-          side: e.side as string ?? "",
-          presence: true,
-          distance: Number((p as Record<string, unknown>).distance ?? 0),
-          speed: Number((p as Record<string, unknown>).speed ?? 0),
-          angle: Number((p as Record<string, unknown>).angle ?? 0),
-          direction: (p as Record<string, unknown>).direction as string ?? "C",
-          rssi: Number(e.rssi ?? -120),
-          timestamp: (e.timestamp ?? e.created_at ?? new Date().toISOString()) as string,
-        } as LiveDetection
-      })
-    if (recent.length > 0) {
-      setLiveDetections(recent)
-    }
+    if (!events || events.length === 0) return
+    // Only re-seed if events changed (avoid overwriting live SSE data with stale DB data)
+    if (events.length === lastEventCountRef.current) return
+    lastEventCountRef.current = events.length
+
+    const dbDetections: LiveDetection[] = events.slice(0, 30).map((e: Record<string, unknown>) => {
+      const p = (typeof e.payload === "string" ? (() => { try { return JSON.parse(e.payload as string) } catch { return {} } })() : (e.payload ?? {})) as Record<string, unknown>
+      return {
+        device_id: e.device_id as string ?? "",
+        device_name: (p.device_name ?? e.device_name ?? e.device_id ?? "") as string,
+        tx_id: (p.tx_id ?? e.tx_id ?? "") as string,
+        sensor_type: (p.sensor_type ?? "ld2450") as string,
+        serial_port: "",
+        mission_id: (e.mission_id ?? "") as string,
+        zone: (e.zone_name ?? "") as string,
+        zone_id: (e.zone_id ?? "") as string,
+        zone_label: (p.zone_label ?? e.zone_label ?? "") as string,
+        side: (e.side ?? "") as string,
+        presence: true,
+        distance: Number(p.distance ?? 0),
+        speed: Number(p.speed ?? 0),
+        angle: Number(p.angle ?? 0),
+        direction: (p.direction ?? "C") as string,
+        rssi: Number(e.rssi ?? -120),
+        timestamp: (e.timestamp ?? new Date().toISOString()) as string,
+      } as LiveDetection
+    })
+    // Merge: keep existing live SSE detections on top, add DB ones below
+    setLiveDetections(prev => {
+      // If we have live SSE data, keep it and append DB events not already present
+      if (prev.length > 0) {
+        const existingTs = new Set(prev.map(d => d.timestamp))
+        const newFromDb = dbDetections.filter(d => !existingTs.has(d.timestamp))
+        return [...prev, ...newFromDb].slice(0, 50)
+      }
+      return dbDetections
+    })
   }, [events])
 
   // ── Zone drawing ──
@@ -320,9 +324,8 @@ export default function MissionDetailPage() {
         } as Partial<import("@/lib/types").Device>),
         updateMission(id, { zones: updatedZones, floors: updatedFloors, device_count: newDeviceCount }),
       ])
-      console.log("[v0] Unassign PATCH results - device:", JSON.stringify(devRes), "mission:", !!missRes)
     } catch (err) {
-      console.log("[v0] Unassign PATCH FAILED:", err)
+      console.warn("[THEIA] Failed to unassign device:", err)
     }
 
     // Revalidate from backend (PATCH is done, backend has correct data)

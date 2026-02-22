@@ -215,10 +215,12 @@ class PortReader:
 
         # Check mission status: only record events if mission is "active"
         mission_active = False
-        if mission_id:
+        if mission_id and mission_id.strip():
             mc = await db.execute("SELECT status FROM missions WHERE id=?", (mission_id,))
             mrow = await mc.fetchone()
             mission_active = (mrow["status"] == "active") if mrow else False
+        else:
+            mission_id = None  # Normalize empty string to None
         side = row["side"] if row else ""
         device_name = row["name"] if row else (tx_id or self.port)
 
@@ -256,19 +258,20 @@ class PortReader:
                 payload["presence"] = False
                 payload["distance"] = 0
         elif presence and self._tx_validated.get(phantom_key, False):
+            # TX is validated -- allow all presence through.
+            # Just track the counter for diagnostics.
             self._presence_count[phantom_key] = self._presence_count.get(phantom_key, 0) + 1
-            if self._presence_count[phantom_key] > self._PRESENCE_WITHOUT_EMPTY_LIMIT:
-                presence = False
-                effective_distance = 0
-                payload["presence"] = False
-                payload["distance"] = 0
-                if self._presence_count[phantom_key] % 50 == 0:
-                    print(f"[THEIA] Phantom suppressed: {phantom_key} d={d} ({self._presence_count[phantom_key]} without EMPTY)")
         elif not presence:
             self._presence_count[phantom_key] = 0
 
         # Store detection in DB (rate-limited: 1 per 8s per device)
         # Only record when mission status is "active" (Pause stops recording)
+        if not presence and mission_id and d > 15:
+            print(f"[THEIA-DBG] SKIP INSERT: presence=False (phantom gate), d={d}, phantom_key={phantom_key}, count={self._presence_count.get(phantom_key,0)}, validated={self._tx_validated.get(phantom_key,False)}")
+        elif presence and not mission_id:
+            print(f"[THEIA-DBG] SKIP INSERT: no mission_id, device={device_id}")
+        elif presence and mission_id and not mission_active:
+            print(f"[THEIA-DBG] SKIP INSERT: mission not active, status query returned mission_active={mission_active}")
         if mission_id and mission_active and presence and d > 15:
             device_key = device_id or self.port
             now_ts = time.time()
@@ -397,10 +400,12 @@ class PortReader:
 
         # Check mission status for recording gate
         mission_active = False
-        if mission_id:
+        if mission_id and mission_id.strip():
             mc = await db.execute("SELECT status FROM missions WHERE id=?", (mission_id,))
             mrow = await mc.fetchone()
             mission_active = (mrow["status"] == "active") if mrow else False
+        else:
+            mission_id = None
 
         presence = payload.get("presence", False) if isinstance(payload, dict) else False
         distance = 0

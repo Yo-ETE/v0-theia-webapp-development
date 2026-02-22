@@ -14,7 +14,7 @@ export function useStatus() {
 }
 
 export function useMissions() {
-  return useSWR<import("@/lib/types").Mission[]>("/api/missions", fetcher)
+  return useSWR<import("@/lib/types").Mission[]>("/api/missions", fetcher, { refreshInterval: 15000 })
 }
 
 export function useMission(id: string | null) {
