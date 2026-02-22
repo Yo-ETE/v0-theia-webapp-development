@@ -13,6 +13,7 @@ router = APIRouter(prefix="/missions", tags=["missions"])
 
 
 class MissionCreate(BaseModel):
+    id: str | None = None
     name: str
     description: str = ""
     location: str = ""
@@ -112,7 +113,8 @@ async def get_mission(mission_id: str):
 @router.post("", status_code=201)
 async def create_mission(body: MissionCreate):
     db = await get_db()
-    mid = str(uuid.uuid4())[:8]
+    # Use client-provided ID if present, otherwise generate one
+    mid = body.id if body.id else str(uuid.uuid4())[:8]
     now = datetime.now(timezone.utc).isoformat()
     await db.execute(
         """INSERT INTO missions

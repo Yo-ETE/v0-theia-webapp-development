@@ -50,16 +50,24 @@ export async function POST(request: NextRequest) {
     })
     if (!res.ok) throw new Error(`Backend ${res.status}`)
     const backendMission = await res.json()
-    // Merge: local always wins for geo (backend may return Pydantic defaults)
-    const merged = {
-      ...backendMission,
-      ...localMission,
-      // Backend authoritative
-      status: backendMission.status ?? localMission.status,
-      event_count: backendMission.event_count ?? 0,
+    // If backend returned a different ID, update local store to match
+    const backendId = backendMission.id
+    if (backendId && backendId !== localMission.id) {
+      store.deleteMission(localMission.id)
+      store.createMission({ ...localMission, ...backendMission, id: backendId })
+    } else {
+      store.updateMission(localMission.id, {
+        ...backendMission,
+        // Keep local geo data (backend may return Pydantic defaults)
+        center_lat: localMission.center_lat,
+        center_lon: localMission.center_lon,
+        zoom: localMission.zoom,
+        zones: localMission.zones,
+        floors: localMission.floors ?? [],
+      })
     }
-    store.updateMission(merged.id, merged)
-    return NextResponse.json(merged, { status: 201 })
+    const final = store.getMission(backendId ?? localMission.id) ?? localMission
+    return NextResponse.json(final, { status: 201 })
   } catch {
     return NextResponse.json(localMission, { status: 201 })
   }
