@@ -985,39 +985,60 @@ export default function MissionDetailPage() {
                 </div>
               </CardHeader>
               <CardContent>
-                {/* Zone statistics summary when heatmap is active */}
+                {/* Zone statistics + distance distribution when heatmap is active */}
                 {heatmapMode && eventList.length > 0 && (() => {
-                  const zoneStats: Record<string, { count: number; totalDist: number; devices: Set<string>; label: string }> = {}
+                  const BANDS = [20, 40, 60, 80, 100, 150, 250, 600]
+                  const BAND_LABELS = ["0-20", "20-40", "40-60", "60-80", "80-100", "100-150", "150-250", "250+"]
+                  const zoneStats: Record<string, { count: number; totalDist: number; devices: Set<string>; label: string; bands: number[] }> = {}
                   for (const evt of eventList) {
                     const zId = evt.zone_id
                     if (!zId) continue
                     const p = evt.payload ?? {}
                     const dist = Number(p.distance ?? 0)
-                    if (!zoneStats[zId]) zoneStats[zId] = { count: 0, totalDist: 0, devices: new Set(), label: evt.zone_label ?? zId }
+                    if (!zoneStats[zId]) zoneStats[zId] = { count: 0, totalDist: 0, devices: new Set(), label: evt.zone_label ?? zId, bands: BANDS.map(() => 0) }
                     zoneStats[zId].count++
                     zoneStats[zId].totalDist += dist
                     if (evt.device_id) zoneStats[zId].devices.add(evt.device_id)
+                    for (let i = 0; i < BANDS.length; i++) {
+                      if (dist <= BANDS[i]) { zoneStats[zId].bands[i]++; break }
+                    }
                   }
                   const sorted = Object.entries(zoneStats).sort((a, b) => b[1].count - a[1].count)
-                  const maxC = Math.max(1, ...sorted.map(([,s]) => s.count))
                   return (
-                    <div className="mb-4 grid grid-cols-2 gap-2 sm:grid-cols-3">
+                    <div className="mb-4 space-y-3">
                       {sorted.map(([zId, s]) => {
-                        const pct = Math.round((s.count / maxC) * 100)
+                        const maxBand = Math.max(1, ...s.bands)
                         return (
-                          <div key={zId} className="relative overflow-hidden rounded-md border border-border/50 bg-card p-2.5">
-                            <div
-                              className="absolute inset-y-0 left-0 bg-destructive/10"
-                              style={{ width: `${pct}%` }}
-                            />
-                            <div className="relative">
-                              <div className="flex items-center justify-between">
-                                <span className="text-xs font-semibold text-foreground">{s.label}</span>
-                                <span className="font-mono text-sm font-bold text-foreground">{s.count}</span>
-                              </div>
-                              <div className="mt-0.5 text-[10px] text-muted-foreground">
-                                {Math.round(s.totalDist / s.count)}cm avg | {s.devices.size} TX
-                              </div>
+                          <div key={zId} className="rounded-lg border border-border/50 bg-card p-3">
+                            <div className="flex items-center justify-between mb-2">
+                              <span className="text-xs font-semibold text-foreground">{s.label}</span>
+                              <span className="font-mono text-sm font-bold text-foreground">{s.count} det.</span>
+                            </div>
+                            <div className="text-[10px] text-muted-foreground mb-2">
+                              {Math.round(s.totalDist / s.count)}cm avg | {s.devices.size} TX
+                            </div>
+                            {/* Distance distribution bar chart */}
+                            <div className="flex items-end gap-0.5 h-10">
+                              {s.bands.map((cnt, i) => {
+                                if (cnt === 0 && maxBand > 1) return <div key={i} className="flex-1 flex flex-col items-center" />
+                                const h = Math.max(4, (cnt / maxBand) * 100)
+                                const t = cnt / maxBand
+                                const color = t < 0.33 ? "#22c55e" : t < 0.66 ? "#eab308" : "#ef4444"
+                                return (
+                                  <div key={i} className="flex-1 flex flex-col items-center justify-end gap-0.5">
+                                    {cnt > 0 && <span className="text-[8px] text-muted-foreground font-mono">{cnt}</span>}
+                                    <div
+                                      className="w-full rounded-t-sm"
+                                      style={{ height: `${h}%`, backgroundColor: color, opacity: 0.8, minHeight: cnt > 0 ? 3 : 0 }}
+                                    />
+                                  </div>
+                                )
+                              })}
+                            </div>
+                            <div className="flex gap-0.5 mt-0.5">
+                              {BAND_LABELS.map((lbl, i) => (
+                                <div key={i} className="flex-1 text-center text-[7px] text-muted-foreground/60">{lbl}</div>
+                              ))}
                             </div>
                           </div>
                         )

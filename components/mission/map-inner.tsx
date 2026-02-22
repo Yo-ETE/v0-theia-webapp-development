@@ -470,41 +470,125 @@ export default function MapInner({
     zoneColor: string
   }
 
-  // ── Heatmap data: rich statistics per zone ──
-  const heatmapData = (() => {
+  // ── Heatmap data: spatial arcs per zone, grouped by distance bands ──
+  const HEAT_BANDS = [20, 40, 60, 80, 100, 150, 250, 600] // cm boundaries
+  const heatmapArcs = (() => {
     if (!heatmapMode || !zones.length) return null
-    // Also include live detections for immediate feedback when events are empty
     const allEvents = events.length > 0 ? events : []
-    const statsByZone: Record<string, {
-      count: number
-      totalDist: number
-      minDist: number
-      maxDist: number
-      directions: Record<string, number>
-      devices: Set<string>
-      lastTs: string
-    }> = {}
+    // Group events by zone + distance band
+    type BandData = { count: number; directions: Record<string, number> }
+    type ZoneHeat = { bands: BandData[]; total: number; devices: Set<string>; totalDist: number }
+    const byZone: Record<string, ZoneHeat> = {}
     for (const evt of allEvents) {
       const zId = evt.zone_id
       if (!zId) continue
       const p = evt.payload ?? {}
       const dist = Number(p.distance ?? 0)
-      const dir = String(p.direction ?? "?")
-      if (!statsByZone[zId]) {
-        statsByZone[zId] = { count: 0, totalDist: 0, minDist: Infinity, maxDist: 0, directions: {}, devices: new Set(), lastTs: "" }
+      const dir = String(p.direction ?? "C")
+      if (!byZone[zId]) {
+        byZone[zId] = {
+          bands: HEAT_BANDS.map(() => ({ count: 0, directions: {} })),
+          total: 0, devices: new Set(), totalDist: 0,
+        }
       }
-      const s = statsByZone[zId]
-      s.count++
-      s.totalDist += dist
-      if (dist < s.minDist) s.minDist = dist
-      if (dist > s.maxDist) s.maxDist = dist
-      s.directions[dir] = (s.directions[dir] ?? 0) + 1
-      if (evt.device_id) s.devices.add(evt.device_id)
-      if (evt.timestamp > s.lastTs) s.lastTs = evt.timestamp
+      const zh = byZone[zId]
+      zh.total++
+      zh.totalDist += dist
+      if (evt.device_id) zh.devices.add(evt.device_id)
+      // Find the right band
+      for (let i = 0; i < HEAT_BANDS.length; i++) {
+        if (dist <= HEAT_BANDS[i]) {
+          zh.bands[i].count++
+          zh.bands[i].directions[dir] = (zh.bands[i].directions[dir] ?? 0) + 1
+          break
+        }
+      }
     }
-    const counts = Object.values(statsByZone).map(s => s.count)
-    const maxCount = Math.max(1, ...counts)
-    return { statsByZone, maxCount }
+    // Find max band count across ALL zones for consistent coloring
+    let maxBand = 1
+    for (const zh of Object.values(byZone)) {
+      for (const b of zh.bands) {
+        if (b.count > maxBand) maxBand = b.count
+      }
+    }
+
+    // Build arc polygons for each zone + band
+    type ArcEntry = {
+      zoneId: string
+      bandIdx: number
+      polygon: [number, number][]
+      count: number
+      intensity: number // 0..1
+      innerR: number // cm
+      outerR: number // cm
+    }
+    const arcs: ArcEntry[] = []
+    const zoneStats: Record<string, { total: number; avgDist: number; devices: number }> = {}
+
+    for (const [zId, zh] of Object.entries(byZone)) {
+      zoneStats[zId] = {
+        total: zh.total,
+        avgDist: zh.total > 0 ? Math.round(zh.totalDist / zh.total) : 0,
+        devices: zh.devices.size,
+      }
+      // Find the sensor placement for this zone
+      const sp = sensorPlacements.find(s => s.zone_id === zId)
+      const zone = zones.find(z => z.id === zId)
+      if (!sp || !zone) continue
+      const edge = getSideEdge(zone, sp.side)
+      if (!edge) continue
+      const centroid = zoneCentroids[zone.id]
+      if (!centroid) continue
+      const sensorLL = pointAlongSide(edge[0], edge[1], sp.sensor_position)
+      const normalM = inwardNormalM(edge[0], edge[1], centroid)
+      const leftM: [number, number] = [-normalM[1], normalM[0]]
+      const sensorM = toMeters(sensorLL)
+
+      for (let i = 0; i < HEAT_BANDS.length; i++) {
+        const band = zh.bands[i]
+        if (band.count === 0) continue
+        const innerR = i === 0 ? 0 : HEAT_BANDS[i - 1] / 100 // meters
+        const outerR = HEAT_BANDS[i] / 100 // meters
+        const intensity = band.count / maxBand
+
+        // Build an arc polygon: sweep from -60deg to +60deg (120deg FOV of LD2450)
+        // relative to the inward normal, at inner and outer radius
+        const ARC_STEPS = 16
+        const FOV_HALF = Math.PI / 3 // 60 degrees each side = 120 deg total
+        const outerPts: [number, number][] = []
+        const innerPts: [number, number][] = []
+
+        // Adjust arc based on direction distribution within this band
+        const gCount = band.directions["G"] ?? band.directions["Gauche"] ?? 0
+        const dCount = band.directions["D"] ?? band.directions["Droite"] ?? 0
+        const cCount = band.directions["C"] ?? band.directions["Centre"] ?? 0
+        const totalDir = gCount + dCount + cCount || 1
+        // Weight the angular center: G shifts left, D shifts right
+        const dirBias = ((gCount - dCount) / totalDir) * 0.3
+
+        for (let s = 0; s <= ARC_STEPS; s++) {
+          const t = s / ARC_STEPS // 0..1
+          const angle = -FOV_HALF + t * (2 * FOV_HALF) + dirBias
+          const dx = normalM[0] * Math.cos(angle) + leftM[0] * Math.sin(angle)
+          const dy = normalM[1] * Math.cos(angle) + leftM[1] * Math.sin(angle)
+          outerPts.push(toLatLon([sensorM[0] + dx * outerR, sensorM[1] + dy * outerR]))
+          if (innerR > 0) {
+            innerPts.push(toLatLon([sensorM[0] + dx * innerR, sensorM[1] + dy * innerR]))
+          }
+        }
+
+        // Build closed polygon: outer arc forward, inner arc reversed
+        let arcPoly: [number, number][]
+        if (innerR === 0) {
+          // Pie slice from sensor point
+          arcPoly = [sensorLL, ...outerPts, sensorLL]
+        } else {
+          arcPoly = [...outerPts, ...innerPts.reverse()]
+        }
+        arcs.push({ zoneId: zId, bandIdx: i, polygon: arcPoly, count: band.count, intensity, innerR: innerR * 100, outerR: outerR * 100 })
+      }
+    }
+    return { arcs, zoneStats, maxBand }
   })()
 
   const sensorMarkers: SensorMarkerData[] = sensorPlacements.map((sp) => {
@@ -734,52 +818,65 @@ export default function MapInner({
           )
         })()}
 
-        {/* ── Heatmap overlay ── */}
-        {heatmapData && (zones ?? []).map((zone) => {
-          const stats = heatmapData.statsByZone[zone.id]
-          if (!stats || stats.count === 0) return null
-          const intensity = stats.count / heatmapData.maxCount // 0..1
-          // Color gradient: blue (low) -> yellow (mid) -> red (high)
+        {/* ── Heatmap overlay: concentric arcs per zone ── */}
+        {heatmapArcs && heatmapArcs.arcs.map((arc) => {
+          // Color gradient: green (low) -> yellow (mid) -> red (high)
+          const t = arc.intensity
           let r: number, g: number, b: number
-          if (intensity < 0.5) {
-            // blue -> yellow
-            const t = intensity * 2
-            r = Math.round(255 * t)
-            g = Math.round(200 * t)
-            b = Math.round(255 * (1 - t))
+          if (t < 0.33) {
+            const p = t / 0.33
+            r = Math.round(30 + 200 * p)
+            g = Math.round(180 - 30 * p)
+            b = Math.round(80 * (1 - p))
+          } else if (t < 0.66) {
+            const p = (t - 0.33) / 0.33
+            r = Math.round(230 + 25 * p)
+            g = Math.round(150 - 100 * p)
+            b = 0
           } else {
-            // yellow -> red
-            const t = (intensity - 0.5) * 2
+            const p = (t - 0.66) / 0.34
             r = 255
-            g = Math.round(200 * (1 - t))
+            g = Math.round(50 - 50 * p)
             b = 0
           }
           const heatColor = `rgb(${r},${g},${b})`
-          const avgDist = Math.round(stats.totalDist / stats.count)
-          const topDir = Object.entries(stats.directions).sort((a, b) => b[1] - a[1])[0]
           return (
             <Polygon
-              key={`heatmap-${zone.id}`}
-              positions={zone.polygon}
+              key={`heat-${arc.zoneId}-${arc.bandIdx}`}
+              positions={arc.polygon}
               pathOptions={{
                 color: heatColor,
                 fillColor: heatColor,
-                fillOpacity: 0.2 + intensity * 0.45,
-                weight: 3,
+                fillOpacity: 0.15 + t * 0.55,
+                weight: 0.5,
               }}
             >
-              <Tooltip permanent direction="center" className="zone-label-tip">
-                <div style={{ textAlign: "center", lineHeight: 1.3 }}>
-                  <div style={{ fontSize: 13, fontWeight: 800, color: heatColor }}>{stats.count}</div>
-                  <div style={{ fontSize: 9, color: "#666" }}>
-                    {avgDist}cm avg
-                    {stats.devices.size > 1 ? ` | ${stats.devices.size} TX` : ""}
-                    {topDir ? ` | ${topDir[0]}` : ""}
-                  </div>
-                </div>
+              <Tooltip direction="center" className="zone-label-tip">
+                <span style={{ fontSize: 10, fontWeight: 700, color: heatColor }}>
+                  {arc.count} det. ({arc.innerR}-{arc.outerR}cm)
+                </span>
               </Tooltip>
             </Polygon>
           )
+        })}
+        {/* Zone stat labels in heatmap mode */}
+        {heatmapArcs && zones.map((zone) => {
+          const stats = heatmapArcs.zoneStats[zone.id]
+          if (!stats || stats.total === 0) return null
+          const centroid = zoneCentroids[zone.id]
+          if (!centroid) return null
+          return RL ? (
+            <RL.Marker
+              key={`heatstat-${zone.id}`}
+              position={centroid}
+              icon={leafletL?.divIcon({
+                className: "",
+                html: `<div style="background:rgba(0,0,0,0.75);color:#fff;padding:3px 6px;border-radius:4px;font-size:11px;font-weight:700;white-space:nowrap;text-align:center">${stats.total} det.<br/><span style="font-size:9px;font-weight:400;opacity:0.8">${stats.avgDist}cm avg${stats.devices > 1 ? ` | ${stats.devices} TX` : ""}</span></div>`,
+                iconSize: [0, 0],
+                iconAnchor: [0, 0],
+              })}
+            />
+          ) : null
         })}
 
         {/* ── Highlighted side for sensor placement mode ── */}
