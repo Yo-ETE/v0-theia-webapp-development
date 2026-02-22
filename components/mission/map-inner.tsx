@@ -470,11 +470,36 @@ export default function MapInner({
     zoneColor: string
   }
 
-  // ── Heatmap data: spatial arcs per zone, grouped by distance bands ──
-  const HEAT_BANDS = [20, 40, 60, 80, 100, 150, 250, 600] // cm boundaries
+  // ── Heatmap data: spatial arcs per zone, grouped by ADAPTIVE distance bands ──
   const heatmapArcs = (() => {
     if (!heatmapMode || !zones.length) return null
     const allEvents = events.length > 0 ? events : []
+    if (allEvents.length === 0) return null
+
+    // First pass: find min/max distance across all events to build adaptive bands
+    let minDist = Infinity, maxDist = 0
+    const distances: number[] = []
+    for (const evt of allEvents) {
+      const p = evt.payload ?? {}
+      const dist = Number(p.distance ?? 0)
+      if (dist > 0) {
+        distances.push(dist)
+        if (dist < minDist) minDist = dist
+        if (dist > maxDist) maxDist = dist
+      }
+    }
+    if (distances.length === 0) return null
+
+    // Build 8 equal-width bands between min and max distance (with some padding)
+    const padMin = Math.max(0, minDist - 30)
+    const padMax = maxDist + 30
+    const NUM_BANDS = 8
+    const bandWidth = (padMax - padMin) / NUM_BANDS
+    const HEAT_BANDS: number[] = []
+    for (let i = 0; i < NUM_BANDS; i++) {
+      HEAT_BANDS.push(Math.round(padMin + bandWidth * (i + 1)))
+    }
+
     // Group events by zone + distance band
     type BandData = { count: number; directions: Record<string, number> }
     type ZoneHeat = { bands: BandData[]; total: number; devices: Set<string>; totalDist: number }
@@ -547,7 +572,7 @@ export default function MapInner({
       for (let i = 0; i < HEAT_BANDS.length; i++) {
         const band = zh.bands[i]
         if (band.count === 0) continue
-        const innerR = i === 0 ? 0 : HEAT_BANDS[i - 1] / 100 // meters
+        const innerR = i === 0 ? padMin / 100 : HEAT_BANDS[i - 1] / 100 // meters
         const outerR = HEAT_BANDS[i] / 100 // meters
         const intensity = band.count / maxBand
 
@@ -577,17 +602,14 @@ export default function MapInner({
           }
         }
 
-        // Build closed polygon: outer arc forward, inner arc reversed
-        let arcPoly: [number, number][]
-        if (innerR === 0) {
-          // Pie slice from sensor point
-          arcPoly = [sensorLL, ...outerPts, sensorLL]
-        } else {
-          arcPoly = [...outerPts, ...innerPts.reverse()]
-        }
-        arcs.push({ zoneId: zId, bandIdx: i, polygon: arcPoly, count: band.count, intensity, innerR: innerR * 100, outerR: outerR * 100 })
+        // Build closed polygon: outer arc forward, inner arc reversed (annular ring)
+        const arcPoly: [number, number][] = innerPts.length > 0
+          ? [...outerPts, ...innerPts.reverse()]
+          : [sensorLL, ...outerPts, sensorLL]
+        arcs.push({ zoneId: zId, bandIdx: i, polygon: arcPoly, count: band.count, intensity, innerR: i === 0 ? Math.round(padMin) : HEAT_BANDS[i - 1], outerR: HEAT_BANDS[i] })
       }
     }
+    console.log("[v0] heatmap arcs:", arcs.length, "zones with events:", Object.keys(byZone), "sensorPlacements:", sensorPlacements.map(s => ({ zone_id: s.zone_id, side: s.side })))
     return { arcs, zoneStats, maxBand }
   })()
 
@@ -694,18 +716,21 @@ export default function MapInner({
               key={zone.id}
               positions={zone.polygon}
               pathOptions={{
-                color: zone.color,
-                fillColor: zone.color,
-                fillOpacity: hasPresence ? 0.08 : 0.12,
-                weight: hasPresence ? 2 : 1.5,
+                color: heatmapMode ? "#666" : zone.color,
+                fillColor: heatmapMode ? "transparent" : zone.color,
+                fillOpacity: heatmapMode ? 0 : (hasPresence ? 0.08 : 0.12),
+                weight: heatmapMode ? 1 : (hasPresence ? 2 : 1.5),
+                dashArray: heatmapMode ? "4 4" : undefined,
               }}
               eventHandlers={onZoneClick ? { click: () => onZoneClick(zone.id) } : undefined}
             >
-              <Tooltip permanent direction="center" className="zone-label-tip">
-                <span style={{ fontSize: 11, fontWeight: 600, color: zone.color }}>
-                  {zone.label}
-                </span>
-              </Tooltip>
+              {!heatmapMode && (
+                <Tooltip permanent direction="center" className="zone-label-tip">
+                  <span style={{ fontSize: 11, fontWeight: 600, color: zone.color }}>
+                    {zone.label}
+                  </span>
+                </Tooltip>
+              )}
             </Polygon>
           )
         })}
