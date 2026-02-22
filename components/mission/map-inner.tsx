@@ -580,6 +580,11 @@ export default function MapInner({
       pt.weight = gridCounts[gk] ?? 1
     }
 
+    if (pts.length > 0) {
+      const s0 = Object.values(sensorGeo)[0]?.[0]
+      console.log("[v0] heatPoints:", pts.length, "pts, sensorLL:", s0?.sensorLL, "first3pts:", pts.slice(0, 3).map(p => ({ lat: p.lat.toFixed(6), lon: p.lon.toFixed(6), w: p.weight })))
+    }
+
     return pts
   })()
 
@@ -664,8 +669,7 @@ export default function MapInner({
       <MapContainer
         ref={(instance) => {
           mapRef.current = instance
-          // eslint-disable-next-line @typescript-eslint/no-explicit-any
-          if (instance && (instance as any)._leaflet_id) setMapInstance(instance)
+          if (instance) setMapInstance(instance)
         }}
         center={[centerLat, centerLon]}
         zoom={zoom}
@@ -1068,8 +1072,8 @@ export default function MapInner({
       <HeatmapCanvas
         map={mapInstance}
         points={heatPoints}
-        radius={35}
-        opacity={0.78}
+        radiusMeters={1.5}
+        opacity={0.75}
         enabled={heatmapMode && heatPoints.length > 0}
       />
 
