@@ -94,8 +94,16 @@ export async function PATCH(
       }
       const backend = await res.json()
       console.log(`[THEIA] Mission PATCH OK: id=${id} status=${backend.status}`)
-      // Merge backend response with local (local has definitive zones)
-      const merged = { ...localUpdated, ...backend, zones: localUpdated?.zones ?? backend.zones, floors: localUpdated?.floors ?? backend.floors }
+      // Merge: backend wins for status/metadata, local wins for zones/coords/floors
+      const merged = {
+        ...localUpdated,
+        ...backend,
+        center_lat: localUpdated?.center_lat ?? backend.center_lat,
+        center_lon: localUpdated?.center_lon ?? backend.center_lon,
+        zoom: localUpdated?.zoom ?? backend.zoom,
+        zones: localUpdated?.zones?.length ? localUpdated.zones : (backend.zones ?? []),
+        floors: localUpdated?.floors?.length ? localUpdated.floors : (backend.floors ?? []),
+      }
       store.updateMission(id, merged)
       return NextResponse.json(merged)
     } catch (err) {
