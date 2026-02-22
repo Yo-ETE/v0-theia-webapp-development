@@ -279,9 +279,11 @@ export default function MissionDetailPage() {
     } catch (err) {
       console.warn("[THEIA] Failed to update mission:", err)
     }
-    // Re-fetch both to sync
-    mutate()
-    mutateDevices()
+    // Delay revalidation to ensure backend has persisted changes
+    setTimeout(() => {
+      mutate()
+      mutateDevices()
+    }, 600)
   }, [mission, id, mutate, mutateDevices])
 
   // ── Zone polygon editing ──

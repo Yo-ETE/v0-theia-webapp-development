@@ -41,8 +41,7 @@ export async function GET(request: NextRequest) {
       })),
     }
     return NextResponse.json(normalized)
-  } catch (err) {
-    console.log("[v0] Backend /api/admin/version error:", err)
+  } catch {
     return NextResponse.json({
       branch: "unknown",
       commit: "unknown",

@@ -14,8 +14,9 @@ Device identification:
 - If no device matches the port, frames are logged but not attributed.
 
 Multi-port:
-- Auto-scans /dev/ttyUSB* and /dev/ttyACM* every 10s for new devices.
-- Each port gets its own reader coroutine.
+- Prefers /dev/serial/by-id/* (stable across reboots), falls back to /dev/ttyUSB* + /dev/ttyACM*.
+- Auto-scans every 10s for new devices. Each port gets its own reader coroutine.
+- Set GPS_DEVICE env var (e.g. /dev/serial/by-id/usb-u-blox_...) to exclude the GPS port.
 """
 import asyncio
 import glob
@@ -583,30 +584,62 @@ class LoRaBridge:
         }
 
     def _scan_ports(self) -> list[str]:
-        """Find all available serial ports."""
-        # If LORA_SERIAL_PORT is explicitly set, use only that port
+        """Find all available serial ports.
+
+        Priority order:
+        1. LORA_SERIAL_PORT env var (explicit override, can be a by-id path)
+        2. /dev/serial/by-id/*  (stable, survives reboots)
+        3. /dev/ttyUSB* + /dev/ttyACM*  (fallback, numbering may change)
+
+        GPS_DEVICE env var is excluded if set (e.g. a by-id path for gpsd).
+        """
+        # Explicit override
         if LORA_SERIAL_PORT and os.path.exists(LORA_SERIAL_PORT):
             return [LORA_SERIAL_PORT]
 
+        gps_port = os.getenv("GPS_DEVICE", "")
+        # Resolve GPS symlink to real device for comparison
+        gps_real = ""
+        if gps_port:
+            try:
+                gps_real = os.path.realpath(gps_port)
+            except Exception:
+                gps_real = gps_port
+
+        # Prefer stable /dev/serial/by-id/ paths (symlinks to /dev/ttyUSBx)
+        by_id = sorted(glob.glob("/dev/serial/by-id/*"))
+        if by_id:
+            result = []
+            for p in by_id:
+                real = os.path.realpath(p)
+                # Exclude GPS device (compare both symlink and real path)
+                if gps_port and (p == gps_port or real == gps_real):
+                    continue
+                result.append(p)
+            if result:
+                return result
+
+        # Fallback: scan /dev/ttyUSB* and /dev/ttyACM*
         found = []
         for pattern in ["/dev/ttyUSB*", "/dev/ttyACM*"]:
             found.extend(sorted(glob.glob(pattern)))
 
-        # Only exclude GPS port if GPS_DEVICE is explicitly set by the user.
-        # The GPS uses gpsd (not direct serial), so by default we don't
-        # exclude any port -- the RX may be on /dev/ttyUSB0.
-        gps_port = os.getenv("GPS_DEVICE", "")
-        if gps_port:
-            return [p for p in found if p != gps_port]
+        if gps_real:
+            return [p for p in found if os.path.realpath(p) != gps_real]
         return found
 
     async def start(self):
         """Main loop: scans ports periodically and starts readers for new ones."""
         self._running = True
         print("[THEIA] LoRa bridge starting (multi-port mode)")
+        _first_scan = True
 
         while self._running:
             ports = self._scan_ports()
+            if _first_scan:
+                by_id = glob.glob("/dev/serial/by-id/*")
+                print(f"[THEIA] Port scan: by-id={by_id}, selected={ports}")
+                _first_scan = False
 
             # Start readers for new ports
             for port in ports:
@@ -615,8 +648,8 @@ class LoRaBridge:
                     self._readers[port] = reader
                     task = asyncio.create_task(reader.start())
                     self._tasks.append(task)
-                    gps_excl = os.getenv("GPS_DEVICE", "")
-                    print(f"[THEIA] Started reader for {port} (GPS_exclude={gps_excl or 'none'}, phantom_gate=ACTIVE)")
+                    real = os.path.realpath(port) if port != os.path.realpath(port) else ""
+                    print(f"[THEIA] Started reader for {port}{f' -> {real}' if real else ''} (phantom_gate=ACTIVE)")
 
             # Remove readers for disconnected ports
             for port in list(self._readers.keys()):
