@@ -80,7 +80,7 @@ app.include_router(admin.router)  # admin has its own /api/admin prefix
 app.include_router(config.router)  # config has its own /api/config prefix
 
 
-THEIA_BUILD = "2026-02-22-v6-events-fix"
+THEIA_BUILD = "2026-02-22-v7-events-heatmap"
 
 @app.get("/")
 async def root():

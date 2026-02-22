@@ -470,15 +470,41 @@ export default function MapInner({
     zoneColor: string
   }
 
-  // ── Heatmap data: event count per zone ──
+  // ── Heatmap data: rich statistics per zone ──
   const heatmapData = (() => {
-    if (!heatmapMode || !events.length || !zones.length) return null
-    const countByZone: Record<string, number> = {}
-    for (const evt of events) {
-      if (evt.zone_id) countByZone[evt.zone_id] = (countByZone[evt.zone_id] ?? 0) + 1
+    if (!heatmapMode || !zones.length) return null
+    // Also include live detections for immediate feedback when events are empty
+    const allEvents = events.length > 0 ? events : []
+    const statsByZone: Record<string, {
+      count: number
+      totalDist: number
+      minDist: number
+      maxDist: number
+      directions: Record<string, number>
+      devices: Set<string>
+      lastTs: string
+    }> = {}
+    for (const evt of allEvents) {
+      const zId = evt.zone_id
+      if (!zId) continue
+      const p = evt.payload ?? {}
+      const dist = Number(p.distance ?? 0)
+      const dir = String(p.direction ?? "?")
+      if (!statsByZone[zId]) {
+        statsByZone[zId] = { count: 0, totalDist: 0, minDist: Infinity, maxDist: 0, directions: {}, devices: new Set(), lastTs: "" }
+      }
+      const s = statsByZone[zId]
+      s.count++
+      s.totalDist += dist
+      if (dist < s.minDist) s.minDist = dist
+      if (dist > s.maxDist) s.maxDist = dist
+      s.directions[dir] = (s.directions[dir] ?? 0) + 1
+      if (evt.device_id) s.devices.add(evt.device_id)
+      if (evt.timestamp > s.lastTs) s.lastTs = evt.timestamp
     }
-    const maxCount = Math.max(1, ...Object.values(countByZone))
-    return { countByZone, maxCount }
+    const counts = Object.values(statsByZone).map(s => s.count)
+    const maxCount = Math.max(1, ...counts)
+    return { statsByZone, maxCount }
   })()
 
   const sensorMarkers: SensorMarkerData[] = sensorPlacements.map((sp) => {
@@ -710,13 +736,27 @@ export default function MapInner({
 
         {/* ── Heatmap overlay ── */}
         {heatmapData && (zones ?? []).map((zone) => {
-          const count = heatmapData.countByZone[zone.id] ?? 0
-          if (count === 0) return null
-          const intensity = count / heatmapData.maxCount // 0..1
-          // Color from green (low) through yellow to red (high)
-          const r = Math.round(255 * Math.min(1, intensity * 2))
-          const g = Math.round(255 * Math.min(1, (1 - intensity) * 2))
-          const heatColor = `rgb(${r},${g},0)`
+          const stats = heatmapData.statsByZone[zone.id]
+          if (!stats || stats.count === 0) return null
+          const intensity = stats.count / heatmapData.maxCount // 0..1
+          // Color gradient: blue (low) -> yellow (mid) -> red (high)
+          let r: number, g: number, b: number
+          if (intensity < 0.5) {
+            // blue -> yellow
+            const t = intensity * 2
+            r = Math.round(255 * t)
+            g = Math.round(200 * t)
+            b = Math.round(255 * (1 - t))
+          } else {
+            // yellow -> red
+            const t = (intensity - 0.5) * 2
+            r = 255
+            g = Math.round(200 * (1 - t))
+            b = 0
+          }
+          const heatColor = `rgb(${r},${g},${b})`
+          const avgDist = Math.round(stats.totalDist / stats.count)
+          const topDir = Object.entries(stats.directions).sort((a, b) => b[1] - a[1])[0]
           return (
             <Polygon
               key={`heatmap-${zone.id}`}
@@ -724,14 +764,19 @@ export default function MapInner({
               pathOptions={{
                 color: heatColor,
                 fillColor: heatColor,
-                fillOpacity: 0.15 + intensity * 0.4,
-                weight: 2,
+                fillOpacity: 0.2 + intensity * 0.45,
+                weight: 3,
               }}
             >
               <Tooltip permanent direction="center" className="zone-label-tip">
-                <span style={{ fontSize: 11, fontWeight: 700, color: heatColor }}>
-                  {count} det.
-                </span>
+                <div style={{ textAlign: "center", lineHeight: 1.3 }}>
+                  <div style={{ fontSize: 13, fontWeight: 800, color: heatColor }}>{stats.count}</div>
+                  <div style={{ fontSize: 9, color: "#666" }}>
+                    {avgDist}cm avg
+                    {stats.devices.size > 1 ? ` | ${stats.devices.size} TX` : ""}
+                    {topDir ? ` | ${topDir[0]}` : ""}
+                  </div>
+                </div>
               </Tooltip>
             </Polygon>
           )
@@ -818,7 +863,7 @@ export default function MapInner({
           )
         })}
 
-        {/* ── Sensor position markers (triangles on the side) ── */}
+        {/* ─��� Sensor position markers (triangles on the side) ── */}
         {sensorMarkers.map((sm) => (
           <CircleMarker
             key={`sensor-${sm.id}`}

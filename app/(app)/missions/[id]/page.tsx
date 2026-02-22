@@ -585,7 +585,7 @@ export default function MissionDetailPage() {
                 <Radio className="h-3 w-3" />{missionDevices.length} TX
               </span>
               <span className="flex items-center gap-1 text-xs text-muted-foreground">
-                <BarChart3 className="h-3 w-3" />{Math.max(eventList.length, liveDetections.length)} events
+                <BarChart3 className="h-3 w-3" />{Math.max(eventList.length, mission.event_count ?? 0)} events
               </span>
               {mission.status === "active" && (
                 <span className="flex items-center gap-1 text-xs text-red-500 font-mono">
@@ -985,8 +985,48 @@ export default function MissionDetailPage() {
                 </div>
               </CardHeader>
               <CardContent>
+                {/* Zone statistics summary when heatmap is active */}
+                {heatmapMode && eventList.length > 0 && (() => {
+                  const zoneStats: Record<string, { count: number; totalDist: number; devices: Set<string>; label: string }> = {}
+                  for (const evt of eventList) {
+                    const zId = evt.zone_id
+                    if (!zId) continue
+                    const p = evt.payload ?? {}
+                    const dist = Number(p.distance ?? 0)
+                    if (!zoneStats[zId]) zoneStats[zId] = { count: 0, totalDist: 0, devices: new Set(), label: evt.zone_label ?? zId }
+                    zoneStats[zId].count++
+                    zoneStats[zId].totalDist += dist
+                    if (evt.device_id) zoneStats[zId].devices.add(evt.device_id)
+                  }
+                  const sorted = Object.entries(zoneStats).sort((a, b) => b[1].count - a[1].count)
+                  const maxC = Math.max(1, ...sorted.map(([,s]) => s.count))
+                  return (
+                    <div className="mb-4 grid grid-cols-2 gap-2 sm:grid-cols-3">
+                      {sorted.map(([zId, s]) => {
+                        const pct = Math.round((s.count / maxC) * 100)
+                        return (
+                          <div key={zId} className="relative overflow-hidden rounded-md border border-border/50 bg-card p-2.5">
+                            <div
+                              className="absolute inset-y-0 left-0 bg-destructive/10"
+                              style={{ width: `${pct}%` }}
+                            />
+                            <div className="relative">
+                              <div className="flex items-center justify-between">
+                                <span className="text-xs font-semibold text-foreground">{s.label}</span>
+                                <span className="font-mono text-sm font-bold text-foreground">{s.count}</span>
+                              </div>
+                              <div className="mt-0.5 text-[10px] text-muted-foreground">
+                                {Math.round(s.totalDist / s.count)}cm avg | {s.devices.size} TX
+                              </div>
+                            </div>
+                          </div>
+                        )
+                      })}
+                    </div>
+                  )
+                })()}
                 {eventList.length === 0 ? (
-                  <p className="py-8 text-center text-sm text-muted-foreground">No events recorded for this mission</p>
+                  <p className="py-8 text-center text-sm text-muted-foreground">No events recorded for this mission. Press REC and walk past the sensors.</p>
                 ) : (
                   <div className="max-h-[500px] overflow-auto">
                     <Table>

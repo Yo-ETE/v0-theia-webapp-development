@@ -278,19 +278,13 @@ class PortReader:
         elif not presence:
             self._presence_count[phantom_key] = 0
 
-        # Store detection in DB (rate-limited: 1 per 8s per device)
+        # Store detection in DB (rate-limited: 1 per 2s per device)
         # Only record when mission status is "active" (Pause stops recording)
-        if not presence and mission_id and d > 15:
-            print(f"[THEIA-DBG] SKIP INSERT: presence=False (phantom gate), d={d}, phantom_key={phantom_key}, count={self._presence_count.get(phantom_key,0)}, validated={self._tx_validated.get(phantom_key,False)}")
-        elif presence and not mission_id:
-            print(f"[THEIA-DBG] SKIP INSERT: no mission_id, device={device_id}")
-        elif presence and mission_id and not mission_active:
-            print(f"[THEIA-DBG] SKIP INSERT: mission {mission_id} status='{mission_status_db}' (need 'active')")
         if mission_id and mission_active and presence and d > 15:
             device_key = device_id or self.port
             now_ts = time.time()
             last_insert_ts = self._last_insert_ts.get(device_key, 0)
-            if now_ts - last_insert_ts >= 8.0:
+            if now_ts - last_insert_ts >= 2.0:
                 self._last_insert_ts[device_key] = now_ts
                 payload_json = json.dumps(payload)
                 try:
@@ -442,7 +436,7 @@ class PortReader:
             device_key = device_id or dev_eui
             now_ts = time.time()
             last_insert_ts = self._last_insert_ts.get(device_key, 0)
-            if now_ts - last_insert_ts >= 8.0:
+            if now_ts - last_insert_ts >= 2.0:
                 self._last_insert_ts[device_key] = now_ts
                 await db.execute(
                     "INSERT INTO events (mission_id, device_id, event_type, zone, rssi, snr, payload) VALUES (?, ?, ?, ?, ?, ?, ?)",

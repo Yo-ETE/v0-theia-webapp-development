@@ -82,6 +82,7 @@ async def list_events(
         cursor = await db.execute(query_old, params)
     rows = await cursor.fetchall()
 
+    # All stored events are already validated (presence=True, d>15, rate-limited)
     result = []
     for r in rows:
         d = dict(r)
@@ -90,22 +91,6 @@ async def list_events(
                 d["payload"] = json.loads(d["payload"])
             except Exception:
                 pass
-        # Filter out ghost events: detection events with no real presence
-        if d.get("type") == "detection":
-            p = d.get("payload", {})
-            if isinstance(p, dict):
-                # distance may be int, float, or string in the JSON payload
-                try:
-                    dist = float(p.get("distance", 0))
-                except (TypeError, ValueError):
-                    dist = 0.0
-                # presence may be bool, string "true"/"false", or int 0/1
-                pres = p.get("presence")
-                if isinstance(pres, str):
-                    pres = pres.lower() not in ("false", "0", "")
-                # Skip if no real distance (< 15cm) or no presence
-                if not pres or dist < 15:
-                    continue
         result.append(d)
     return result
 

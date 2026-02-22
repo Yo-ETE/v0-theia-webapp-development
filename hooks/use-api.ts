@@ -37,8 +37,8 @@ export function useEvents(params?: { mission_id?: string; limit?: number; event_
   return useSWR<import("@/lib/types").DetectionEvent[]>(
     `/api/events${q ? `?${q}` : ""}`,
     fetcher,
-    // Refresh every 10s to pick up new DB events (backup if SSE drops).
-    { refreshInterval: 10000, revalidateOnFocus: true },
+    // Refresh every 5s to pick up new DB events.
+    { refreshInterval: 5000, revalidateOnFocus: true },
   )
 }
 
