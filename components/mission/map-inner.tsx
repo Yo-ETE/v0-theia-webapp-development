@@ -133,6 +133,7 @@ export default function MapInner({
   const mapRef = useRef<unknown>(null)
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const [mapInstance, setMapInstance] = useState<any>(null)
+  const mapInstanceSet = useRef(false)
   const containerDivRef = useRef<HTMLDivElement>(null)
   const [mapKey, setMapKey] = useState(0)
 
@@ -238,6 +239,8 @@ export default function MapInner({
         } catch { /* ignore */ }
       }
       mapRef.current = null
+      mapInstanceSet.current = false
+      setMapInstance(null)
       // Clean _leaflet_id from the container AND all child elements
       const div = containerDivRef.current
       if (div) {
@@ -590,18 +593,6 @@ export default function MapInner({
       pt.weight = gridCounts[gk] ?? 1
     }
 
-    if (pts.length > 0) {
-      const s0 = Object.values(sensorGeo)[0]?.[0]
-      console.log("[v0] heatPoints:", {
-        n: pts.length,
-        sensor: s0 ? { ll: s0.sensorLL, nrm: s0.normalM, rM: [-s0.leftM[0], -s0.leftM[1]] } : null,
-        placements: sensorPlacements.length,
-        geoKeys: Object.keys(sensorGeo),
-        evts: events.slice(0, 3).map(e => ({ z: e.zone_id?.slice(0,8), x: e.payload?.x, y: e.payload?.y, d: e.payload?.distance, a: e.payload?.angle, st: e.payload?.sensor_type })),
-        pts: pts.slice(0, 3).map(p => [+p.lat.toFixed(7), +p.lon.toFixed(7), p.weight]),
-      })
-    }
-
     return pts
   })()
 
@@ -686,7 +677,10 @@ export default function MapInner({
       <MapContainer
         ref={(instance) => {
           mapRef.current = instance
-          if (instance) setMapInstance(instance)
+          if (instance && !mapInstanceSet.current) {
+            mapInstanceSet.current = true
+            setMapInstance(instance)
+          }
         }}
         center={[centerLat, centerLon]}
         zoom={zoom}

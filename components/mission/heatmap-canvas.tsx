@@ -126,7 +126,8 @@ export default function HeatmapCanvas({
     const offscreen = document.createElement("canvas")
     offscreen.width = w
     offscreen.height = h
-    const octx = offscreen.getContext("2d")!
+    const octx = offscreen.getContext("2d")
+    if (!octx) return
 
     // Clip to zone polygons so we only draw inside zones
     if (zonePolygons.length > 0) {
