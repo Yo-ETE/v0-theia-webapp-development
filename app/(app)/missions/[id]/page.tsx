@@ -71,7 +71,7 @@ export default function MissionDetailPage() {
   const { id } = useParams<{ id: string }>()
   const { data: mission, isLoading, mutate } = useMission(id)
   const { data: events, mutate: mutateEvents } = useEvents({ mission_id: id, event_type: "detection", limit: 500 })
-  const { data: allDevices, mutate: mutateDevices } = useDevices()
+  const { data: allDevices, mutate: mutateDevices } = useDevices({ refreshInterval: 30000 })
 
   const [drawingMode, setDrawingMode] = useState(false)
   const [zoneDialog, setZoneDialog] = useState(false)
@@ -140,6 +140,45 @@ export default function MissionDetailPage() {
   }, [id])
 
   useSSE(handleSSE)
+
+  // Seed detection feed from DB events on mount (so feed survives navigation)
+  const seededRef = useRef(false)
+  useEffect(() => {
+    if (seededRef.current || !events || events.length === 0) return
+    seededRef.current = true
+    // Convert recent DB events to LiveDetection format for the feed
+    const recent: LiveDetection[] = events
+      .filter((e: Record<string, unknown>) => {
+        const p = typeof e.payload === "string" ? (() => { try { return JSON.parse(e.payload as string) } catch { return null } })() : e.payload
+        return p?.presence && Number(p?.distance ?? 0) > 0
+      })
+      .slice(0, 20)
+      .map((e: Record<string, unknown>) => {
+        const p = typeof e.payload === "string" ? (() => { try { return JSON.parse(e.payload as string) } catch { return {} } })() : (e.payload ?? {})
+        return {
+          device_id: e.device_id as string,
+          device_name: (p as Record<string, unknown>).device_name as string ?? e.device_id as string,
+          tx_id: (p as Record<string, unknown>).tx_id as string ?? "",
+          sensor_type: (p as Record<string, unknown>).sensor_type as string ?? "ld2450",
+          serial_port: "",
+          mission_id: e.mission_id as string,
+          zone: e.zone as string ?? "",
+          zone_id: e.zone_id as string ?? "",
+          zone_label: (p as Record<string, unknown>).zone_label as string ?? "",
+          side: e.side as string ?? "",
+          presence: true,
+          distance: Number((p as Record<string, unknown>).distance ?? 0),
+          speed: Number((p as Record<string, unknown>).speed ?? 0),
+          angle: Number((p as Record<string, unknown>).angle ?? 0),
+          direction: (p as Record<string, unknown>).direction as string ?? "C",
+          rssi: Number(e.rssi ?? -120),
+          timestamp: e.created_at as string ?? new Date().toISOString(),
+        } as LiveDetection
+      })
+    if (recent.length > 0) {
+      setLiveDetections(recent)
+    }
+  }, [events])
 
   // ── Zone drawing ──
   const handlePolygonDrawn = useCallback((polygon: [number, number][]) => {

@@ -42,7 +42,7 @@ class PortReader:
         self._last_empty_ts: dict[str, float] = {}
         self._presence_count: dict[str, int] = {}
         self._tx_validated: dict[str, bool] = {}
-        self._PRESENCE_WITHOUT_EMPTY_LIMIT = 10
+        self._PRESENCE_WITHOUT_EMPTY_LIMIT = 200
 
     async def start(self):
         import serial
@@ -389,10 +389,19 @@ class PortReader:
         distance = 0
         if isinstance(payload, dict):
             distance = int(payload.get("distance", 0) or 0)
+        # Phantom gate for JSON path: auto-validate after 5 frames (like _handle_detection)
         phantom_key = dev_eui or self.port
         if presence and not self._tx_validated.get(phantom_key, False):
-            presence = False
-            distance = 0
+            count = self._presence_count.get(phantom_key, 0) + 1
+            self._presence_count[phantom_key] = count
+            if count >= 5:
+                self._tx_validated[phantom_key] = True
+                print(f"[THEIA] TX {phantom_key} auto-validated (JSON path) after {count} frames")
+            else:
+                presence = False
+                distance = 0
+        elif not presence:
+            self._presence_count[phantom_key] = 0
         if mission_id and event_type == "detection" and presence and distance > 15:
             device_key = device_id or dev_eui
             now_ts = time.time()
