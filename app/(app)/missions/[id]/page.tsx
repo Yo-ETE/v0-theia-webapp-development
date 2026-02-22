@@ -238,10 +238,8 @@ export default function MissionDetailPage() {
   // ── Remove device from mission ──
   const [unassigning, setUnassigning] = useState<string | null>(null)
   const unassignDevice = useCallback(async (deviceId: string) => {
-    console.log("[v0] unassignDevice called:", deviceId, "mission:", !!mission, "unassigning:", unassigning)
     if (!mission || unassigning) return
     setUnassigning(deviceId)
-    console.log("[v0] Starting unassign for:", deviceId)
 
     const updatedZones = (mission.zones ?? []).map((z) => ({
       ...z,
@@ -266,8 +264,7 @@ export default function MissionDetailPage() {
 
     // Persist BOTH to backend, then revalidate
     try {
-      console.log("[v0] Sending PATCH to unassign device:", deviceId)
-      const [deviceRes, missionRes] = await Promise.all([
+      await Promise.all([
         updateDevice(deviceId, {
           mission_id: "",
           zone_id: "",
@@ -278,20 +275,14 @@ export default function MissionDetailPage() {
         } as Partial<import("@/lib/types").Device>),
         updateMission(id, { zones: updatedZones, floors: updatedFloors, device_count: newDeviceCount }),
       ])
-      console.log("[v0] PATCH results - device:", JSON.stringify(deviceRes), "mission status:", !!missionRes)
     } catch (err) {
-      console.warn("[v0] Failed to unassign device:", err)
+      console.warn("[THEIA] Failed to unassign device:", err)
     }
 
     // Revalidate from backend (PATCH is done, backend has correct data)
-    console.log("[v0] Revalidating after unassign...")
     await Promise.all([mutate(), mutateDevices()])
-    console.log("[v0] Revalidation done. allDevices for this mission:", allDevices?.filter(d => d.mission_id === id).map(d => d.id))
     // Keep filtering the device for 2 more SWR refresh cycles to prevent flicker
-    setTimeout(() => {
-      console.log("[v0] Clearing unassigning state for:", deviceId)
-      setUnassigning(null)
-    }, 6000)
+    setTimeout(() => setUnassigning(null), 6000)
   }, [mission, id, mutate, mutateDevices, unassigning])
 
   // ── Zone polygon editing ──
@@ -753,7 +744,6 @@ export default function MissionDetailPage() {
                         <button
                           onClick={(e) => {
                             e.stopPropagation()
-                            console.log("[v0] Trash clicked for device:", d.id, d.name)
                             unassignDevice(d.id)
                           }}
                           className="text-destructive/60 hover:text-destructive transition-colors shrink-0 p-1"
