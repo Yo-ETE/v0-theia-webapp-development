@@ -583,22 +583,28 @@ class LoRaBridge:
             "packets_errors": total_err,
         }
 
+    # Chip names commonly used by ESP32 LoRa boards (case-insensitive match)
+    _LORA_CHIPS = ["cp210", "ch340", "ch341", "ch9102", "ftdi"]
+    # Chip names commonly used by GPS dongles (excluded from LoRa scan)
+    _GPS_CHIPS = ["prolific", "u-blox", "ublox", "gps", "gnss", "pl2303"]
+
     def _scan_ports(self) -> list[str]:
         """Find all available serial ports.
 
         Priority order:
         1. LORA_SERIAL_PORT env var (explicit override, can be a by-id path)
-        2. /dev/serial/by-id/*  (stable, survives reboots)
-        3. /dev/ttyUSB* + /dev/ttyACM*  (fallback, numbering may change)
+        2. /dev/serial/by-id/* filtered by chip name:
+           - Include: CP2102, CH340, FTDI (ESP32 LoRa boards)
+           - Exclude: Prolific, u-blox (GPS dongles)
+        3. /dev/ttyUSB* + /dev/ttyACM* (fallback if no by-id found)
 
-        GPS_DEVICE env var is excluded if set (e.g. a by-id path for gpsd).
+        GPS_DEVICE env var is also excluded if set.
         """
         # Explicit override
         if LORA_SERIAL_PORT and os.path.exists(LORA_SERIAL_PORT):
             return [LORA_SERIAL_PORT]
 
         gps_port = os.getenv("GPS_DEVICE", "")
-        # Resolve GPS symlink to real device for comparison
         gps_real = ""
         if gps_port:
             try:
@@ -606,20 +612,39 @@ class LoRaBridge:
             except Exception:
                 gps_real = gps_port
 
-        # Prefer stable /dev/serial/by-id/ paths (symlinks to /dev/ttyUSBx)
+        # Scan /dev/serial/by-id/ for stable device paths
         by_id = sorted(glob.glob("/dev/serial/by-id/*"))
         if by_id:
-            result = []
+            lora_ports = []
             for p in by_id:
                 real = os.path.realpath(p)
-                # Exclude GPS device (compare both symlink and real path)
+                name_lower = os.path.basename(p).lower()
+
+                # Skip explicitly configured GPS device
                 if gps_port and (p == gps_port or real == gps_real):
                     continue
-                result.append(p)
-            if result:
-                return result
 
-        # Fallback: scan /dev/ttyUSB* and /dev/ttyACM*
+                # Skip known GPS chip names
+                if any(gps in name_lower for gps in self._GPS_CHIPS):
+                    continue
+
+                # Accept known LoRa/ESP32 chip names
+                if any(chip in name_lower for chip in self._LORA_CHIPS):
+                    lora_ports.append(p)
+
+            if lora_ports:
+                return lora_ports
+
+            # No known LoRa chips found -- return all non-GPS by-id devices
+            fallback_by_id = [
+                p for p in by_id
+                if not (gps_port and (p == gps_port or os.path.realpath(p) == gps_real))
+                and not any(gps in os.path.basename(p).lower() for gps in self._GPS_CHIPS)
+            ]
+            if fallback_by_id:
+                return fallback_by_id
+
+        # Fallback: /dev/ttyUSB* + /dev/ttyACM*
         found = []
         for pattern in ["/dev/ttyUSB*", "/dev/ttyACM*"]:
             found.extend(sorted(glob.glob(pattern)))
@@ -638,7 +663,8 @@ class LoRaBridge:
             ports = self._scan_ports()
             if _first_scan:
                 by_id = glob.glob("/dev/serial/by-id/*")
-                print(f"[THEIA] Port scan: by-id={by_id}, selected={ports}")
+                by_id_names = [os.path.basename(p) for p in by_id]
+                print(f"[THEIA] Port scan: by-id={by_id_names}, selected={ports}")
                 _first_scan = False
 
             # Start readers for new ports

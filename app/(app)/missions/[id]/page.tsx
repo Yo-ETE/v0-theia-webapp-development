@@ -236,55 +236,53 @@ export default function MissionDetailPage() {
   }, [sensorPlaceMode, assignDevice])
 
   // ── Remove device from mission ──
+  const [unassigning, setUnassigning] = useState<string | null>(null)
   const unassignDevice = useCallback(async (deviceId: string) => {
-    if (!mission) return
+    if (!mission || unassigning) return
+    setUnassigning(deviceId)
 
-    // Optimistic: immediately remove from device list, zones, and floors in UI
-    mutateDevices(
-      (prev) => prev?.map((d) =>
-        d.id === deviceId ? { ...d, mission_id: "", zone_id: "", zone_label: "", side: "", floor: undefined } : d
-      ),
-      false,
-    )
     const updatedZones = (mission.zones ?? []).map((z) => ({
       ...z,
       devices: z.devices.filter((did) => did !== deviceId),
     }))
-    // Also remove device from any floor's device list
     const updatedFloors = (mission.floors ?? []).map((f) => ({
       ...f,
       devices: (f.devices ?? []).filter((did: string) => did !== deviceId),
     }))
+    const newDeviceCount = Math.max(0, (mission.device_count ?? 1) - 1)
+
+    // Optimistic UI: update both caches immediately, disable revalidation
+    const optimisticDevices = (prev: import("@/lib/types").Device[] | undefined) =>
+      prev?.map((d) =>
+        d.id === deviceId ? { ...d, mission_id: "", zone_id: "", zone_label: "", side: "", floor: undefined } : d
+      )
+    mutateDevices(optimisticDevices, { revalidate: false })
     mutate(
-      { ...mission, zones: updatedZones, floors: updatedFloors, device_count: Math.max(0, (mission.device_count ?? 1) - 1) },
-      false,
+      { ...mission, zones: updatedZones, floors: updatedFloors, device_count: newDeviceCount },
+      { revalidate: false },
     )
 
-    // Persist device unassignment (clear ALL assignment fields including floor)
+    // Persist BOTH to backend, then revalidate
     try {
-      await updateDevice(deviceId, {
-        mission_id: "",
-        zone_id: "",
-        zone_label: "",
-        side: "",
-        floor: null,
-        sensor_position: 0.5,
-      } as Partial<import("@/lib/types").Device>)
+      await Promise.all([
+        updateDevice(deviceId, {
+          mission_id: "",
+          zone_id: "",
+          zone_label: "",
+          side: "",
+          floor: null,
+          sensor_position: 0.5,
+        } as Partial<import("@/lib/types").Device>),
+        updateMission(id, { zones: updatedZones, floors: updatedFloors, device_count: newDeviceCount }),
+      ])
     } catch (err) {
-      console.warn("[THEIA] Failed to update device:", err)
+      console.warn("[THEIA] Failed to unassign device:", err)
     }
-    // Persist zone + floor update
-    try {
-      await updateMission(id, { zones: updatedZones, floors: updatedFloors, device_count: Math.max(0, (mission.device_count ?? 1) - 1) })
-    } catch (err) {
-      console.warn("[THEIA] Failed to update mission:", err)
-    }
-    // Delay revalidation to ensure backend has persisted changes
-    setTimeout(() => {
-      mutate()
-      mutateDevices()
-    }, 600)
-  }, [mission, id, mutate, mutateDevices])
+
+    // Now revalidate from backend (PATCH is done, backend has correct data)
+    await Promise.all([mutate(), mutateDevices()])
+    setUnassigning(null)
+  }, [mission, id, mutate, mutateDevices, unassigning])
 
   // ── Zone polygon editing ──
   const updateZonePolygon = useCallback(async (zoneId: string, newPolygon: [number, number][]) => {
@@ -426,7 +424,7 @@ export default function MissionDetailPage() {
   const statusCfg = missionStatusConfig[mission.status] ?? missionStatusConfig.draft
   const zones = mission.zones ?? []
   const eventList = events ?? []
-  const missionDevices = allDevices?.filter((d) => d.mission_id === id) ?? []
+  const missionDevices = allDevices?.filter((d) => d.mission_id === id && d.id !== unassigning) ?? []
   // Devices available to assign: not currently assigned to THIS mission's zones
   const unassigned = allDevices?.filter((d) => {
     // Already assigned to this mission with a zone
