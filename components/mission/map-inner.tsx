@@ -488,6 +488,7 @@ export default function MapInner({
   // For triangulation with multiple depth-only sensors, we intersect circles.
   type HeatPoint = { lat: number; lon: number; weight: number }
   const heatPoints: HeatPoint[] = (() => {
+    try {
     if (!heatmapMode || !zones.length || events.length === 0) return []
 
     // Build a lookup: zone_id -> sensor info (position, normal, left vectors in meters)
@@ -594,6 +595,7 @@ export default function MapInner({
     }
 
     return pts
+    } catch (e) { console.warn("[THEIA] heatPoints error:", e); return [] }
   })()
 
   const sensorMarkers: SensorMarkerData[] = sensorPlacements.map((sp) => {
