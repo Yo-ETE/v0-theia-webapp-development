@@ -37,10 +37,8 @@ export function useEvents(params?: { mission_id?: string; limit?: number; event_
   return useSWR<import("@/lib/types").DetectionEvent[]>(
     `/api/events${q ? `?${q}` : ""}`,
     fetcher,
-    // No auto-refresh: events are fetched on mount and after explicit actions
-    // (purge, tab switch). The backend may insert stale events from RX replay,
-    // auto-polling would resurface them after purge.
-    { revalidateOnFocus: false },
+    // Refresh every 10s to pick up new DB events (backup if SSE drops).
+    { refreshInterval: 10000, revalidateOnFocus: true },
   )
 }
 

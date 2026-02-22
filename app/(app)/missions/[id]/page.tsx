@@ -455,9 +455,35 @@ export default function MissionDetailPage() {
     ? { ...replayDetections }
     : { ...liveByZone }
 
-  // Detection Feed: ONLY SSE live detections from this session.
-  // DB events are shown in the History panel, not here.
-  const displayDetections: LiveDetection[] = liveDetections
+  // Detection Feed: combine DB events (persisted) + SSE live detections (this session).
+  // DB events populate the feed on page load so it doesn't appear empty after navigation.
+  const dbDetections: LiveDetection[] = (events ?? []).map((e: DetectionEvent) => {
+    const p = (typeof e.payload === "object" && e.payload) ? e.payload : {}
+    return {
+      device_id: e.device_id ?? "",
+      device_name: e.device_name ?? "",
+      tx_id: (p.tx_id as string) ?? "",
+      mission_id: e.mission_id ?? "",
+      zone_id: e.zone_id ?? "",
+      zone_label: e.zone_label ?? "",
+      side: e.side ?? "",
+      rssi: e.rssi ?? -120,
+      distance: Number(p.distance ?? 0),
+      speed: Number(p.speed ?? 0),
+      angle: Number(p.angle ?? 0),
+      presence: true,
+      direction: (p.direction as string) ?? "C",
+      vbatt_tx: p.vbatt_tx != null ? Number(p.vbatt_tx) : null,
+      sensor_type: (p.sensor_type as string) ?? undefined,
+      timestamp: e.timestamp ?? "",
+    }
+  })
+  // Merge: SSE events first (newest), then DB events not already in SSE list
+  const sseTimestamps = new Set(liveDetections.map(d => d.timestamp))
+  const displayDetections: LiveDetection[] = [
+    ...liveDetections,
+    ...dbDetections.filter(d => !sseTimestamps.has(d.timestamp)),
+  ].slice(0, 50)
 
   return (
     <>

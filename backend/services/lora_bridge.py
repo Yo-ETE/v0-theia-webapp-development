@@ -213,14 +213,18 @@ class PortReader:
         # EMPTY, or too many presence frames without an EMPTY, suppress as phantom.
         key = tx_id or self.port
         if not presence:
-            # This is NOT a real EMPTY -- it's a computed "no presence" from noise.
-            # Do NOT validate the TX. Just reset the presence counter.
             self._presence_count[key] = 0
         else:
             self._presence_count[key] = self._presence_count.get(key, 0) + 1
             if not self._tx_validated.get(key, False):
-                # TX not validated: never received an explicit "EMPTY" keyword frame
-                presence = False
+                # TX not yet validated via explicit EMPTY frame.
+                # Auto-validate after 5 consecutive presence frames (real target).
+                if self._presence_count[key] >= 5:
+                    self._tx_validated[key] = True
+                    print(f"[THEIA] TX {key} auto-validated after {self._presence_count[key]} consecutive frames")
+                else:
+                    # Still in warm-up, suppress as potential phantom
+                    presence = False
             elif self._presence_count[key] > self._PRESENCE_WITHOUT_EMPTY_LIMIT:
                 # Too many consecutive presence without an explicit EMPTY
                 presence = False
@@ -316,18 +320,6 @@ class PortReader:
             "tx_id": tx_id,
             "sensor_type": sensor_type,
         }
-
-        # --- FINAL phantom gate (safety net for ALL code paths) ---
-        # Even if a parser didn't suppress a phantom frame, block the INSERT here.
-        # A TX must have sent at least one explicit "EMPTY" keyword frame
-        # (which sets _tx_validated) before we store ANY presence event.
-        phantom_key = tx_id or self.port
-        if presence and not self._tx_validated.get(phantom_key, False):
-            # Never saw an EMPTY from this TX -> phantom noise, suppress
-            presence = False
-            effective_distance = 0
-            payload["presence"] = False
-            payload["distance"] = 0
 
         # Only store detection events in DB when there IS real presence
         # AND distance is significant (> 15cm to avoid sensor noise)
@@ -429,12 +421,15 @@ class PortReader:
         # can only come from the [RX] parser seeing "EMPTY" in the data.
         key = tx_id or self.port
         if not presence:
-            # Zero-value noise, not a real EMPTY. Don't validate TX.
             self._presence_count[key] = 0
         else:
             self._presence_count[key] = self._presence_count.get(key, 0) + 1
             if not self._tx_validated.get(key, False):
-                presence = False
+                if self._presence_count[key] >= 5:
+                    self._tx_validated[key] = True
+                    print(f"[THEIA] TX {key} auto-validated after {self._presence_count[key]} consecutive frames")
+                else:
+                    presence = False
             elif self._presence_count[key] > self._PRESENCE_WITHOUT_EMPTY_LIMIT:
                 presence = False
 
