@@ -523,42 +523,52 @@ export default function MapInner({
       const sensors = sensorGeo[zId]
       if (!sensors || sensors.length === 0) continue
 
+      // Use first sensor for this zone
+      const sg = sensors[0]
+      const dm = dist / 100 // cm to meters
+
+      // Try 3 methods in priority order:
+      // 1) LD2450 x,y (mm) -> exact 2D position
+      // 2) angle + distance -> polar projection
+      // 3) distance only -> project along inward normal
       const x_mm = Number(p.x ?? 0)
       const y_mm = Number(p.y ?? 0)
-      const hasXY = x_mm !== 0 || y_mm !== 0
-      const sensorType = String(p.sensor_type ?? "")
-
-      // Use first sensor for this zone (TODO: multi-sensor triangulation)
-      const sg = sensors[0]
+      const hasXY = (x_mm !== 0 || y_mm !== 0)
+      const evtAngle = Number(p.angle ?? 0)
+      const hasAngle = evtAngle !== 0
 
       let ptM: [number, number]
-      if (hasXY && sensorType === "ld2450") {
-        // LD2450: x (mm) = lateral offset (positive = right of sensor looking inward)
-        // y (mm) = depth from sensor along inward normal
-        // Project: sensor_pos + y*normal + x*left  (both in meters)
-        const xm = x_mm / 1000  // mm to meters
+      // rightM = -leftM: points right when facing the inward normal direction
+      // LD2450 convention: x > 0 = target is to the RIGHT, angle > 0 = right
+      const rM: [number, number] = [-sg.leftM[0], -sg.leftM[1]]
+
+      if (hasXY) {
+        // LD2450 x,y: x = lateral (mm, + = right), y = depth (mm, always positive)
+        const xm = x_mm / 1000
         const ym = y_mm / 1000
+        // Project: forward by y along normal, sideways by x along rightM
         ptM = [
-          sg.sensorM[0] + ym * sg.normalM[0] + xm * sg.leftM[0],
-          sg.sensorM[1] + ym * sg.normalM[1] + xm * sg.leftM[1],
+          sg.sensorM[0] + ym * sg.normalM[0] + xm * rM[0],
+          sg.sensorM[1] + ym * sg.normalM[1] + xm * rM[1],
+        ]
+      } else if (hasAngle) {
+        // Angle from atan2(x,y): positive = right, negative = left
+        const rad = evtAngle * Math.PI / 180
+        const cosA = Math.cos(rad)
+        const sinA = Math.sin(rad)
+        // Rotate: forward component along normal, lateral along rightM
+        const dirX = cosA * sg.normalM[0] + sinA * rM[0]
+        const dirY = cosA * sg.normalM[1] + sinA * rM[1]
+        ptM = [
+          sg.sensorM[0] + dm * dirX,
+          sg.sensorM[1] + dm * dirY,
         ]
       } else {
-        // Depth-only sensor: project along inward normal by distance
-        // If multiple sensors exist, try triangulation
-        const dm = dist / 100 // cm to meters
-        if (sensors.length >= 2) {
-          // Simple triangulation: intersection of two circles
-          // For now, just use the first sensor with distance along normal
-          ptM = [
-            sg.sensorM[0] + dm * sg.normalM[0],
-            sg.sensorM[1] + dm * sg.normalM[1],
-          ]
-        } else {
-          ptM = [
-            sg.sensorM[0] + dm * sg.normalM[0],
-            sg.sensorM[1] + dm * sg.normalM[1],
-          ]
-        }
+        // Depth-only: project straight along inward normal
+        ptM = [
+          sg.sensorM[0] + dm * sg.normalM[0],
+          sg.sensorM[1] + dm * sg.normalM[1],
+        ]
       }
 
       // Snap to a small grid to accumulate weight at the same location
@@ -582,7 +592,14 @@ export default function MapInner({
 
     if (pts.length > 0) {
       const s0 = Object.values(sensorGeo)[0]?.[0]
-      console.log("[v0] heatPoints:", pts.length, "pts, sensorLL:", s0?.sensorLL, "first3pts:", pts.slice(0, 3).map(p => ({ lat: p.lat.toFixed(6), lon: p.lon.toFixed(6), w: p.weight })))
+      console.log("[v0] heatPoints:", {
+        n: pts.length,
+        sensor: s0 ? { ll: s0.sensorLL, nrm: s0.normalM, rM: [-s0.leftM[0], -s0.leftM[1]] } : null,
+        placements: sensorPlacements.length,
+        geoKeys: Object.keys(sensorGeo),
+        evts: events.slice(0, 3).map(e => ({ z: e.zone_id?.slice(0,8), x: e.payload?.x, y: e.payload?.y, d: e.payload?.distance, a: e.payload?.angle, st: e.payload?.sensor_type })),
+        pts: pts.slice(0, 3).map(p => [+p.lat.toFixed(7), +p.lon.toFixed(7), p.weight]),
+      })
     }
 
     return pts
@@ -1072,9 +1089,10 @@ export default function MapInner({
       <HeatmapCanvas
         map={mapInstance}
         points={heatPoints}
-        radiusMeters={1.5}
+        radiusMeters={2.5}
         opacity={0.75}
         enabled={heatmapMode && heatPoints.length > 0}
+        zonePolygons={zones.map(z => z.polygon)}
       />
 
       {/* Coords overlay */}

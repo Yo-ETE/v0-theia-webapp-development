@@ -14,28 +14,30 @@ interface HeatmapCanvasProps {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   map: any
   points: HeatPoint[]
-  /** Base radius in METERS on the ground (e.g. 1.5 = 1.5m splat) */
+  /** Gaussian splat radius in METERS on the ground */
   radiusMeters?: number
   opacity?: number
   enabled?: boolean
+  /** Zone polygons to clip the heatmap to -- array of [lat,lon][] */
+  zonePolygons?: [number, number][][]
 }
 
 // ── Thermal palette (256 RGBA entries) ──────────────────────────
-// transparent -> blue -> cyan -> green -> yellow -> orange -> red
+// transparent -> blue -> cyan -> green -> yellow -> orange -> red -> dark red
 function buildPalette(): Uint8ClampedArray {
   const p = new Uint8ClampedArray(256 * 4)
   const stops: [number, number, number, number, number][] = [
-    [0,   0,   0,   0,   0],
-    [20,  0,   0,   0,   0],      // fully transparent below noise floor
-    [40,  10,  20,  120, 60],     // deep blue
-    [70,  20,  60,  180, 120],    // blue
-    [100, 20,  140, 210, 160],    // cyan
-    [130, 30,  190, 90,  180],    // green
-    [160, 160, 210, 30,  200],    // yellow-green
-    [185, 230, 190, 0,   220],    // yellow
-    [210, 250, 130, 0,   235],    // orange
-    [235, 255, 50,  0,   248],    // red
-    [255, 180, 0,   0,   255],    // dark red / maroon
+    [0,   0,   0,   0,   0],     // transparent
+    [25,  0,   0,   0,   0],     // transparent (noise floor)
+    [50,  10,  20,  140, 80],    // deep blue
+    [80,  20,  80,  200, 140],   // blue
+    [110, 20,  160, 220, 170],   // cyan
+    [140, 40,  200, 100, 190],   // green
+    [165, 170, 220, 30,  210],   // yellow-green
+    [190, 240, 200, 0,   225],   // yellow
+    [215, 255, 140, 0,   240],   // orange
+    [238, 255, 50,  0,   250],   // red
+    [255, 160, 0,   0,   255],   // dark red / maroon
   ]
   for (let i = 0; i < stops.length - 1; i++) {
     const [p0, r0, g0, b0, a0] = stops[i]
@@ -53,40 +55,19 @@ function buildPalette(): Uint8ClampedArray {
 
 const PALETTE = buildPalette()
 
-// Pre-build a radial Gaussian brush (grayscale alpha) at a given pixel radius
-function buildBrush(radius: number): HTMLCanvasElement {
-  const size = radius * 2
-  const c = document.createElement("canvas")
-  c.width = size
-  c.height = size
-  const ctx = c.getContext("2d")!
-  const grad = ctx.createRadialGradient(radius, radius, 0, radius, radius, radius)
-  // Smooth Gaussian-like falloff
-  grad.addColorStop(0,    "rgba(0,0,0,1)")
-  grad.addColorStop(0.15, "rgba(0,0,0,0.8)")
-  grad.addColorStop(0.35, "rgba(0,0,0,0.5)")
-  grad.addColorStop(0.6,  "rgba(0,0,0,0.2)")
-  grad.addColorStop(0.85, "rgba(0,0,0,0.05)")
-  grad.addColorStop(1,    "rgba(0,0,0,0)")
-  ctx.fillStyle = grad
-  ctx.fillRect(0, 0, size, size)
-  return c
-}
-
 export default function HeatmapCanvas({
   map,
   points,
-  radiusMeters = 1.2,
-  opacity = 0.72,
+  radiusMeters = 1.5,
+  opacity = 0.75,
   enabled = true,
+  zonePolygons = [],
 }: HeatmapCanvasProps) {
   const canvasRef = useRef<HTMLCanvasElement | null>(null)
-  const brushCache = useRef<{ radius: number; brush: HTMLCanvasElement } | null>(null)
 
-  // Create/destroy the canvas element in the map container (not a pane)
+  // Create/destroy the canvas element
   useEffect(() => {
     if (!map || !enabled) return
-    // Place canvas as a sibling of the map's container div for correct positioning
     const container = map.getContainer() as HTMLElement
     if (!container) return
     const canvas = document.createElement("canvas")
@@ -108,101 +89,121 @@ export default function HeatmapCanvas({
   const draw = useCallback(() => {
     const canvas = canvasRef.current
     if (!canvas || !map || !enabled || points.length === 0) {
-      if (canvas) { canvas.width = 0; canvas.height = 0 }
+      if (canvas) {
+        const ctx = canvas.getContext("2d")
+        if (ctx) ctx.clearRect(0, 0, canvas.width, canvas.height)
+      }
       return
     }
 
-    // Match canvas pixel size to container
     const container = map.getContainer() as HTMLElement
     const w = container.clientWidth
     const h = container.clientHeight
     canvas.width = w
     canvas.height = h
-
     const ctx = canvas.getContext("2d")
     if (!ctx) return
 
-    // Convert radius in meters to pixels at current zoom
-    // Use a reference point (center of map) to compute meters-per-pixel
+    // Compute meters-per-pixel at current zoom using map's built-in method
     const center = map.getCenter()
     const p1 = map.latLngToContainerPoint(center)
-    // Shift by 100px east to measure scale
-    const p2LatLng = map.containerPointToLatLng({ x: p1.x + 100, y: p1.y })
-    const dLon = Math.abs(p2LatLng.lng - center.lng)
-    const metersPer100px = dLon * (Math.PI / 180) * 6371000 * Math.cos(center.lat * Math.PI / 180)
-    const metersPerPixel = metersPer100px / 100
-    const radiusPx = Math.max(8, Math.round(radiusMeters / metersPerPixel))
+    const p2LL = map.containerPointToLatLng({ x: p1.x + 100, y: p1.y })
+    const dLon = Math.abs(p2LL.lng - center.lng)
+    const metersPerPixel = (dLon * (Math.PI / 180) * 6371000 * Math.cos(center.lat * Math.PI / 180)) / 100
+    const radiusPx = Math.max(12, Math.round(radiusMeters / metersPerPixel))
 
-    // Get or rebuild brush
-    if (!brushCache.current || brushCache.current.radius !== radiusPx) {
-      brushCache.current = { radius: radiusPx, brush: buildBrush(radiusPx) }
+    // Debug first draw
+    const debugPts = points.slice(0, 3).map(pt => {
+      const px = map.latLngToContainerPoint([pt.lat, pt.lon])
+      return { lat: pt.lat.toFixed(6), lon: pt.lon.toFixed(6), px: [Math.round(px.x), Math.round(px.y)], w: pt.weight }
+    })
+    console.log("[v0] HeatmapCanvas:", { w, h, radiusPx, mpp: metersPerPixel.toFixed(4), pts: points.length, debugPts, zones: zonePolygons.length })
+
+    // ── Build zone clip mask (1 = inside zone, 0 = outside) ──
+    let clipMask: Uint8Array | null = null
+    if (zonePolygons.length > 0) {
+      // Draw zone polygons to a temporary canvas as white-on-black
+      const maskCanvas = document.createElement("canvas")
+      maskCanvas.width = w
+      maskCanvas.height = h
+      const mctx = maskCanvas.getContext("2d")!
+      mctx.fillStyle = "black"
+      mctx.fillRect(0, 0, w, h)
+      mctx.fillStyle = "white"
+      for (const poly of zonePolygons) {
+        mctx.beginPath()
+        for (let i = 0; i < poly.length; i++) {
+          const px = map.latLngToContainerPoint([poly[i][0], poly[i][1]])
+          if (i === 0) mctx.moveTo(px.x, px.y)
+          else mctx.lineTo(px.x, px.y)
+        }
+        mctx.closePath()
+        mctx.fill()
+      }
+      // Read mask
+      const maskData = mctx.getImageData(0, 0, w, h).data
+      clipMask = new Uint8Array(w * h)
+      for (let i = 0; i < w * h; i++) {
+        clipMask[i] = maskData[i * 4] > 128 ? 1 : 0  // white = inside
+      }
     }
-    const brush = brushCache.current.brush
 
-    // ── Pass 1: accumulate Gaussian splats as grayscale alpha ──
-    ctx.clearRect(0, 0, w, h)
+    // ── Pass 1: accumulate Gaussian splats into float intensity buffer ──
+    const intensity = new Float32Array(w * h)
 
     // Find max weight for normalization
     let maxW = 1
-    for (const pt of points) {
-      if (pt.weight > maxW) maxW = pt.weight
-    }
-
-    // Use a separate offscreen canvas for accumulation to avoid
-    // issues with additive blending overflowing
-    const offscreen = document.createElement("canvas")
-    offscreen.width = w
-    offscreen.height = h
-    const offCtx = offscreen.getContext("2d")!
-    offCtx.clearRect(0, 0, w, h)
-
-    // Accumulate by drawing each brush stamp with proper alpha
-    // We draw to a Float32 intensity buffer manually for precision
-    const intensity = new Float32Array(w * h)
+    for (const pt of points) { if (pt.weight > maxW) maxW = pt.weight }
 
     for (const pt of points) {
       const px = map.latLngToContainerPoint([pt.lat, pt.lon])
       const cx = Math.round(px.x)
       const cy = Math.round(px.y)
-      // Skip if way outside viewport
-      if (cx < -radiusPx * 2 || cy < -radiusPx * 2 || cx > w + radiusPx * 2 || cy > h + radiusPx * 2) continue
+      // Skip if outside viewport with margin
+      if (cx < -radiusPx || cy < -radiusPx || cx > w + radiusPx || cy > h + radiusPx) continue
 
       const strength = pt.weight / maxW
 
-      // Stamp the Gaussian into the intensity buffer
+      // Stamp Gaussian splat
       const x0 = cx - radiusPx
       const y0 = cy - radiusPx
-      const brushSize = radiusPx * 2
-      for (let by = 0; by < brushSize; by++) {
+      const size = radiusPx * 2
+      for (let by = 0; by < size; by++) {
         const iy = y0 + by
         if (iy < 0 || iy >= h) continue
-        for (let bx = 0; bx < brushSize; bx++) {
+        const rowOffset = iy * w
+        for (let bx = 0; bx < size; bx++) {
           const ix = x0 + bx
           if (ix < 0 || ix >= w) continue
-          // Gaussian falloff from center
+          // Gaussian falloff
           const dx = (bx - radiusPx) / radiusPx
           const dy = (by - radiusPx) / radiusPx
           const r2 = dx * dx + dy * dy
           if (r2 > 1) continue
-          // Gaussian: exp(-3*r^2) gives nice smooth falloff
           const g = Math.exp(-3 * r2) * strength
-          intensity[iy * w + ix] += g
+          intensity[rowOffset + ix] += g
         }
       }
     }
 
-    // Find max intensity for normalization
-    let maxI = 0.001
+    // ── Pass 2: find max intensity, apply noise floor, colorize ──
+    let maxI = 0
     for (let i = 0; i < intensity.length; i++) {
       if (intensity[i] > maxI) maxI = intensity[i]
     }
+    if (maxI < 0.001) return  // nothing to draw
 
-    // ── Pass 2: colorize using thermal palette ──
     const imageData = ctx.createImageData(w, h)
     const pixels = imageData.data
+    const noiseFloor = maxI * 0.05  // ignore anything below 5% of peak
+
     for (let i = 0; i < intensity.length; i++) {
-      if (intensity[i] <= 0) continue
-      const norm = Math.min(1, intensity[i] / maxI)
+      const val = intensity[i]
+      if (val <= noiseFloor) continue
+      // Zone clip check
+      if (clipMask && !clipMask[i]) continue
+
+      const norm = Math.min(1, val / maxI)
       const idx = Math.round(norm * 255) * 4
       const pi = i * 4
       pixels[pi]     = PALETTE[idx]
@@ -212,7 +213,7 @@ export default function HeatmapCanvas({
     }
 
     ctx.putImageData(imageData, 0, 0)
-  }, [map, points, radiusMeters, opacity, enabled])
+  }, [map, points, radiusMeters, opacity, enabled, zonePolygons])
 
   // Redraw on map events
   useEffect(() => {
