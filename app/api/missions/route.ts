@@ -11,9 +11,21 @@ export async function GET() {
     if (!res.ok) throw new Error(`Backend ${res.status}`)
     const missions = await res.json()
     // Sync backend data into local store for resilience
+    // IMPORTANT: never overwrite local geo/zone data with backend defaults
     for (const m of missions) {
-      if (!store.getMission(m.id)) store.createMission(m)
-      else store.updateMission(m.id, m)
+      const existing = store.getMission(m.id)
+      if (!existing) {
+        store.createMission(m)
+      } else {
+        // Only update non-geo backend-authoritative fields
+        store.updateMission(m.id, {
+          status: m.status,
+          event_count: m.event_count,
+          device_count: m.device_count,
+          name: m.name,
+          location: m.location,
+        })
+      }
     }
     return NextResponse.json(missions)
   } catch {
@@ -38,14 +50,13 @@ export async function POST(request: NextRequest) {
     })
     if (!res.ok) throw new Error(`Backend ${res.status}`)
     const backendMission = await res.json()
-    // Merge: keep local coords if backend didn't store them
+    // Merge: local always wins for geo (backend may return Pydantic defaults)
     const merged = {
-      ...localMission,
       ...backendMission,
-      center_lat: backendMission.center_lat ?? localMission.center_lat,
-      center_lon: backendMission.center_lon ?? localMission.center_lon,
-      zoom: backendMission.zoom ?? localMission.zoom,
-      zones: backendMission.zones ?? localMission.zones,
+      ...localMission,
+      // Backend authoritative
+      status: backendMission.status ?? localMission.status,
+      event_count: backendMission.event_count ?? 0,
     }
     store.updateMission(merged.id, merged)
     return NextResponse.json(merged, { status: 201 })

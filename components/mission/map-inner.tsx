@@ -251,13 +251,19 @@ export default function MapInner({
     }
   }, [])
 
-  // Keep map view synced
+  // Set map view ONCE on mount -- after that the user controls the position.
+  // We use a ref to track whether the initial view has been set.
+  const initialViewSet = useRef(false)
   useEffect(() => {
+    // Only set view if we haven't done it yet AND coords are not the Paris default
+    const isParis = Math.abs(centerLat - 48.8566) < 0.0001 && Math.abs(centerLon - 2.3522) < 0.0001
+    if (initialViewSet.current && isParis) return // skip Paris re-centers
     const doSetView = () => {
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const map = mapRef.current as any
       if (map && typeof map.setView === "function") {
         map.setView([centerLat, centerLon], zoom)
+        initialViewSet.current = true
       }
     }
     doSetView()
