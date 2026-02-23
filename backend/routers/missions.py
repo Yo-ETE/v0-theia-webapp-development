@@ -72,7 +72,7 @@ async def _get_full_mission(db, mission_id: str) -> dict:
         return None
     d = _row_to_dict(row)
     # Count devices assigned to this mission
-    cursor2 = await db.execute("SELECT COUNT(*) FROM devices WHERE mission_id=?", (mission_id,))
+    cursor2 = await db.execute("SELECT COUNT(*) FROM devices WHERE mission_id=? AND enabled=1", (mission_id,))
     count = await cursor2.fetchone()
     d["device_count"] = count[0] if count else 0
     # Count events
@@ -90,7 +90,7 @@ async def list_missions():
     missions = [_row_to_dict(r) for r in rows]
 
     # Bulk-count devices and events per mission
-    dc = await db.execute("SELECT mission_id, COUNT(*) FROM devices WHERE mission_id != '' GROUP BY mission_id")
+    dc = await db.execute("SELECT mission_id, COUNT(*) FROM devices WHERE mission_id != '' AND enabled=1 GROUP BY mission_id")
     dev_counts = {r[0]: r[1] for r in await dc.fetchall()}
     ec = await db.execute("SELECT mission_id, COUNT(*) FROM events GROUP BY mission_id")
     evt_counts = {r[0]: r[1] for r in await ec.fetchall()}

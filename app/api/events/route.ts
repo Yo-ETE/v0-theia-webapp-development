@@ -36,8 +36,9 @@ export async function GET(request: NextRequest) {
     if (!res.ok) throw new Error(`Backend ${res.status}`)
     const data = await res.json()
     return NextResponse.json(data)
-  } catch {
-    // Backend unreachable -- return empty array, NOT mock data
+  } catch (err) {
+    // Backend unreachable -- return empty array
+    console.error("[THEIA] Events GET failed - backend unreachable:", err)
     return NextResponse.json([])
   }
 }
