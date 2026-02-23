@@ -487,6 +487,8 @@ export default function MissionDetailPage() {
   const missionDevices = allDevices?.filter((d) =>
     d.enabled && d.mission_id === id && d.zone_id && d.id !== unassigning
   ) ?? []
+  console.log("[v0] missionDevices:", missionDevices.map(d => `${d.name} zone=${d.zone_id} side=${d.side} enabled=${d.enabled} mid=${d.mission_id}`))
+  console.log("[v0] allDevices count:", allDevices?.length, "unassigning:", unassigning)
   // Devices available to assign: enabled devices not currently placed in this mission
   const unassigned = allDevices?.filter((d) => {
     if (!d.enabled) return false  // Skip soft-deleted devices
@@ -789,7 +791,7 @@ export default function MissionDetailPage() {
                             </div>
                           )}
                         </div>
-                        <span className="text-[10px] text-muted-foreground font-mono">{zone.devices.length} TX</span>
+                        <span className="text-[10px] text-muted-foreground font-mono">{missionDevices.filter(d => d.zone_id === zone.id).length} TX</span>
                         <button onClick={() => openEditZone(zone.id)}
                           className="text-[10px] text-muted-foreground hover:text-foreground transition-colors opacity-0 group-hover:opacity-100"
                           title="Edit zone name & sides"><MapPin className="h-3 w-3" /></button>

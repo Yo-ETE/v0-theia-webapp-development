@@ -764,6 +764,11 @@ export default function MapInner({
           if (instance && !mapInstanceSet.current) {
             mapInstanceSet.current = true
             setMapInstance(instance)
+            // Create a custom pane for detection elements (above tooltipPane z=650)
+            if (!instance.getPane("detection-pane")) {
+              const pane = instance.createPane("detection-pane")
+              pane.style.zIndex = "660"
+            }
           }
         }}
         center={[centerLat, centerLon]}
@@ -986,7 +991,7 @@ export default function MapInner({
               radius={0}
               pathOptions={{ opacity: 0, fillOpacity: 0 }}
             >
-              <Tooltip permanent direction="bottom" offset={[0, 12]}>
+              <Tooltip permanent direction="bottom" offset={[0, 12]} >
                 <span style={{
                   fontSize: 8, fontWeight: 600, color: "#666",
                   background: "rgba(255,255,255,0.88)", padding: "1px 4px",
@@ -1012,7 +1017,7 @@ export default function MapInner({
               weight: 2,
             }}
           >
-            <Tooltip permanent direction="bottom" offset={[0, 8]}>
+            <Tooltip permanent direction="bottom" offset={[0, 8]} >
               <span style={{
                 fontSize: 9, fontWeight: 700, color: sm.zoneColor,
                 background: "rgba(255,255,255,0.92)", padding: "1px 4px",
@@ -1033,6 +1038,7 @@ export default function MapInner({
           return (
             <Polyline
               key={`det-line-${sm.id}`}
+              pane="detection-pane"
               positions={estimatePosition && estimatedPosition
                 ? [sm.sensorPos, [estimatedPosition.lat, estimatedPosition.lon]]
                 : [sm.sensorPos, sm.detectionPos!]}
@@ -1050,6 +1056,7 @@ export default function MapInner({
         {estimatePosition && estimatedPosition && (
           <CircleMarker
             key="estimated-pos"
+            pane="detection-pane"
             center={[estimatedPosition.lat, estimatedPosition.lon]}
             radius={10}
             pathOptions={{
@@ -1082,6 +1089,7 @@ export default function MapInner({
           return (
             <CircleMarker
               key={`det-pt-${sm.id}`}
+              pane="detection-pane"
               center={sm.detectionPos!}
               radius={isLive ? 8 : 6}
               pathOptions={{
