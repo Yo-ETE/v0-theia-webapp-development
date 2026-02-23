@@ -145,6 +145,10 @@ async def patch_mission(mission_id: str, body: MissionUpdate):
 
     # exclude_unset keeps explicitly-sent null values (e.g. ended_at=null)
     updates = body.model_dump(exclude_unset=True)
+    # Remove computed fields that are NOT real columns in the missions table
+    # (device_count and event_count are computed via COUNT queries, not stored)
+    updates.pop("device_count", None)
+    updates.pop("event_count", None)
     if not updates:
         return await _get_full_mission(db, mission_id)
 

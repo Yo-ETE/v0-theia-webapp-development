@@ -4,6 +4,17 @@
 
 const API_BASE = "/api"
 
+// Direct backend URL for write operations (bypasses Next.js API routes entirely)
+// On the Pi, Next.js and FastAPI run on the same host.
+// We derive the backend URL from the current browser location.
+function getDirectBackendUrl(): string | null {
+  if (typeof window === "undefined") return null
+  // If we're on the Pi (not localhost:3000 on v0 preview), use port 8000
+  const host = window.location.hostname
+  // Always try direct backend on port 8000
+  return `http://${host}:8000`
+}
+
 async function request<T>(path: string, options?: RequestInit): Promise<T> {
   const url = `${API_BASE}${path}`
   const res = await fetch(url, {
@@ -18,6 +29,34 @@ async function request<T>(path: string, options?: RequestInit): Promise<T> {
     const error = await res.json().catch(() => ({ error: res.statusText }))
     console.error(`[THEIA] API Error ${res.status} on ${url}:`, error)
     throw new Error(error.error || `API Error: ${res.status}`)
+  }
+
+  return res.json()
+}
+
+// Direct request to FastAPI backend (bypasses Next.js routes)
+// Used for critical write operations that MUST reach the database
+async function directBackendRequest<T>(path: string, options?: RequestInit): Promise<T> {
+  const backendUrl = getDirectBackendUrl()
+  if (!backendUrl) {
+    // SSR or can't determine backend -- fall back to Next.js route
+    return request<T>(path, options)
+  }
+
+  const url = `${backendUrl}/api${path}`
+  console.log("[THEIA] Direct backend call:", options?.method ?? "GET", url)
+  const res = await fetch(url, {
+    ...options,
+    headers: {
+      "Content-Type": "application/json",
+      ...options?.headers,
+    },
+  })
+
+  if (!res.ok) {
+    const error = await res.json().catch(() => ({ error: res.statusText }))
+    console.error(`[THEIA] Direct backend error ${res.status} on ${url}:`, error)
+    throw new Error(error.error || `Backend Error: ${res.status}`)
   }
 
   return res.json()
@@ -50,15 +89,28 @@ export function createMission(data: Partial<import("./types").Mission>) {
   })
 }
 
-export function updateMission(id: string, data: Partial<import("./types").Mission>) {
-  return request<import("./types").Mission>(`/missions/${id}`, {
-    method: "PATCH",
-    body: JSON.stringify(data),
-  })
+export async function updateMission(id: string, data: Partial<import("./types").Mission>) {
+  // Critical: call backend directly to ensure SQLite is updated
+  try {
+    return await directBackendRequest<import("./types").Mission>(`/missions/${id}`, {
+      method: "PATCH",
+      body: JSON.stringify(data),
+    })
+  } catch {
+    // Fallback to Next.js route
+    return request<import("./types").Mission>(`/missions/${id}`, {
+      method: "PATCH",
+      body: JSON.stringify(data),
+    })
+  }
 }
 
-export function deleteMission(id: string) {
-  return request<{ ok: boolean }>(`/missions/${id}`, { method: "DELETE" })
+export async function deleteMission(id: string) {
+  try {
+    return await directBackendRequest<{ ok: boolean }>(`/missions/${id}`, { method: "DELETE" })
+  } catch {
+    return request<{ ok: boolean }>(`/missions/${id}`, { method: "DELETE" })
+  }
 }
 
 // ─── Devices ─────────────────────────────────────────────────────
@@ -75,15 +127,28 @@ export function createDevice(data: { dev_eui: string; name: string; type?: strin
   })
 }
 
-export function updateDevice(id: string, data: Partial<import("./types").Device>) {
-  return request<import("./types").Device>(`/devices/${id}`, {
-    method: "PATCH",
-    body: JSON.stringify(data),
-  })
+export async function updateDevice(id: string, data: Partial<import("./types").Device>) {
+  // Critical: call backend directly to ensure SQLite is updated
+  try {
+    return await directBackendRequest<import("./types").Device>(`/devices/${id}`, {
+      method: "PATCH",
+      body: JSON.stringify(data),
+    })
+  } catch {
+    // Fallback to Next.js route if direct call fails
+    return request<import("./types").Device>(`/devices/${id}`, {
+      method: "PATCH",
+      body: JSON.stringify(data),
+    })
+  }
 }
 
-export function deleteDevice(id: string) {
-  return request<{ ok: boolean }>(`/devices/${id}`, { method: "DELETE" })
+export async function deleteDevice(id: string) {
+  try {
+    return await directBackendRequest<{ ok: boolean }>(`/devices/${id}`, { method: "DELETE" })
+  } catch {
+    return request<{ ok: boolean }>(`/devices/${id}`, { method: "DELETE" })
+  }
 }
 
 // ─── Events ──────────────────────────────────────────────────────

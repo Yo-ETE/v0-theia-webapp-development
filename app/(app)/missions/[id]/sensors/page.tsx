@@ -28,8 +28,7 @@ export default function SensorsPage() {
   const assignToMission = useCallback(async (deviceId: string) => {
     if (!mission) return
     await updateDevice(deviceId, { mission_id: id })
-    const updated = await updateMission(id, { device_count: (mission.device_count ?? 0) + 1 })
-    mutateMission(updated, false)
+    mutateMission()
     mutateDevices()
   }, [mission, id, mutateMission, mutateDevices])
 
@@ -46,10 +45,7 @@ export default function SensorsPage() {
       devices: z.devices.filter((did) => did !== deviceId),
     }))
     try {
-      const updated = await updateMission(id, {
-        zones,
-        device_count: Math.max(0, (mission.device_count ?? 1) - 1),
-      })
+      const updated = await updateMission(id, { zones })
       mutateMission(updated, false)
     } catch (err) {
       console.warn("[THEIA] Failed to update mission:", err)

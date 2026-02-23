@@ -276,7 +276,7 @@ export default function MissionDetailPage() {
         : z
     )
     try {
-      const updated = await updateMission(id, { zones, device_count: (mission.device_count ?? 0) + 1 })
+      const updated = await updateMission(id, { zones })
       mutate(updated, false)
     } catch (err) {
       console.warn("[THEIA] Failed to update mission during assign:", err)
@@ -331,7 +331,7 @@ export default function MissionDetailPage() {
           floor: null,
           sensor_position: 0.5,
         } as Partial<import("@/lib/types").Device>),
-        updateMission(id, { zones: updatedZones, floors: updatedFloors, device_count: newDeviceCount }),
+        updateMission(id, { zones: updatedZones, floors: updatedFloors }),
       ])
       // Verify the PATCH actually cleared mission_id
       if (devRes && (devRes as Record<string, unknown>).mission_id) {
@@ -1253,8 +1253,7 @@ export default function MissionDetailPage() {
                                       side: "",
                                       sensor_position: 0.5,
                                     } as Partial<import("@/lib/types").Device>)
-                                    const updated = await updateMission(id, { device_count: (mission.device_count ?? 0) + 1 })
-                                    mutate(updated, false)
+                                    mutate()
                                     mutateDevices()
                                   }}>
                                     <Signal className="mr-1 h-3 w-3" />{isElsewhere ? "Reassign" : "Assign"}

@@ -2,10 +2,29 @@
 
 import useSWR from "swr"
 
-const fetcher = (url: string) => fetch(url).then((r) => {
+// Try direct backend first (port 8000), fallback to Next.js route
+function getBackendBase(): string | null {
+  if (typeof window === "undefined") return null
+  return `http://${window.location.hostname}:8000`
+}
+
+const fetcher = async (url: string) => {
+  // For /api/* paths, try the FastAPI backend directly first
+  const backendBase = getBackendBase()
+  if (backendBase && url.startsWith("/api/")) {
+    try {
+      const directUrl = `${backendBase}${url}`
+      const r = await fetch(directUrl, { headers: { "Content-Type": "application/json" } })
+      if (r.ok) return r.json()
+    } catch {
+      // Backend unreachable -- fall through to Next.js route
+    }
+  }
+  // Fallback: Next.js API route
+  const r = await fetch(url)
   if (!r.ok) throw new Error(`API Error: ${r.status}`)
   return r.json()
-})
+}
 
 export function useStatus() {
   return useSWR<import("@/lib/types").SystemStatus>("/api/status", fetcher, {
