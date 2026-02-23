@@ -326,28 +326,46 @@ export default function MapInner({
     return () => clearTimeout(timer)
   }, [centerLat, centerLon, zoom])
 
-  // Drawing click handler
+  // Drawing click handler + disable map drag/touch in draw mode
   useEffect(() => {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const map = mapRef.current as any
+    if (!map || typeof map.on !== "function") {
+      if (drawingMode) {
+        const t = setTimeout(() => {
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          const m = mapRef.current as any
+          if (m) {
+            m.dragging?.disable()
+            m.touchZoom?.disable()
+            m.doubleClickZoom?.disable()
+          }
+        }, 500)
+        return () => clearTimeout(t)
+      }
+      return
+    }
+    if (drawingMode) {
+      map.dragging?.disable()
+      map.touchZoom?.disable()
+      map.doubleClickZoom?.disable()
+    } else {
+      map.dragging?.enable()
+      map.touchZoom?.enable()
+      map.doubleClickZoom?.enable()
+    }
     if (!drawingMode) return
     const handler = (e: { latlng: { lat: number; lng: number } }) => {
       setDrawPoints((prev) => [...prev, [e.latlng.lat, e.latlng.lng]])
     }
-    const attach = () => {
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const map = mapRef.current as any
-      if (map && typeof map.on === "function") { map.on("click", handler); return true }
-      return false
-    }
-    if (!attach()) {
-      const t = setTimeout(attach, 500)
-      return () => clearTimeout(t)
-    }
+    map.on("click", handler)
     return () => {
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const map = mapRef.current as any
-      if (map && typeof map.off === "function") map.off("click", handler)
+      map.off("click", handler)
+      map.dragging?.enable()
+      map.touchZoom?.enable()
+      map.doubleClickZoom?.enable()
     }
-  }, [drawingMode])
+  }, [drawingMode, mapInstance])
 
   useEffect(() => { if (drawingMode) setDrawPoints([]) }, [drawingMode])
 
@@ -1239,10 +1257,10 @@ export default function MapInner({
 
       {/* Drawing toolbar */}
       {drawingMode && (
-        <div className="absolute top-2 left-2 z-[500] flex items-center gap-1.5 flex-wrap">
-          <div className="rounded bg-card/95 backdrop-blur px-2.5 py-1.5 border border-cyan-600/40 shadow-lg">
-            <span className="text-[10px] font-mono text-cyan-700 font-semibold">
-              DRAW {drawPoints.length > 0 ? `-- ${drawPoints.length} pts` : "-- cliquez pour placer les points"}
+        <div className="absolute top-2 left-2 right-2 z-[500] flex flex-col gap-2">
+          <div className="rounded-lg bg-card/95 backdrop-blur px-3 py-2 border border-cyan-600/40 shadow-lg">
+            <span className="text-xs font-mono text-cyan-700 font-semibold">
+              DRAW {drawPoints.length > 0 ? `-- ${drawPoints.length} pts` : "-- touchez pour placer les points"}
               {drawPoints.length >= 2 && (() => {
                 let total = 0
                 for (let i = 0; i < drawPoints.length - 1; i++) {
@@ -1260,18 +1278,18 @@ export default function MapInner({
             </span>
           </div>
           {drawPoints.length > 0 && (
-            <div className="flex items-center gap-1">
+            <div className="flex items-center gap-2">
               <button onClick={undoLastPoint}
-                className="rounded bg-card/95 backdrop-blur px-2 py-1 text-[10px] font-medium text-foreground hover:bg-muted border border-border shadow-sm transition-colors">
+                className="rounded-lg bg-card/95 backdrop-blur px-4 py-2.5 text-xs font-medium text-foreground active:bg-muted border border-border shadow-sm transition-colors min-h-[44px]">
                 Undo
               </button>
               <button onClick={cancelDrawing}
-                className="rounded bg-card/95 backdrop-blur px-2 py-1 text-[10px] font-medium text-destructive hover:bg-destructive/10 border border-border shadow-sm transition-colors">
+                className="rounded-lg bg-card/95 backdrop-blur px-4 py-2.5 text-xs font-medium text-destructive active:bg-destructive/10 border border-border shadow-sm transition-colors min-h-[44px]">
                 Cancel
               </button>
               {drawPoints.length >= 3 && (
                 <button onClick={finishDrawing}
-                  className="rounded bg-cyan-600 px-3 py-1.5 text-[10px] font-semibold text-white hover:bg-cyan-500 shadow-sm transition-colors">
+                  className="rounded-lg bg-cyan-600 px-5 py-2.5 text-xs font-semibold text-white active:bg-cyan-500 shadow-lg transition-colors min-h-[44px] flex-1">
                   Validate ({drawPoints.length} pts)
                 </button>
               )}

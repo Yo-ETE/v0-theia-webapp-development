@@ -79,6 +79,7 @@ export default function MissionDetailPage() {
   const [zoneName, setZoneName] = useState("")
   const [zoneType, setZoneType] = useState<string>("facade")
   const [sideLabels, setSideLabels] = useState<Record<string, string>>({})
+  const [sideGrouping, setSideGrouping] = useState<string[]>([])
   const [editZoneDialog, setEditZoneDialog] = useState<string | null>(null) // zone id being edited
   const [editZoneName, setEditZoneName] = useState("")
   const [editZoneType, setEditZoneType] = useState<string>("facade")
@@ -199,19 +200,69 @@ export default function MissionDetailPage() {
     })
   }, [events])
 
+  // ── Bearing grouping: segments with similar angle share the same face label ──
+  // Returns e.g. { A: [0,3], B: [1,4], C: [2,5] } meaning polygon edges 0&3 are "A", etc.
+  const groupSidesByBearing = useCallback((polygon: [number, number][]) => {
+    if (polygon.length < 3) {
+      const labels: Record<string, string> = {}
+      for (let i = 0; i < polygon.length; i++) labels[String.fromCharCode(65 + i)] = ""
+      return { labels, segmentToGroup: polygon.map((_,i) => String.fromCharCode(65 + i)) }
+    }
+    // Compute bearing (0-360) for each edge, normalize to 0-180 (parallel = same)
+    const bearings: number[] = []
+    for (let i = 0; i < polygon.length; i++) {
+      const [lat1, lon1] = polygon[i]
+      const [lat2, lon2] = polygon[(i + 1) % polygon.length]
+      const dLon = (lon2 - lon1) * Math.PI / 180
+      const y = Math.sin(dLon) * Math.cos(lat2 * Math.PI / 180)
+      const x = Math.cos(lat1 * Math.PI / 180) * Math.sin(lat2 * Math.PI / 180) -
+                Math.sin(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) * Math.cos(dLon)
+      let deg = Math.atan2(y, x) * 180 / Math.PI
+      deg = ((deg % 360) + 360) % 360
+      // Normalize to 0-180 so parallel edges (0 vs 180) are grouped
+      bearings.push(deg >= 180 ? deg - 180 : deg)
+    }
+    // Group edges with bearing within 15 degrees of each other
+    const TOLERANCE = 15
+    const groups: number[][] = []
+    const assigned = new Set<number>()
+    for (let i = 0; i < bearings.length; i++) {
+      if (assigned.has(i)) continue
+      const group = [i]
+      assigned.add(i)
+      for (let j = i + 1; j < bearings.length; j++) {
+        if (assigned.has(j)) continue
+        let diff = Math.abs(bearings[i] - bearings[j])
+        if (diff > 90) diff = 180 - diff // handle wrap-around near 0/180
+        if (diff <= TOLERANCE) {
+          group.push(j)
+          assigned.add(j)
+        }
+      }
+      groups.push(group)
+    }
+    // Assign labels A, B, C... to each group
+    const segmentToGroup: string[] = new Array(polygon.length)
+    const labels: Record<string, string> = {}
+    groups.forEach((group, gi) => {
+      const letter = String.fromCharCode(65 + gi)
+      labels[letter] = ""
+      for (const idx of group) segmentToGroup[idx] = letter
+    })
+    return { labels, segmentToGroup }
+  }, [])
+
   // ── Zone drawing ──
   const handlePolygonDrawn = useCallback((polygon: [number, number][]) => {
     setPendingPolygon(polygon)
     setZoneName("")
     setZoneType("facade")
-    const labels: Record<string, string> = {}
-    for (let i = 0; i < polygon.length; i++) {
-      labels[String.fromCharCode(65 + i)] = ""
-    }
+    const { labels, segmentToGroup } = groupSidesByBearing(polygon)
     setSideLabels(labels)
+    setSideGrouping(segmentToGroup)
     setZoneDialog(true)
     setDrawingMode(false)
-  }, [])
+  }, [groupSidesByBearing])
 
   const saveZone = useCallback(async () => {
     if (!mission || !pendingPolygon || !zoneName.trim()) return
@@ -225,13 +276,26 @@ export default function MissionDetailPage() {
       polygon: pendingPolygon,
       color: ZONE_COLORS[zones.length % ZONE_COLORS.length],
       devices: [],
-      sides: sideLabels,
+      // Build sides map: each edge index -> its group face label
+      // sideGrouping[i] = "A" means edge i belongs to group "A"
+      // sideLabels["A"] = "Nord" means group "A" has custom name "Nord"
+      // So sides["A"] = "Nord" for edge 0, sides["B"] = "Sud" for edge 1, etc.
+      // But we store per-segment: key=letter(idx), value=groupLabel:customName
+      sides: (() => {
+        const s: Record<string, string> = {}
+        for (let i = 0; i < pendingPolygon.length; i++) {
+          const groupKey = sideGrouping[i] ?? String.fromCharCode(65 + i)
+          const customName = sideLabels[groupKey] ?? ""
+          s[String.fromCharCode(65 + i)] = customName
+        }
+        return s
+      })(),
     }
     const updated = await updateMission(id, { zones: [...zones, newZone] })
     mutate(updated, false)
     setZoneDialog(false)
     setPendingPolygon(null)
-  }, [mission, pendingPolygon, zoneName, zoneType, sideLabels, id, mutate])
+  }, [mission, pendingPolygon, zoneName, zoneType, sideLabels, sideGrouping, id, mutate])
 
   const deleteZone = useCallback(async (zoneId: string) => {
     if (!mission) return
@@ -741,12 +805,12 @@ export default function MissionDetailPage() {
                     <div className="flex items-center gap-1">
                       <Button
                         variant={drawingMode ? "default" : "outline"} size="sm"
-                        className="h-6 text-[10px] px-2 gap-1"
+                        className="min-h-[44px] text-xs px-3 gap-1.5"
                         onClick={() => setDrawingMode(!drawingMode)}
                       >
                         {drawingMode
-                          ? <><Pencil className="h-3 w-3 animate-pulse" />Drawing...</>
-                          : <><Plus className="h-3 w-3" />Draw Zone</>}
+                          ? <><Pencil className="h-3.5 w-3.5 animate-pulse" />Drawing...</>
+                          : <><Plus className="h-3.5 w-3.5" />Draw Zone</>}
                       </Button>
                     </div>
                   </div>
@@ -1308,25 +1372,44 @@ export default function MissionDetailPage() {
               </Select>
             </div>
             {pendingPolygon && pendingPolygon.length >= 2 && (
-              <div className="flex flex-col gap-2">
-                <Label className="text-xs text-muted-foreground">Side Labels ({pendingPolygon.length} sides)</Label>
-                <div className="grid grid-cols-2 gap-2">
-                  {Object.keys(sideLabels).map((key) => (
-                    <div key={key} className="flex items-center gap-2">
-                      <span className="text-xs font-mono font-bold text-cyan-600 w-4 shrink-0">{key}</span>
-                      <Input
-                        placeholder={`Side ${key}`}
-                        value={sideLabels[key]}
-                        onChange={(e) => setSideLabels((prev) => ({ ...prev, [key]: e.target.value }))}
-                        className="bg-input/50 border-border text-xs h-7"
-                      />
-                    </div>
-                  ))}
+              <div className="flex flex-col gap-3">
+                <Label className="text-xs text-muted-foreground">
+                  Faces ({Object.keys(sideLabels).length} faces - {pendingPolygon.length} segments)
+                </Label>
+                <div className="flex flex-col gap-2">
+                  {Object.keys(sideLabels).map((groupKey) => {
+                    // Find which polygon segments belong to this group
+                    const segmentIndices = sideGrouping
+                      .map((g, i) => g === groupKey ? i : -1)
+                      .filter(i => i >= 0)
+                    const segmentLetters = segmentIndices.map(i => String.fromCharCode(65 + i))
+                    return (
+                      <div key={groupKey} className="flex items-center gap-2">
+                        <div className="flex flex-col items-center shrink-0 w-10">
+                          <span className="text-xs font-mono font-bold text-cyan-600">{groupKey}</span>
+                          <span className="text-[9px] text-muted-foreground font-mono">
+                            {segmentLetters.length > 1
+                              ? segmentLetters.join(",")
+                              : `seg ${segmentLetters[0]}`}
+                          </span>
+                        </div>
+                        <Input
+                          placeholder={`Face ${groupKey}${segmentLetters.length > 1 ? ` (${segmentLetters.join("+")} parallels)` : ""}`}
+                          value={sideLabels[groupKey]}
+                          onChange={(e) => setSideLabels((prev) => ({ ...prev, [groupKey]: e.target.value }))}
+                          className="bg-input/50 border-border text-xs h-9"
+                        />
+                      </div>
+                    )
+                  })}
                 </div>
+                <p className="text-[9px] text-muted-foreground">
+                  Les segments paralleles sont regroupes automatiquement sous la meme face.
+                </p>
               </div>
             )}
             <p className="text-[10px] text-muted-foreground font-mono">
-              {pendingPolygon?.length ?? 0} points - {Object.values(sideLabels).filter(Boolean).length} sides labeled
+              {pendingPolygon?.length ?? 0} points - {Object.keys(sideLabels).length} faces - {Object.values(sideLabels).filter(Boolean).length} labeled
             </p>
           </div>
           <DialogFooter>
@@ -1366,23 +1449,22 @@ export default function MissionDetailPage() {
               </Select>
             </div>
             {Object.keys(editSideLabels).length > 0 && (
-              <div className="flex flex-col gap-2">
+              <div className="flex flex-col gap-3">
                 <Label className="text-xs text-muted-foreground">
-                  Side / Facade Labels ({Object.keys(editSideLabels).length} sides)
+                  Segments ({Object.keys(editSideLabels).length} sides)
                 </Label>
-                <p className="text-[10px] text-muted-foreground">
-                  Nommez chaque cote du polygone (ex: Facade Nord, Mur Garage, Entree...).
-                  Ces noms apparaissent sur la carte et dans les detections.
+                <p className="text-[9px] text-muted-foreground">
+                  Les segments sur la meme facade peuvent partager le meme nom (ex: A et C = Facade Nord).
                 </p>
-                <div className="grid grid-cols-2 gap-2">
+                <div className="flex flex-col gap-2">
                   {Object.keys(editSideLabels).sort().map((key) => (
                     <div key={key} className="flex items-center gap-2">
-                      <span className="text-xs font-mono font-bold text-cyan-600 w-4 shrink-0">{key}</span>
+                      <span className="text-xs font-mono font-bold text-cyan-600 w-6 shrink-0">{key}</span>
                       <Input
-                        placeholder={`Side ${key}`}
+                        placeholder={`Face ${key}`}
                         value={editSideLabels[key]}
                         onChange={(e) => setEditSideLabels((prev) => ({ ...prev, [key]: e.target.value }))}
-                        className="bg-input/50 border-border text-xs h-7"
+                        className="bg-input/50 border-border text-xs h-9"
                       />
                     </div>
                   ))}
