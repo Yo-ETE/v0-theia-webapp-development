@@ -7,7 +7,7 @@ import {
   ArrowLeft, Radio, MapPin, Clock, Users, BarChart3, Plus,
   Pencil, Play, Pause, CheckCircle, Trash2, Building2, Home,
   Activity, Eye, EyeOff, Zap, Timer, Download, Signal, Battery, Wifi, Unlink,
-  Flame,
+  Flame, Crosshair,
 } from "lucide-react"
 import { TopHeader } from "@/components/top-header"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
@@ -320,7 +320,7 @@ export default function MissionDetailPage() {
 
     // Persist BOTH to backend, then revalidate
     try {
-      const [devRes, missRes] = await Promise.all([
+      await Promise.all([
         updateDevice(deviceId, {
           mission_id: "",
           zone_id: "",
@@ -331,14 +331,16 @@ export default function MissionDetailPage() {
         } as Partial<import("@/lib/types").Device>),
         updateMission(id, { zones: updatedZones, floors: updatedFloors, device_count: newDeviceCount }),
       ])
+      // Revalidate from backend (PATCH is done, backend has correct data)
+      await Promise.all([mutate(), mutateDevices()])
+      // Keep filtering device until well past the next SWR refresh (30s interval)
+      setTimeout(() => setUnassigning(null), 35000)
     } catch (err) {
-      console.warn("[THEIA] Failed to unassign device:", err)
+      console.error("[THEIA] Failed to unassign device:", err)
+      // Revert optimistic update -- refetch real state from backend
+      await Promise.all([mutate(), mutateDevices()])
+      setUnassigning(null)
     }
-
-    // Revalidate from backend (PATCH is done, backend has correct data)
-    await Promise.all([mutate(), mutateDevices()])
-    // Keep filtering device until well past the next SWR refresh (30s interval)
-    setTimeout(() => setUnassigning(null), 35000)
   }, [mission, id, mutate, mutateDevices, unassigning])
 
   // ── Zone polygon editing ──
@@ -481,9 +483,9 @@ export default function MissionDetailPage() {
   const statusCfg = missionStatusConfig[mission.status] ?? missionStatusConfig.draft
   const zones = mission.zones ?? []
   const eventList = events ?? []
-  // Only show devices that are assigned to this mission AND have a zone+side placement
+  // Only show devices that are assigned to this mission AND have a zone+side placement AND are enabled
   const missionDevices = allDevices?.filter((d) =>
-    d.mission_id === id && d.zone_id && d.id !== unassigning
+    d.enabled && d.mission_id === id && d.zone_id && d.id !== unassigning
   ) ?? []
   // Devices available to assign: enabled devices not currently placed in this mission
   const unassigned = allDevices?.filter((d) => {
@@ -865,9 +867,23 @@ export default function MissionDetailPage() {
                         <Zap className="h-3 w-3 text-warning" />
                         Detection Feed
                       </CardTitle>
-                      {liveDetections.length > 0 && (
-                        <span className="text-[9px] font-mono text-success animate-pulse">LIVE</span>
-                      )}
+                      <div className="flex items-center gap-2">
+                        {missionDevices.length >= 2 && (
+                          <Button
+                            variant={estimatePosition ? "default" : "outline"}
+                            size="sm"
+                            className="h-6 text-[10px] px-2 gap-1"
+                            onClick={() => setEstimatePosition(!estimatePosition)}
+                            title="Estimate position from multiple sensors"
+                          >
+                            <Crosshair className="h-3 w-3" />
+                            Position
+                          </Button>
+                        )}
+                        {liveDetections.length > 0 && (
+                          <span className="text-[9px] font-mono text-success animate-pulse">LIVE</span>
+                        )}
+                      </div>
                     </div>
                   </CardHeader>
                   <CardContent ref={feedRef} className="flex flex-col gap-1 max-h-64 overflow-y-auto">

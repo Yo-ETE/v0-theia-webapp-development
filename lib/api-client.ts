@@ -63,8 +63,9 @@ export function deleteMission(id: string) {
 
 // ─── Devices ─────────────────────────────────────────────────────
 
-export function fetchDevices() {
-  return request<import("./types").Device[]>("/devices")
+export function fetchDevices(includeDisabled = false) {
+  const qs = includeDisabled ? "?include_disabled=true" : ""
+  return request<import("./types").Device[]>(`/devices${qs}`)
 }
 
 export function createDevice(data: { dev_eui: string; name: string; type?: string; serial_port?: string }) {

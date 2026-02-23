@@ -24,7 +24,7 @@ import { deviceStatusConfig, formatRelative } from "@/lib/format"
 import { cn } from "@/lib/utils"
 
 export default function DevicesPage() {
-  const { data: devices, isLoading, mutate } = useDevices()
+  const { data: devices, isLoading, mutate } = useDevices({ includeDisabled: true })
   const { data: missions } = useMissions()
   const [enrollOpen, setEnrollOpen] = useState(false)
   const [enrollForm, setEnrollForm] = useState({ name: "", dev_eui: "", type: "microwave_tx", serial_port: "" })
@@ -67,9 +67,12 @@ export default function DevicesPage() {
     mutate()
   }, [mutate])
 
-  const onlineCount = devices?.filter((d) => d.status === "online").length ?? 0
-  const offlineCount = devices?.filter((d) => d.status === "offline").length ?? 0
-  const totalCount = devices?.length ?? 0
+  const enabledDevices = devices?.filter((d) => d.enabled !== 0) ?? []
+  const disabledDevices = devices?.filter((d) => d.enabled === 0) ?? []
+  const onlineCount = enabledDevices.filter((d) => d.status === "online").length
+  const offlineCount = enabledDevices.filter((d) => d.status === "offline").length
+  const totalCount = enabledDevices.length
+  const disabledCount = disabledDevices.length
 
   return (
     <>
@@ -94,6 +97,13 @@ export default function DevicesPage() {
                 <span className="text-sm font-medium text-destructive">{offlineCount}</span>
                 <span className="text-xs text-muted-foreground">Offline</span>
               </div>
+              {disabledCount > 0 && (
+                <div className="flex items-center gap-2">
+                  <span className="h-2 w-2 rounded-full bg-muted-foreground/40" />
+                  <span className="text-sm font-medium text-muted-foreground">{disabledCount}</span>
+                  <span className="text-xs text-muted-foreground">Disabled</span>
+                </div>
+              )}
             </div>
             <Button size="sm" onClick={() => setEnrollOpen(true)} className="gap-1.5">
               <Plus className="h-3.5 w-3.5" />
@@ -138,7 +148,7 @@ export default function DevicesPage() {
                     {devices?.map((device) => {
                       const sCfg = deviceStatusConfig[device.status] ?? deviceStatusConfig.unknown
                       return (
-                        <TableRow key={device.id} className="border-border/30">
+                        <TableRow key={device.id} className={cn("border-border/30", device.enabled === 0 && "opacity-40")}>
                           <TableCell className="font-mono text-xs font-medium text-foreground">
                             <div className="flex items-center gap-2">
                               <Signal className={cn("h-3 w-3", sCfg.className.includes("success") ? "text-success" : sCfg.className.includes("destructive") ? "text-destructive" : "text-muted-foreground")} />

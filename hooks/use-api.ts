@@ -24,8 +24,9 @@ export function useMission(id: string | null) {
   )
 }
 
-export function useDevices(opts?: { refreshInterval?: number }) {
-  return useSWR<import("@/lib/types").Device[]>("/api/devices", fetcher, { refreshInterval: opts?.refreshInterval ?? 5000 })
+export function useDevices(opts?: { refreshInterval?: number; includeDisabled?: boolean }) {
+  const qs = opts?.includeDisabled ? "?include_disabled=true" : ""
+  return useSWR<import("@/lib/types").Device[]>(`/api/devices${qs}`, fetcher, { refreshInterval: opts?.refreshInterval ?? 5000 })
 }
 
 export function useEvents(params?: { mission_id?: string; limit?: number; event_type?: string }) {
