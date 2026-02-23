@@ -43,6 +43,7 @@ interface MapInnerProps {
   liveByDevice?: Record<string, LiveDetection>
   sensorPlacements?: SensorPlacement[]
   heatmapMode?: boolean
+  estimatePosition?: boolean  // Triangulate position from multiple simultaneous detections
   className?: string
   drawingMode?: boolean
   onPolygonDrawn?: (polygon: [number, number][]) => void
@@ -112,6 +113,7 @@ export default function MapInner({
   liveByDevice = {},
   sensorPlacements = [],
   heatmapMode = false,
+  estimatePosition = false,
   className,
   drawingMode = false,
   onPolygonDrawn,
@@ -671,6 +673,33 @@ export default function MapInner({
     }
   }).filter(Boolean) as SensorMarkerData[]
 
+  // ── Position estimation: weighted average from all simultaneous detections ──
+  let estimatedPosition: { lat: number; lon: number; count: number; avgDist: number } | null = null
+  if (estimatePosition) {
+    const activeMarkers = sensorMarkers.filter(m => m.detectionPos)
+    if (activeMarkers.length >= 1) {
+      // Weighted by 1/distance (closer sensors have more weight)
+      let sumLat = 0, sumLon = 0, sumW = 0, sumDist = 0
+      for (const m of activeMarkers) {
+        if (!m.detectionPos || !m.detection) continue
+        const dist = m.detection.distance || 100
+        const w = 1 / Math.max(10, dist)  // cm -> weight (inverse distance)
+        sumLat += m.detectionPos[0] * w
+        sumLon += m.detectionPos[1] * w
+        sumW += w
+        sumDist += dist
+      }
+      if (sumW > 0) {
+        estimatedPosition = {
+          lat: sumLat / sumW,
+          lon: sumLon / sumW,
+          count: activeMarkers.length,
+          avgDist: Math.round(sumDist / activeMarkers.length),
+        }
+      }
+    }
+  }
+
   // Clean stale Leaflet state from container before each render
   // This prevents "already initialized" on HMR / ErrorBoundary retry
   if (containerDivRef.current) {
@@ -951,28 +980,60 @@ export default function MapInner({
         ))}
 
         {/* ── Detection projection lines + points ── */}
+        {/* When estimatePosition is on, show dashed lines to individual sensors but use a single averaged marker */}
         {sensorMarkers.filter(sm => sm.detectionPos).map((sm) => {
           const state = (sm.detection as LiveDetection & { _state?: string })?._state ?? "live"
-          const color = state === "live" ? "#22c55e" : "#f59e0b" // green=live, yellow=stale
+          const color = state === "live" ? "#22c55e" : "#f59e0b"
           const opacity = state === "fading" ? 0.25 : state === "hold" ? 0.6 : 0.8
           return (
             <Polyline
               key={`det-line-${sm.id}`}
-              positions={[sm.sensorPos, sm.detectionPos!]}
+              positions={estimatePosition && estimatedPosition
+                ? [sm.sensorPos, [estimatedPosition.lat, estimatedPosition.lon]]
+                : [sm.sensorPos, sm.detectionPos!]}
               pathOptions={{
-                color,
+                color: estimatePosition ? "#3b82f6" : color,
                 weight: 2,
                 dashArray: "4 3",
-                opacity,
+                opacity: estimatePosition ? 0.5 : opacity,
               }}
             />
           )
         })}
-        {sensorMarkers.filter(sm => sm.detectionPos).map((sm) => {
+
+        {/* Estimated position mode: single averaged marker */}
+        {estimatePosition && estimatedPosition && (
+          <CircleMarker
+            key="estimated-pos"
+            center={[estimatedPosition.lat, estimatedPosition.lon]}
+            radius={10}
+            pathOptions={{
+              color: "#3b82f6",
+              fillColor: "#3b82f6",
+              fillOpacity: 0.7,
+              weight: 3,
+              opacity: 0.9,
+              className: "detection-pulse",
+            }}
+          >
+            <Tooltip permanent direction="top" offset={[0, -12]}>
+              <span style={{
+                fontSize: 10, fontWeight: 700, color: "#3b82f6",
+                background: "rgba(255,255,255,0.95)", padding: "2px 6px",
+                borderRadius: 3, border: "1px solid #3b82f655",
+              }}>
+                {`~${estimatedPosition.avgDist}cm (${estimatedPosition.count} TX)`}
+              </span>
+            </Tooltip>
+          </CircleMarker>
+        )}
+
+        {/* Individual sensor detection points (hidden when estimatePosition is on) */}
+        {!estimatePosition && sensorMarkers.filter(sm => sm.detectionPos).map((sm) => {
           const state = (sm.detection as LiveDetection & { _state?: string })?._state ?? "live"
           const isLive = state === "live"
           const isFading = state === "fading"
-          const color = isLive ? "#22c55e" : "#f59e0b" // green=live, amber=stale
+          const color = isLive ? "#22c55e" : "#f59e0b"
           return (
             <CircleMarker
               key={`det-pt-${sm.id}`}

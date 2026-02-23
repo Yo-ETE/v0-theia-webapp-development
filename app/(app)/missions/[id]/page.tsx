@@ -104,6 +104,7 @@ export default function MissionDetailPage() {
   const [activeTab, setActiveTab] = useState("live")
   const [timelapseMode, setTimelapseMode] = useState(false)
   const [heatmapMode, setHeatmapMode] = useState(false)
+  const [estimatePosition, setEstimatePosition] = useState(false)
   const [editingZoneId, setEditingZoneId] = useState<string | null>(null)
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const [replayDetections, setReplayDetections] = useState<Record<string, any>>({})
@@ -480,10 +481,14 @@ export default function MissionDetailPage() {
   const statusCfg = missionStatusConfig[mission.status] ?? missionStatusConfig.draft
   const zones = mission.zones ?? []
   const eventList = events ?? []
-  const missionDevices = allDevices?.filter((d) => d.mission_id === id && d.id !== unassigning) ?? []
-  // Devices available to assign: not currently assigned to THIS mission's zones
+  // Only show devices that are assigned to this mission AND have a zone+side placement
+  const missionDevices = allDevices?.filter((d) =>
+    d.mission_id === id && d.zone_id && d.id !== unassigning
+  ) ?? []
+  // Devices available to assign: enabled devices not currently placed in this mission
   const unassigned = allDevices?.filter((d) => {
-    // Already assigned to this mission with a zone
+    if (!d.enabled) return false  // Skip soft-deleted devices
+    // Already placed in this mission with a zone
     if (d.mission_id === id && d.zone_id) return false
     return true
   }) ?? []
@@ -684,8 +689,9 @@ export default function MissionDetailPage() {
   liveDetections={effectiveLiveByZone}
   liveByDevice={liveByDevice}
   sensorPlacements={sensorPlacements}
-                      heatmapMode={heatmapMode}
-                      className="h-[500px]"
+  heatmapMode={heatmapMode}
+  estimatePosition={estimatePosition}
+  className="h-[500px]"
                       drawingMode={drawingMode}
                       onPolygonDrawn={handlePolygonDrawn}
                       onZoneClick={(zoneId) => !sensorPlaceMode && setAssignDialog(zoneId)}
@@ -1173,12 +1179,12 @@ export default function MissionDetailPage() {
               </Card>
 
               {/* Available Devices */}
-              {allDevices && allDevices.filter(d => d.mission_id !== id).length > 0 && (
+              {allDevices && allDevices.filter(d => d.enabled && d.mission_id !== id).length > 0 && (
                 <Card className="border-border/50 bg-card">
                   <CardHeader className="pb-2">
                     <CardTitle className="flex items-center gap-2 text-sm">
                       <Wifi className="h-4 w-4 text-muted-foreground" />
-                      Available Devices ({allDevices.filter(d => d.mission_id !== id).length})
+                      Available Devices ({allDevices.filter(d => d.enabled && d.mission_id !== id).length})
                     </CardTitle>
                   </CardHeader>
                   <CardContent>
@@ -1193,7 +1199,7 @@ export default function MissionDetailPage() {
                         </TableRow>
                       </TableHeader>
                       <TableBody>
-                        {allDevices.filter(d => d.mission_id !== id).map((device) => {
+                        {allDevices.filter(d => d.enabled && d.mission_id !== id).map((device) => {
                           const sCfg = deviceStatusConfig[device.status] ?? deviceStatusConfig.unknown
                           const isElsewhere = !!device.mission_id
                           return (
