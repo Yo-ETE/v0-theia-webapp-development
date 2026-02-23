@@ -318,7 +318,7 @@ export default function MissionDetailPage() {
       { revalidate: false },
     )
 
-    // Persist BOTH to backend, then revalidate
+    // Persist both device clear + mission zone update, then revalidate
     try {
       await Promise.all([
         updateDevice(deviceId, {
@@ -331,13 +331,13 @@ export default function MissionDetailPage() {
         } as Partial<import("@/lib/types").Device>),
         updateMission(id, { zones: updatedZones, floors: updatedFloors, device_count: newDeviceCount }),
       ])
-      // Revalidate from backend (PATCH is done, backend has correct data)
+      // Backend PATCH succeeded -- revalidate SWR caches
       await Promise.all([mutate(), mutateDevices()])
-      // Keep filtering device until well past the next SWR refresh (30s interval)
+      // Keep filtering device out until well past the next SWR refresh (30s)
       setTimeout(() => setUnassigning(null), 35000)
     } catch (err) {
       console.error("[THEIA] Failed to unassign device:", err)
-      // Revert optimistic update -- refetch real state from backend
+      // PATCH failed -- revert optimistic update by refetching real state
       await Promise.all([mutate(), mutateDevices()])
       setUnassigning(null)
     }
