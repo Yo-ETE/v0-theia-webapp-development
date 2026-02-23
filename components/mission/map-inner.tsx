@@ -156,6 +156,12 @@ export default function MapInner({
   const lastEventTsRef = useRef<Record<string, number>>({})
   // Timestamp of the last GOOD event per zone (presence true + distance > 0)
   const lastPresenceTsRef = useRef<Record<string, number>>({})
+
+  // Same refs but keyed by device_id (for multi-TX per zone)
+  const lastGoodByDevRef = useRef<Record<string, LiveDetection>>({})
+  const lastEventTsByDevRef = useRef<Record<string, number>>({})
+  const lastPresenceTsByDevRef = useRef<Record<string, number>>({})
+
   // Serialized version counter to force re-render from the interval timer
   const [tick, setTick] = useState(0)
 
@@ -172,6 +178,20 @@ export default function MapInner({
       }
     }
     prevLiveRef.current = liveDetections
+  }
+
+  // Track per-device detections
+  const prevLiveByDevRef = useRef<Record<string, LiveDetection>>({})
+  if (liveByDevice !== prevLiveByDevRef.current) {
+    const now = Date.now()
+    for (const [devId, det] of Object.entries(liveByDevice)) {
+      lastEventTsByDevRef.current[devId] = now
+      if (det.presence && det.distance > 0) {
+        lastGoodByDevRef.current[devId] = det
+        lastPresenceTsByDevRef.current[devId] = now
+      }
+    }
+    prevLiveByDevRef.current = liveByDevice
   }
 
   // Tick every 500ms to re-evaluate stale/hold/fade transitions
@@ -217,6 +237,31 @@ export default function MapInner({
       effectiveDetections[zoneId] = { ...lastGood, _state: "fading" }
     }
     // else: fully expired, remove
+  }
+
+  // Build effective detections by device_id (same hold/fade logic)
+  const effectiveByDevice: Record<string, LiveDetection & { _state: DetState }> = {}
+  for (const [devId, det] of Object.entries(liveByDevice)) {
+    if (det.presence && det.distance > 0) {
+      effectiveByDevice[devId] = { ...det, _state: "live" }
+    }
+  }
+  for (const [devId, lastPresenceTs] of Object.entries(lastPresenceTsByDevRef.current)) {
+    if (effectiveByDevice[devId]) continue
+    if (lastPresenceTs <= 0) continue
+    const lastGood = lastGoodByDevRef.current[devId]
+    if (!lastGood) continue
+    const sinceLast = now - lastPresenceTs
+    const currentDet = liveByDevice[devId]
+    const sseStillActive = currentDet && (now - (lastEventTsByDevRef.current[devId] ?? 0)) < 3000
+    const explicitlyGone = sseStillActive && !currentDet.presence
+    if (sinceLast < STALE_MS && !explicitlyGone) {
+      effectiveByDevice[devId] = { ...lastGood, _state: "live" }
+    } else if (sinceLast < STALE_MS + HOLD_MS) {
+      effectiveByDevice[devId] = { ...lastGood, _state: "hold" }
+    } else if (sinceLast < STALE_MS + HOLD_MS + FADE_MS) {
+      effectiveByDevice[devId] = { ...lastGood, _state: "fading" }
+    }
   }
 
   // Suppress unused tick warning (it drives re-renders for stale transitions)
@@ -638,8 +683,8 @@ export default function MapInner({
     // So left = (-normalM[1], normalM[0])
     const leftM: [number, number] = [-normalM[1], normalM[0]]
 
-    // Check if there's a live detection for this specific device first, then fall back to zone
-    const det = liveByDevice[sp.device_id] ?? effectiveDetections[zone.id]
+    // Check if there's a detection for this specific device first, then fall back to zone
+    const det = effectiveByDevice[sp.device_id] ?? effectiveDetections[zone.id]
     let detectionLatLon: [number, number] | null = null
     if (det?.presence && det.distance > 0) {
       const distM = det.distance / 100 // cm -> meters
