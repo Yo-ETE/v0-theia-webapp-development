@@ -200,16 +200,22 @@ export default function MissionDetailPage() {
     })
   }, [events])
 
-  // ── Bearing grouping: segments with similar angle share the same face label ──
+  // ── Bearing grouping: segments facing the same direction share the same face label ──
+  // Uses FULL 0-360 bearing so north-facing (0) and south-facing (180) are DIFFERENT faces.
   // Returns e.g. { A: [0,3], B: [1,4], C: [2,5] } meaning polygon edges 0&3 are "A", etc.
   const groupSidesByBearing = useCallback((polygon: [number, number][]) => {
     if (polygon.length < 3) {
       const labels: Record<string, string> = {}
       for (let i = 0; i < polygon.length; i++) labels[String.fromCharCode(65 + i)] = ""
-      return { labels, segmentToGroup: polygon.map((_,i) => String.fromCharCode(65 + i)) }
+      return { labels, segmentToGroup: polygon.map((_,i) => String.fromCharCode(65 + i)), debugBearings: [] as string[] }
     }
-    // Compute bearing (0-360) for each edge, normalize to 0-180 (parallel = same)
-    const bearings: number[] = []
+    // Compute the OUTWARD NORMAL bearing (0-360) for each edge.
+    // The outward normal tells us which direction the wall faces (not which way it runs).
+    // For a CW polygon, outward normal is +90 from edge direction.
+    // For a CCW polygon, outward normal is -90 from edge direction.
+
+    // First compute edge bearings
+    const edgeBearings: number[] = []
     for (let i = 0; i < polygon.length; i++) {
       const [lat1, lon1] = polygon[i]
       const [lat2, lon2] = polygon[(i + 1) % polygon.length]
@@ -219,12 +225,24 @@ export default function MissionDetailPage() {
                 Math.sin(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) * Math.cos(dLon)
       let deg = Math.atan2(y, x) * 180 / Math.PI
       deg = ((deg % 360) + 360) % 360
-      // Normalize to 0-180 so parallel edges (0 vs 180) are grouped
-      bearings.push(deg >= 180 ? deg - 180 : deg)
+      edgeBearings.push(deg)
     }
-    // Group edges with bearing within 25 degrees of each other
-    // (hand-drawn polygons on mobile are imprecise)
-    const TOLERANCE = 25
+
+    // Determine polygon winding (signed area). Positive = CCW in lat/lng.
+    let signedArea = 0
+    for (let i = 0; i < polygon.length; i++) {
+      const j = (i + 1) % polygon.length
+      signedArea += (polygon[j][1] - polygon[i][1]) * (polygon[j][0] + polygon[i][0])
+    }
+    // If signedArea > 0, polygon is CW in screen coords, outward normal = bearing + 90
+    // If signedArea < 0, polygon is CCW, outward normal = bearing - 90
+    const normalOffset = signedArea > 0 ? 90 : -90
+
+    // Compute outward normal bearings
+    const bearings: number[] = edgeBearings.map(b => ((b + normalOffset) % 360 + 360) % 360)
+
+    // Group edges whose outward normals point in similar directions (within tolerance)
+    const TOLERANCE = 30
     const groups: number[][] = []
     const assigned = new Set<number>()
     for (let i = 0; i < bearings.length; i++) {
@@ -233,8 +251,9 @@ export default function MissionDetailPage() {
       assigned.add(i)
       for (let j = i + 1; j < bearings.length; j++) {
         if (assigned.has(j)) continue
+        // Angular difference on a circle (0-360)
         let diff = Math.abs(bearings[i] - bearings[j])
-        if (diff > 90) diff = 180 - diff // handle wrap-around near 0/180
+        if (diff > 180) diff = 360 - diff
         if (diff <= TOLERANCE) {
           group.push(j)
           assigned.add(j)
@@ -250,7 +269,11 @@ export default function MissionDetailPage() {
       labels[letter] = ""
       for (const idx of group) segmentToGroup[idx] = letter
     })
-    return { labels, segmentToGroup, debugBearings: bearings.map((b, i) => `${String.fromCharCode(65+i)}:${b.toFixed(1)}`) }
+    return {
+      labels,
+      segmentToGroup,
+      debugBearings: bearings.map((b, i) => `${String.fromCharCode(65+i)}:${b.toFixed(0)}(edge:${edgeBearings[i].toFixed(0)})`)
+    }
   }, [])
 
   // ── Zone drawing ──
@@ -451,29 +474,44 @@ export default function MissionDetailPage() {
     if (!zone) return
     setEditZoneName(zone.label)
     setEditZoneType(zone.type)
-    // Build side labels map with all sides (A, B, C, ...)
-    const labels: Record<string, string> = {}
+    // Compute grouping for the existing polygon
+    const { labels: groupLabels, segmentToGroup } = groupSidesByBearing(zone.polygon)
+    // Build group-level labels from existing side values
+    // If any segment in a group has a custom name, use it for the whole group
+    const groupNames: Record<string, string> = { ...groupLabels }
     for (let i = 0; i < zone.polygon.length; i++) {
-      const key = String.fromCharCode(65 + i)
-      labels[key] = zone.sides?.[key] || ""
+      const segKey = String.fromCharCode(65 + i)
+      const groupKey = segmentToGroup[i]
+      const existingName = zone.sides?.[segKey] || ""
+      // Use the existing name if it's a real custom name (not just a letter)
+      if (existingName && existingName.length > 1) {
+        groupNames[groupKey] = existingName
+      }
     }
-    setEditSideLabels(labels)
+    setEditSideLabels(groupNames)
+    setSideGrouping(segmentToGroup)
     setEditZoneDialog(zoneId)
-  }, [mission])
+  }, [mission, groupSidesByBearing])
 
   const saveEditZone = useCallback(async () => {
     if (!mission || !editZoneDialog || !editZoneName.trim()) return
-    const zones = (mission.zones ?? []).map((z) =>
-      z.id === editZoneDialog
-        ? {
-            ...z,
-            label: editZoneName.trim(),
-            name: editZoneName.trim().toLowerCase().replace(/\s+/g, "-"),
-            type: editZoneType as Zone["type"],
-            sides: editSideLabels,
-          }
-        : z
-    )
+    const zones = (mission.zones ?? []).map((z) => {
+      if (z.id !== editZoneDialog) return z
+      // Build per-segment sides map from grouped labels
+      const sides: Record<string, string> = {}
+      for (let i = 0; i < z.polygon.length; i++) {
+        const groupKey = sideGrouping[i] ?? String.fromCharCode(65 + i)
+        const customName = editSideLabels[groupKey] ?? ""
+        sides[String.fromCharCode(65 + i)] = customName || groupKey
+      }
+      return {
+        ...z,
+        label: editZoneName.trim(),
+        name: editZoneName.trim().toLowerCase().replace(/\s+/g, "-"),
+        type: editZoneType as Zone["type"],
+        sides,
+      }
+    })
     try {
       const updated = await updateMission(id, { zones })
       mutate(updated, false)
@@ -481,7 +519,7 @@ export default function MissionDetailPage() {
       console.warn("[THEIA] Failed to update zone:", err)
     }
     setEditZoneDialog(null)
-  }, [mission, editZoneDialog, editZoneName, editZoneType, editSideLabels, id, mutate])
+  }, [mission, editZoneDialog, editZoneName, editZoneType, editSideLabels, sideGrouping, id, mutate])
 
   // ── Status transitions ──
   const changeStatus = useCallback(async (newStatus: string) => {
@@ -1464,23 +1502,34 @@ export default function MissionDetailPage() {
             {Object.keys(editSideLabels).length > 0 && (
               <div className="flex flex-col gap-3">
                 <Label className="text-xs text-muted-foreground">
-                  Segments ({Object.keys(editSideLabels).length} sides)
+                  Faces ({Object.keys(editSideLabels).length} faces)
                 </Label>
                 <p className="text-[9px] text-muted-foreground">
-                  Les segments sur la meme facade peuvent partager le meme nom (ex: A et C = Facade Nord).
+                  Les segments paralleles sont regroupes par face automatiquement.
                 </p>
                 <div className="flex flex-col gap-2">
-                  {Object.keys(editSideLabels).sort().map((key) => (
-                    <div key={key} className="flex items-center gap-2">
-                      <span className="text-xs font-mono font-bold text-cyan-600 w-6 shrink-0">{key}</span>
-                      <Input
-                        placeholder={`Face ${key}`}
-                        value={editSideLabels[key]}
-                        onChange={(e) => setEditSideLabels((prev) => ({ ...prev, [key]: e.target.value }))}
-                        className="bg-input/50 border-border text-xs h-9"
-                      />
-                    </div>
-                  ))}
+                  {Object.keys(editSideLabels).sort().map((groupKey) => {
+                    const segmentIndices = sideGrouping
+                      .map((g, i) => g === groupKey ? i : -1)
+                      .filter(i => i >= 0)
+                    const segmentLetters = segmentIndices.map(i => String.fromCharCode(65 + i))
+                    return (
+                      <div key={groupKey} className="flex items-center gap-2">
+                        <div className="flex flex-col items-center shrink-0 w-10">
+                          <span className="text-xs font-mono font-bold text-cyan-600">{groupKey}</span>
+                          <span className="text-[9px] text-muted-foreground font-mono">
+                            {segmentLetters.length > 1 ? segmentLetters.join(",") : `seg ${segmentLetters[0] ?? groupKey}`}
+                          </span>
+                        </div>
+                        <Input
+                          placeholder={`Face ${groupKey}${segmentLetters.length > 1 ? ` (${segmentLetters.join("+")} parallel)` : ""}`}
+                          value={editSideLabels[groupKey]}
+                          onChange={(e) => setEditSideLabels((prev) => ({ ...prev, [groupKey]: e.target.value }))}
+                          className="bg-input/50 border-border text-xs h-9"
+                        />
+                      </div>
+                    )
+                  })}
                 </div>
               </div>
             )}
