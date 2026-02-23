@@ -10,46 +10,32 @@ export async function PATCH(
     const { id } = await params
     const body = await request.json()
 
-    // Always update local store first (may be null if device was backend-only)
-    let localDevice = store.updateDevice(id, body)
-
     if (isPreviewMode()) {
+      const localDevice = store.updateDevice(id, body)
       if (!localDevice) return NextResponse.json({ error: "Not found" }, { status: 404 })
       return NextResponse.json(localDevice)
     }
 
-    // Pi mode: try the real backend
-    try {
-      const res = await proxyToBackend(`/api/devices/${id}`, {
-        method: "PATCH",
-        body: JSON.stringify(body),
-      })
-      if (!res.ok) throw new Error(`Backend ${res.status}`)
-      const backendDevice = await res.json()
-      // Sync backend response into local store
-      if (localDevice) {
-        store.updateDevice(id, backendDevice)
-      } else {
-        store.createDevice({ ...backendDevice, id: backendDevice.id, name: backendDevice.name ?? id })
-      }
-      return NextResponse.json(backendDevice)
-    } catch (err) {
-      // Backend unreachable -- fallback to local store
-      console.warn("[THEIA] Backend unreachable for PATCH device:", (err as Error).message)
-      if (!localDevice) {
-        localDevice = store.createDevice({
-          id,
-          name: body.name ?? `Device-${id.slice(0, 6)}`,
-          dev_eui: body.dev_eui ?? "",
-          type: body.type ?? "microwave_tx",
-          ...body,
-        })
-      }
-      return NextResponse.json(localDevice)
+    // Pi mode: backend is the source of truth -- MUST succeed
+    const res = await proxyToBackend(`/api/devices/${id}`, {
+      method: "PATCH",
+      body: JSON.stringify(body),
+    })
+    if (!res.ok) {
+      const errBody = await res.text().catch(() => "Unknown error")
+      console.error("[THEIA] Backend PATCH failed:", res.status, errBody)
+      return NextResponse.json({ error: `Backend error: ${res.status}` }, { status: res.status })
     }
-  } catch (outerErr) {
-    console.error("[THEIA] PATCH /api/devices/[id] unhandled error:", outerErr)
-    return NextResponse.json({ error: "Internal error" }, { status: 500 })
+    const backendDevice = await res.json()
+    // Sync backend response into local store
+    store.updateDevice(id, backendDevice)
+    return NextResponse.json(backendDevice)
+  } catch (err) {
+    console.error("[THEIA] PATCH /api/devices/[id] error:", err)
+    return NextResponse.json(
+      { error: `Backend unreachable: ${(err as Error).message}` },
+      { status: 502 },
+    )
   }
 }
 

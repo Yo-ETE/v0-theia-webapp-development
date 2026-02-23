@@ -125,8 +125,10 @@ export async function PATCH(
     }
   }
 
-  // All retries failed
+  // All retries failed -- return error so frontend knows it failed
   console.error(`[THEIA] Mission PATCH ALL RETRIES FAILED for ${id}, body:`, JSON.stringify(body), "error:", lastErr)
-  if (localUpdated) return NextResponse.json(localUpdated)
-  return NextResponse.json({ id, ...body })
+  return NextResponse.json(
+    { error: `Backend unreachable after ${maxRetries} attempts` },
+    { status: 502 },
+  )
 }

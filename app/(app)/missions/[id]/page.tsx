@@ -106,6 +106,7 @@ export default function MissionDetailPage() {
   const [heatmapMode, setHeatmapMode] = useState(false)
   const [estimatePosition, setEstimatePosition] = useState(false)
   const [editingZoneId, setEditingZoneId] = useState<string | null>(null)
+  const [errorMsg, setErrorMsg] = useState<string | null>(null)
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const [replayDetections, setReplayDetections] = useState<Record<string, any>>({})
 
@@ -344,6 +345,7 @@ export default function MissionDetailPage() {
       // PATCH failed -- revert optimistic update by refetching real state
       await Promise.all([mutate(), mutateDevices()])
       setUnassigning(null)
+      setErrorMsg(`Erreur suppression TX: ${(err as Error).message}`)
     }
   }, [mission, id, mutate, mutateDevices, unassigning])
 
@@ -556,6 +558,12 @@ export default function MissionDetailPage() {
     <>
       <TopHeader title={mission.name} description={mission.description} />
       <main className="flex-1 overflow-auto p-4">
+        {errorMsg && (
+          <div className="mb-3 flex items-center justify-between rounded-lg border border-destructive/50 bg-destructive/10 px-4 py-2 text-sm text-destructive">
+            <span>{errorMsg}</span>
+            <Button variant="ghost" size="sm" className="h-6 px-2 text-destructive" onClick={() => setErrorMsg(null)}>X</Button>
+          </div>
+        )}
         <div className="flex flex-col gap-4">
           {/* Breadcrumb + tab triggers */}
           <div className="flex items-center justify-between">
