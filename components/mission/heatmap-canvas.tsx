@@ -119,68 +119,93 @@ export default function HeatmapCanvas({
     ctx.clearRect(0, 0, w, h)
     if (!enabled || points.length === 0) return
 
-    const radiusPx = Math.max(8, Math.round(metersToPixels(map, radiusMeters)))
+    const radiusPxFull = Math.max(8, Math.round(metersToPixels(map, radiusMeters)))
 
-    // ── Phase 1: Draw gray-scale intensity on an offscreen canvas ──
-    // Use radialGradient circles (GPU-accelerated) with additive blending
-    const offscreen = document.createElement("canvas")
-    offscreen.width = w
-    offscreen.height = h
-    const octx = offscreen.getContext("2d")
-    if (!octx) return
-
-    // Clip to zone polygons so we only draw inside zones
-    if (zonePolygons.length > 0) {
-      octx.beginPath()
-      for (const poly of zonePolygons) {
-        for (let i = 0; i < poly.length; i++) {
-          const px = map.latLngToContainerPoint([poly[i][0], poly[i][1]])
-          if (i === 0) octx.moveTo(px.x, px.y)
-          else octx.lineTo(px.x, px.y)
-        }
-        octx.closePath()
-      }
-      octx.clip()
-    }
+    // ── Performance: downscale if radius is large (zoom 20+) ──
+    // At high zoom, radiusPx can be 1000+ px. Working at full res would be
+    // O(n * radiusPx^2) per point which freezes the browser.
+    // We compute on a smaller buffer and then upscale.
+    const MAX_RADIUS_PX = 80
+    const scale = radiusPxFull > MAX_RADIUS_PX ? MAX_RADIUS_PX / radiusPxFull : 1
+    const sw = Math.max(1, Math.round(w * scale))  // small width
+    const sh = Math.max(1, Math.round(h * scale))  // small height
+    const radiusPx = Math.round(radiusPxFull * scale)
 
     // Find max weight for intensity scaling
     let maxW = 1
     for (const pt of points) if (pt.weight > maxW) maxW = pt.weight
 
-    // Draw each point as a radialGradient circle (white center -> transparent edge)
-    // Using "lighter" composite: overlapping splats accumulate brightness
-    octx.globalCompositeOperation = "lighter"
+    // ── Phase 1: Accumulate intensity in a downscaled Float32 buffer ──
+    const intensity = new Float32Array(sw * sh)
+
     for (const pt of points) {
       const px = map.latLngToContainerPoint([pt.lat, pt.lon])
-      const cx = px.x
-      const cy = px.y
-      // Skip off-screen points
-      if (cx < -radiusPx || cy < -radiusPx || cx > w + radiusPx || cy > h + radiusPx) continue
+      const cx = px.x * scale
+      const cy = px.y * scale
+      if (cx < -radiusPx || cy < -radiusPx || cx > sw + radiusPx || cy > sh + radiusPx) continue
 
-      const strength = Math.min(1, pt.weight / maxW)
-      // Use intensity 0.3-1.0 based on weight (avoid pure black for low-weight points)
-      const alpha = 0.3 + 0.7 * strength
+      const strength = pt.weight / maxW
 
-      const gradient = octx.createRadialGradient(cx, cy, 0, cx, cy, radiusPx)
-      gradient.addColorStop(0, `rgba(255,255,255,${alpha.toFixed(2)})`)
-      gradient.addColorStop(0.4, `rgba(255,255,255,${(alpha * 0.6).toFixed(2)})`)
-      gradient.addColorStop(1, "rgba(255,255,255,0)")
-      octx.fillStyle = gradient
-      octx.fillRect(cx - radiusPx, cy - radiusPx, radiusPx * 2, radiusPx * 2)
+      const x0 = Math.max(0, Math.floor(cx - radiusPx))
+      const x1 = Math.min(sw - 1, Math.ceil(cx + radiusPx))
+      const y0 = Math.max(0, Math.floor(cy - radiusPx))
+      const y1 = Math.min(sh - 1, Math.ceil(cy + radiusPx))
+      const rSq = radiusPx * radiusPx
+
+      for (let py = y0; py <= y1; py++) {
+        const dy = py - cy
+        const dySq = dy * dy
+        for (let px2 = x0; px2 <= x1; px2++) {
+          const dx = px2 - cx
+          const distSq = dx * dx + dySq
+          if (distSq > rSq) continue
+          const g = Math.exp(-3 * distSq / rSq)
+          intensity[py * sw + px2] += g * strength
+        }
+      }
     }
 
-    // ── Phase 2: Read grayscale intensity and map through thermal palette ──
-    const offData = octx.getImageData(0, 0, w, h)
-    const offPx = offData.data
-    const imageData = ctx.createImageData(w, h)
-    const out = imageData.data
+    // ── Phase 2: Clip to zone polygons (at downscaled resolution) ──
+    const offscreen = document.createElement("canvas")
+    offscreen.width = sw
+    offscreen.height = sh
+    const octx = offscreen.getContext("2d")
+    if (!octx) return
 
-    for (let i = 0; i < w * h; i++) {
-      // The red channel captures the accumulated brightness (all channels are equal for white)
-      const gray = offPx[i * 4]  // 0-255
-      if (gray < 5) continue  // skip near-zero (noise floor)
+    if (zonePolygons.length > 0) {
+      octx.fillStyle = "#fff"
+      octx.beginPath()
+      for (const poly of zonePolygons) {
+        for (let i = 0; i < poly.length; i++) {
+          const pp = map.latLngToContainerPoint([poly[i][0], poly[i][1]])
+          if (i === 0) octx.moveTo(pp.x * scale, pp.y * scale)
+          else octx.lineTo(pp.x * scale, pp.y * scale)
+        }
+        octx.closePath()
+      }
+      octx.fill()
+      const maskData = octx.getImageData(0, 0, sw, sh).data
+      for (let i = 0; i < sw * sh; i++) {
+        if (maskData[i * 4] === 0) intensity[i] = 0
+      }
+    }
 
-      const idx = gray * 4
+    // ── Phase 3: Normalize intensity and map to thermal palette ──
+    let maxI = 0
+    for (let i = 0; i < sw * sh; i++) if (intensity[i] > maxI) maxI = intensity[i]
+    if (maxI < 0.001) return
+
+    // Create the colorized image at small resolution
+    const smallImg = octx.createImageData(sw, sh)
+    const out = smallImg.data
+    const noiseFloor = maxI * 0.02
+
+    for (let i = 0; i < sw * sh; i++) {
+      const v = intensity[i]
+      if (v < noiseFloor) continue
+      const normalized = (v - noiseFloor) / (maxI - noiseFloor)
+      const paletteIdx = Math.min(255, Math.round(25 + normalized * 230))
+      const idx = paletteIdx * 4
       const oi = i * 4
       out[oi]     = PALETTE[idx]
       out[oi + 1] = PALETTE[idx + 1]
@@ -188,7 +213,11 @@ export default function HeatmapCanvas({
       out[oi + 3] = Math.round(PALETTE[idx + 3] * opacity)
     }
 
-    ctx.putImageData(imageData, 0, 0)
+    // ── Phase 4: Upscale to full resolution with smoothing ──
+    octx.putImageData(smallImg, 0, 0)
+    ctx.imageSmoothingEnabled = true
+    ctx.imageSmoothingQuality = "high"
+    ctx.drawImage(offscreen, 0, 0, sw, sh, 0, 0, w, h)
   }, [map, points, radiusMeters, opacity, enabled, zonePolygons])
 
   // Redraw on map events
