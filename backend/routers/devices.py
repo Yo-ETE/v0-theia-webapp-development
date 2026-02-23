@@ -98,8 +98,15 @@ async def patch_device(device_id: str, body: DeviceUpdate):
     if "enabled" in updates:
         updates["enabled"] = 1 if updates["enabled"] else 0
 
-    # Convert None values to empty string for TEXT columns (SQLite compat)
-    nullable_text_cols = {"mission_id", "zone_id", "zone_label", "side", "zone", "position"}
+    # Columns with FOREIGN KEY constraints MUST be set to None (SQL NULL), not ""
+    # Otherwise SQLite rejects "" as an invalid FK reference
+    fk_cols = {"mission_id"}
+    for col in fk_cols:
+        if col in updates and (updates[col] is None or updates[col] == ""):
+            updates[col] = None
+
+    # Convert None to empty string for non-FK TEXT columns (SQLite compat)
+    nullable_text_cols = {"zone_id", "zone_label", "side", "zone", "position"}
     for col in nullable_text_cols:
         if col in updates and updates[col] is None:
             updates[col] = ""
