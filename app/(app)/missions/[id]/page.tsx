@@ -332,10 +332,12 @@ export default function MissionDetailPage() {
         } as Partial<import("@/lib/types").Device>),
         updateMission(id, { zones: updatedZones, floors: updatedFloors, device_count: newDeviceCount }),
       ])
-      console.log("[v0] Unassign PATCH response:", devRes)
+      // Verify the PATCH actually cleared mission_id
+      if (devRes && (devRes as Record<string, unknown>).mission_id) {
+        console.error("[THEIA] PATCH did not clear mission_id! Response:", devRes)
+      }
       // Backend PATCH succeeded -- revalidate SWR caches immediately
       await Promise.all([mutate(), mutateDevices()])
-      // Clear unassigning guard after revalidation completes
       setUnassigning(null)
     } catch (err) {
       console.error("[THEIA] Failed to unassign device:", err)
@@ -792,11 +794,7 @@ export default function MissionDetailPage() {
                             </div>
                           )}
                         </div>
-                        <span className="text-[10px] text-muted-foreground font-mono">{(() => {
-          const zoneDevs = missionDevices.filter(d => d.zone_id === zone.id)
-          console.log("[v0] zone", zone.id, "devices:", missionDevices.map(d => `${d.name}(zone_id=${d.zone_id})`), "matched:", zoneDevs.length)
-          return zoneDevs.length
-        })()} TX</span>
+                        <span className="text-[10px] text-muted-foreground font-mono">{missionDevices.filter(d => d.zone_id === zone.id).length} TX</span>
                         <button onClick={() => openEditZone(zone.id)}
                           className="text-[10px] text-muted-foreground hover:text-foreground transition-colors opacity-0 group-hover:opacity-100"
                           title="Edit zone name & sides"><MapPin className="h-3 w-3" /></button>

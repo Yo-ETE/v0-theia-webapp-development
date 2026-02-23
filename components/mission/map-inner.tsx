@@ -683,11 +683,8 @@ export default function MapInner({
     // So left = (-normalM[1], normalM[0])
     const leftM: [number, number] = [-normalM[1], normalM[0]]
 
-    // Check if there's a detection for this specific device first, then fall back to zone
-    const detByDev = effectiveByDevice[sp.device_id]
-    const detByZone = effectiveDetections[zone.id]
-    const det = detByDev ?? detByZone
-    console.log("[v0] sensorMarker", sp.device_name, "device_id=", sp.device_id, "detByDev?", !!detByDev, detByDev?.distance, "detByZone?", !!detByZone, detByZone?.distance, "effectiveByDevice keys=", Object.keys(effectiveByDevice))
+    // Per-device detection ONLY -- no zone fallback to prevent TX02 copying TX01
+    const det = effectiveByDevice[sp.device_id] || null
     let detectionLatLon: [number, number] | null = null
     if (det?.presence && det.distance > 0) {
       const distM = det.distance / 100 // cm -> meters
@@ -776,6 +773,15 @@ export default function MapInner({
             if (!instance.getPane("label-pane")) {
               const labelPane = instance.createPane("label-pane")
               labelPane.style.zIndex = "640"
+            }
+            // Lower the built-in tooltipPane so side label permanent tooltips sit below detection arcs
+            // Detection points use detection-pane (z=700) which renders above this
+            const tooltipPane = instance.getPane("tooltipPane")
+            if (tooltipPane) tooltipPane.style.zIndex = "650"
+            // Create a separate pane for detection tooltips (above detection lines)
+            if (!instance.getPane("detection-tooltip-pane")) {
+              const dtPane = instance.createPane("detection-tooltip-pane")
+              dtPane.style.zIndex = "710"
             }
           }
         }}
