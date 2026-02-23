@@ -8,14 +8,10 @@ export async function GET(
 ) {
   const { id } = await params
 
-  // Always check local store first (has freshest coords/zones)
+  // Local store has freshest coords/zones (drawn in UI)
   const local = store.getMission(id)
 
-  if (isPreviewMode()) {
-    if (!local) return NextResponse.json({ error: "Not found" }, { status: 404 })
-    return NextResponse.json(local)
-  }
-
+  // Always try the real backend first (even in preview mode)
   try {
     const res = await proxyToBackend(`/api/missions/${id}`)
     if (!res.ok) throw new Error(`Backend ${res.status}`)
@@ -53,10 +49,7 @@ export async function DELETE(
   const { id } = await params
   store.deleteMission(id)
 
-  if (isPreviewMode()) {
-    return NextResponse.json({ ok: true })
-  }
-
+  // Always try backend first
   try {
     const res = await proxyToBackend(`/api/missions/${id}`, { method: "DELETE" })
     if (!res.ok) throw new Error(`Backend ${res.status}`)
@@ -77,11 +70,7 @@ export async function PATCH(
   // Always update local store first -- never lose data
   const localUpdated = store.updateMission(id, body)
 
-  if (isPreviewMode()) {
-    if (!localUpdated) return NextResponse.json({ error: "Not found" }, { status: 404 })
-    return NextResponse.json(localUpdated)
-  }
-
+  // Always try the real backend (even in preview mode)
   // Retry up to 2 times for critical status changes
   const maxRetries = body.status ? 2 : 1
   let lastErr: unknown = null

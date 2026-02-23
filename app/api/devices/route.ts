@@ -2,29 +2,25 @@ import { NextResponse, type NextRequest } from "next/server"
 import { isPreviewMode, proxyToBackend } from "@/lib/api-mode"
 import { store } from "@/lib/preview-store"
 
-export async function GET() {
-  if (isPreviewMode()) {
-    return NextResponse.json(store.getDevices())
-  }
+export async function GET(request: NextRequest) {
+  const includeDisabled = request.nextUrl.searchParams.get("include_disabled") === "true"
+  const qs = includeDisabled ? "?include_disabled=true" : ""
+
+  // Always try the real backend first (even in preview mode)
   try {
-    const res = await proxyToBackend("/api/devices")
+    const res = await proxyToBackend(`/api/devices${qs}`)
     if (!res.ok) throw new Error(`Backend ${res.status}`)
     const devices = await res.json()
-
-    // Sync backend devices into local store for fallback
+    // Sync backend into local store for fallback
     for (const dev of devices) {
       const existing = store.getDevice(dev.id)
-      if (existing) {
-        store.updateDevice(dev.id, dev)
-      } else {
-        store.createDevice({ ...dev })
-      }
+      if (existing) store.updateDevice(dev.id, dev)
+      else store.createDevice({ ...dev })
     }
     return NextResponse.json(devices)
-  } catch (err) {
-    const fallback = store.getDevices()
-
-    return NextResponse.json(fallback)
+  } catch {
+    // Backend unreachable -- fall back to local store
+    return NextResponse.json(store.getDevices())
   }
 }
 
@@ -40,10 +36,7 @@ export async function POST(request: NextRequest) {
     serial_port: body.serial_port ?? "",
   })
 
-  if (isPreviewMode()) {
-    return NextResponse.json(localDevice, { status: 201 })
-  }
-
+  // Always try backend first
   try {
     const res = await proxyToBackend("/api/devices", {
       method: "POST",

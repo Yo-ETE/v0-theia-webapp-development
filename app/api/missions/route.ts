@@ -3,21 +3,17 @@ import { isPreviewMode, proxyToBackend } from "@/lib/api-mode"
 import { store } from "@/lib/preview-store"
 
 export async function GET() {
-  if (isPreviewMode()) {
-    return NextResponse.json(store.getMissions())
-  }
+  // Always try the real backend first (even in preview mode)
   try {
     const res = await proxyToBackend("/api/missions")
     if (!res.ok) throw new Error(`Backend ${res.status}`)
     const missions = await res.json()
     // Sync backend data into local store for resilience
-    // IMPORTANT: never overwrite local geo/zone data with backend defaults
     for (const m of missions) {
       const existing = store.getMission(m.id)
       if (!existing) {
         store.createMission(m)
       } else {
-        // Only update non-geo backend-authoritative fields
         store.updateMission(m.id, {
           status: m.status,
           event_count: m.event_count,
@@ -29,6 +25,7 @@ export async function GET() {
     }
     return NextResponse.json(missions)
   } catch {
+    // Backend unreachable -- fall back to local store
     return NextResponse.json(store.getMissions())
   }
 }
@@ -39,10 +36,7 @@ export async function POST(request: NextRequest) {
   // Always store locally first so coordinates are never lost
   const localMission = store.createMission(body)
 
-  if (isPreviewMode()) {
-    return NextResponse.json(localMission, { status: 201 })
-  }
-
+  // Always try backend first
   try {
     const res = await proxyToBackend("/api/missions", {
       method: "POST",

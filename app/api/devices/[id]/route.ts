@@ -6,17 +6,15 @@ export async function PATCH(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> },
 ) {
+  const { id } = await params
+  const body = await request.json()
+
+  // Always update local store
+  store.updateDevice(id, body)
+
+  // Always try the real backend first (even in preview mode)
+  // This is critical: the backend SQLite is the source of truth
   try {
-    const { id } = await params
-    const body = await request.json()
-
-    if (isPreviewMode()) {
-      const localDevice = store.updateDevice(id, body)
-      if (!localDevice) return NextResponse.json({ error: "Not found" }, { status: 404 })
-      return NextResponse.json(localDevice)
-    }
-
-    // Pi mode: backend is the source of truth -- MUST succeed
     const res = await proxyToBackend(`/api/devices/${id}`, {
       method: "PATCH",
       body: JSON.stringify(body),
@@ -24,14 +22,23 @@ export async function PATCH(
     if (!res.ok) {
       const errBody = await res.text().catch(() => "Unknown error")
       console.error("[THEIA] Backend PATCH failed:", res.status, errBody)
+      // If in preview mode, fall back to local store
+      if (isPreviewMode()) {
+        const local = store.updateDevice(id, body)
+        return NextResponse.json(local ?? { id, ...body })
+      }
       return NextResponse.json({ error: `Backend error: ${res.status}` }, { status: res.status })
     }
     const backendDevice = await res.json()
-    // Sync backend response into local store
     store.updateDevice(id, backendDevice)
     return NextResponse.json(backendDevice)
   } catch (err) {
-    console.error("[THEIA] PATCH /api/devices/[id] error:", err)
+    console.error("[THEIA] Backend unreachable for PATCH device:", (err as Error).message)
+    // If in preview mode (no backend expected), return local store
+    if (isPreviewMode()) {
+      const local = store.updateDevice(id, body)
+      return NextResponse.json(local ?? { id, ...body })
+    }
     return NextResponse.json(
       { error: `Backend unreachable: ${(err as Error).message}` },
       { status: 502 },
@@ -50,10 +57,7 @@ export async function DELETE(
   const idx = devices.findIndex((d) => d.id === id)
   if (idx !== -1) devices.splice(idx, 1)
 
-  if (isPreviewMode()) {
-    return NextResponse.json({ ok: true })
-  }
-
+  // Always try backend first
   try {
     const res = await proxyToBackend(`/api/devices/${id}`, { method: "DELETE" })
     if (!res.ok) throw new Error(`Backend ${res.status}`)

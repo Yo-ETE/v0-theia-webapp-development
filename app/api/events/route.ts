@@ -8,10 +8,7 @@ export async function DELETE(request: NextRequest) {
   const { searchParams } = request.nextUrl
   const missionId = searchParams.get("mission_id")
 
-  if (isPreviewMode()) {
-    return NextResponse.json({ ok: true })
-  }
-
+  // Always try backend first
   try {
     const qs = missionId ? `?mission_id=${missionId}` : ""
     const res = await proxyToBackend(`/api/events${qs}`, { method: "DELETE" })
@@ -26,10 +23,7 @@ export async function GET(request: NextRequest) {
   const { searchParams } = request.nextUrl
   const missionId = searchParams.get("mission_id")
 
-  if (isPreviewMode()) {
-    return NextResponse.json([])
-  }
-
+  // Always try backend first
   try {
     const qs = searchParams.toString()
     const res = await proxyToBackend(`/api/events${qs ? `?${qs}` : ""}`)
