@@ -149,6 +149,7 @@ export default function MissionDetailPage() {
     // Also track by device_id for multi-TX per zone
     if (d.device_id) {
       setLiveByDevice(prev => ({ ...prev, [d.device_id]: d }))
+      console.log("[v0] SSE device_id=", d.device_id, "tx_id=", d.tx_id, "dist=", d.distance, "zone=", d.zone_id)
     }
   }, [id, mutateEvents])
 
@@ -320,7 +321,7 @@ export default function MissionDetailPage() {
 
     // Persist both device clear + mission zone update, then revalidate
     try {
-      await Promise.all([
+      const [devRes] = await Promise.all([
         updateDevice(deviceId, {
           mission_id: "",
           zone_id: "",
@@ -331,10 +332,11 @@ export default function MissionDetailPage() {
         } as Partial<import("@/lib/types").Device>),
         updateMission(id, { zones: updatedZones, floors: updatedFloors, device_count: newDeviceCount }),
       ])
-      // Backend PATCH succeeded -- revalidate SWR caches
+      console.log("[v0] Unassign PATCH response:", devRes)
+      // Backend PATCH succeeded -- revalidate SWR caches immediately
       await Promise.all([mutate(), mutateDevices()])
-      // Keep filtering device out until well past the next SWR refresh (30s)
-      setTimeout(() => setUnassigning(null), 35000)
+      // Clear unassigning guard after revalidation completes
+      setUnassigning(null)
     } catch (err) {
       console.error("[THEIA] Failed to unassign device:", err)
       // PATCH failed -- revert optimistic update by refetching real state
@@ -487,8 +489,7 @@ export default function MissionDetailPage() {
   const missionDevices = allDevices?.filter((d) =>
     d.enabled && d.mission_id === id && d.zone_id && d.id !== unassigning
   ) ?? []
-  console.log("[v0] missionDevices:", missionDevices.map(d => `${d.name} zone=${d.zone_id} side=${d.side} enabled=${d.enabled} mid=${d.mission_id}`))
-  console.log("[v0] allDevices count:", allDevices?.length, "unassigning:", unassigning)
+
   // Devices available to assign: enabled devices not currently placed in this mission
   const unassigned = allDevices?.filter((d) => {
     if (!d.enabled) return false  // Skip soft-deleted devices
@@ -791,7 +792,11 @@ export default function MissionDetailPage() {
                             </div>
                           )}
                         </div>
-                        <span className="text-[10px] text-muted-foreground font-mono">{missionDevices.filter(d => d.zone_id === zone.id).length} TX</span>
+                        <span className="text-[10px] text-muted-foreground font-mono">{(() => {
+          const zoneDevs = missionDevices.filter(d => d.zone_id === zone.id)
+          console.log("[v0] zone", zone.id, "devices:", missionDevices.map(d => `${d.name}(zone_id=${d.zone_id})`), "matched:", zoneDevs.length)
+          return zoneDevs.length
+        })()} TX</span>
                         <button onClick={() => openEditZone(zone.id)}
                           className="text-[10px] text-muted-foreground hover:text-foreground transition-colors opacity-0 group-hover:opacity-100"
                           title="Edit zone name & sides"><MapPin className="h-3 w-3" /></button>

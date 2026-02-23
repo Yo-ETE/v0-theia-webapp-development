@@ -684,7 +684,10 @@ export default function MapInner({
     const leftM: [number, number] = [-normalM[1], normalM[0]]
 
     // Check if there's a detection for this specific device first, then fall back to zone
-    const det = effectiveByDevice[sp.device_id] ?? effectiveDetections[zone.id]
+    const detByDev = effectiveByDevice[sp.device_id]
+    const detByZone = effectiveDetections[zone.id]
+    const det = detByDev ?? detByZone
+    console.log("[v0] sensorMarker", sp.device_name, "device_id=", sp.device_id, "detByDev?", !!detByDev, detByDev?.distance, "detByZone?", !!detByZone, detByZone?.distance, "effectiveByDevice keys=", Object.keys(effectiveByDevice))
     let detectionLatLon: [number, number] | null = null
     if (det?.presence && det.distance > 0) {
       const distM = det.distance / 100 // cm -> meters
@@ -764,10 +767,15 @@ export default function MapInner({
           if (instance && !mapInstanceSet.current) {
             mapInstanceSet.current = true
             setMapInstance(instance)
-            // Create a custom pane for detection elements (above tooltipPane z=650)
+            // Create a custom pane for detection elements well above tooltips (z=650)
             if (!instance.getPane("detection-pane")) {
               const pane = instance.createPane("detection-pane")
-              pane.style.zIndex = "660"
+              pane.style.zIndex = "700"
+            }
+            // Create a lower pane for zone side labels (below detection lines)
+            if (!instance.getPane("label-pane")) {
+              const labelPane = instance.createPane("label-pane")
+              labelPane.style.zIndex = "640"
             }
           }
         }}
@@ -945,7 +953,7 @@ export default function MapInner({
           )
         })()}
 
-        {/* ── Side labels with distance on saved zones ── */}
+        {/* ── Side labels with distance on saved zones (label-pane = below detection lines) ── */}
         {(zones ?? []).map((zone) =>
           zone.polygon?.length >= 2
             ? zone.polygon.map((pt, idx) => {
@@ -961,6 +969,7 @@ export default function MapInner({
                     key={`side-${zone.id}-${key}`}
                     center={[mLat, mLon]}
                     radius={0}
+                    pane="label-pane"
                     pathOptions={{ opacity: 0, fillOpacity: 0 }}
                   >
                     <Tooltip permanent direction="center">
@@ -989,6 +998,7 @@ export default function MapInner({
               key={`area-${zone.id}`}
               center={centroid}
               radius={0}
+              pane="label-pane"
               pathOptions={{ opacity: 0, fillOpacity: 0 }}
             >
               <Tooltip permanent direction="bottom" offset={[0, 12]} >
@@ -1010,6 +1020,7 @@ export default function MapInner({
             key={`sensor-${sm.id}`}
             center={sm.sensorPos}
             radius={5}
+            pane="label-pane"
             pathOptions={{
               color: sm.zoneColor,
               fillColor: sm.zoneColor,
