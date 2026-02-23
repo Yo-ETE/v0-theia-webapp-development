@@ -116,6 +116,8 @@ export default function MissionDetailPage() {
   // ── Live SSE detections ──
   const [liveDetections, setLiveDetections] = useState<LiveDetection[]>([])
   const [liveByZone, setLiveByZone] = useState<Record<string, LiveDetection>>({})
+  // Also track by device_id for multi-TX per zone support
+  const [liveByDevice, setLiveByDevice] = useState<Record<string, LiveDetection>>({})
   const feedRef = useRef<HTMLDivElement>(null)
 
   // SSE handler: accumulate live detections for this mission
@@ -142,6 +144,10 @@ export default function MissionDetailPage() {
     // (including presence: false to trigger stale transition)
     if (d.zone_id) {
       setLiveByZone(prev => ({ ...prev, [d.zone_id!]: d }))
+    }
+    // Also track by device_id for multi-TX per zone
+    if (d.device_id) {
+      setLiveByDevice(prev => ({ ...prev, [d.device_id]: d }))
     }
   }, [id, mutateEvents])
 
@@ -675,8 +681,9 @@ export default function MissionDetailPage() {
                       zoom={mission.zoom ?? 19}
                       zones={zones}
                       events={eventList}
-                      liveDetections={effectiveLiveByZone}
-                      sensorPlacements={sensorPlacements}
+  liveDetections={effectiveLiveByZone}
+  liveByDevice={liveByDevice}
+  sensorPlacements={sensorPlacements}
                       heatmapMode={heatmapMode}
                       className="h-[500px]"
                       drawingMode={drawingMode}
@@ -805,7 +812,8 @@ export default function MissionDetailPage() {
                       Click a zone or the + button to assign TX devices
                     </p>
                   ) : missionDevices.map((d) => {
-                    const detRaw = effectiveLiveByZone[d.zone_id ?? ""]
+                    // Prefer device-level detection (multi-TX per zone), fall back to zone-level
+                    const detRaw = liveByDevice[d.id] ?? effectiveLiveByZone[d.zone_id ?? ""]
                     const det = (detRaw?.presence && detRaw?.distance > 0) ? detRaw : null
                     return (
                       <div key={d.id} className="flex items-center gap-2 text-xs group">

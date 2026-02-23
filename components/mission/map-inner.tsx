@@ -40,6 +40,7 @@ interface MapInnerProps {
   zones?: Zone[]
   events?: DetectionEvent[]
   liveDetections?: Record<string, LiveDetection>
+  liveByDevice?: Record<string, LiveDetection>
   sensorPlacements?: SensorPlacement[]
   heatmapMode?: boolean
   className?: string
@@ -108,6 +109,7 @@ export default function MapInner({
   zones = [],
   events = [],
   liveDetections = {},
+  liveByDevice = {},
   sensorPlacements = [],
   heatmapMode = false,
   className,
@@ -491,14 +493,15 @@ export default function MapInner({
     try {
     if (!heatmapMode || !zones.length || events.length === 0) return []
 
-    // Build a lookup: zone_id -> sensor info (position, normal, left vectors in meters)
+    // Build lookups: device_id -> SensorGeo AND zone_id -> SensorGeo[] (fallback)
     type SensorGeo = {
       sensorM: [number, number]
       sensorLL: [number, number]
       normalM: [number, number]
       leftM: [number, number]
     }
-    const sensorGeo: Record<string, SensorGeo[]> = {}
+    const sensorByDevice: Record<string, SensorGeo> = {}
+    const sensorByZone: Record<string, SensorGeo[]> = {}
     for (const sp of sensorPlacements) {
       const zone = zones.find(z => z.id === sp.zone_id)
       if (!zone) continue
@@ -510,44 +513,49 @@ export default function MapInner({
       const nM = inwardNormalM(edge[0], edge[1], centroid)
       const lM: [number, number] = [-nM[1], nM[0]]
       const sM = toMeters(sLL)
-      if (!sensorGeo[sp.zone_id]) sensorGeo[sp.zone_id] = []
-      sensorGeo[sp.zone_id].push({ sensorM: sM, sensorLL: sLL, normalM: nM, leftM: lM })
+      const geo: SensorGeo = { sensorM: sM, sensorLL: sLL, normalM: nM, leftM: lM }
+      sensorByDevice[sp.device_id] = geo
+      if (!sensorByZone[sp.zone_id]) sensorByZone[sp.zone_id] = []
+      sensorByZone[sp.zone_id].push(geo)
     }
 
     const pts: HeatPoint[] = []
-    // Count occurrences at each grid cell for weight accumulation
     const gridCounts: Record<string, number> = {}
 
     for (const evt of events) {
       const p = evt.payload ?? {}
       const dist = Number(p.distance ?? 0)
       if (dist <= 0) continue
+
       const zId = evt.zone_id
       if (!zId) continue
-      const sensors = sensorGeo[zId]
-      if (!sensors || sensors.length === 0) continue
 
-      // Use first sensor for this zone
-      const sg = sensors[0]
+      // Match event to correct sensor: by device_id first, then fallback to zone
+      const sg = (evt.device_id ? sensorByDevice[evt.device_id] : null)
+        ?? sensorByZone[zId]?.[0]
+      if (!sg) continue
       const dm = dist / 100 // cm to meters
 
-      // Try 3 methods in priority order:
-      // 1) LD2450 x,y -> exact 2D position
-      // 2) angle + distance -> polar projection
-      // 3) distance only -> project along inward normal
-      // NOTE: payload x,y are in cm (TX firmware divides raw mm by 10 for LoRa)
+      // Projection method depends on sensor type:
+      // - ld2450: has real x,y (cm) -> exact 2D position
+      // - c4001/depth_only: only distance -> project along inward normal
+      // - gravity_mw: only distance -> project along inward normal
+      // NOTE: LD2450 payload x,y are in cm (TX firmware divides raw mm by 10)
+      const sensorType = String(p.sensor_type ?? "ld2450")
+      const isDepthOnly = sensorType === "c4001" || sensorType === "gravity_mw" || sensorType === "depth_only"
+
       const x_cm = Number(p.x ?? 0)
       const y_cm = Number(p.y ?? 0)
-      const hasXY = (x_cm !== 0 || y_cm !== 0)
+      // LD2450 has real lateral (x) data; C4001 sends x=0 always
+      const hasRealXY = !isDepthOnly && (x_cm !== 0 || y_cm !== 0)
       const evtAngle = Number(p.angle ?? 0)
-      const hasAngle = evtAngle !== 0
+      const hasAngle = !isDepthOnly && evtAngle !== 0
 
       let ptM: [number, number]
       // rightM = -leftM: points right when facing the inward normal direction
-      // LD2450 convention: x > 0 = target is to the RIGHT, angle > 0 = right
       const rM: [number, number] = [-sg.leftM[0], -sg.leftM[1]]
 
-      if (hasXY) {
+      if (hasRealXY) {
         // LD2450 x,y in cm: x = lateral (+ = right), y = depth (always positive)
         const xm = x_cm / 100   // cm to meters
         const ym = y_cm / 100   // cm to meters
@@ -561,7 +569,6 @@ export default function MapInner({
         const rad = evtAngle * Math.PI / 180
         const cosA = Math.cos(rad)
         const sinA = Math.sin(rad)
-        // Rotate: forward component along normal, lateral along rightM
         const dirX = cosA * sg.normalM[0] + sinA * rM[0]
         const dirY = cosA * sg.normalM[1] + sinA * rM[1]
         ptM = [
@@ -569,7 +576,7 @@ export default function MapInner({
           sg.sensorM[1] + dm * dirY,
         ]
       } else {
-        // Depth-only: project straight along inward normal
+        // Depth-only (C4001, gravity_mw, or no x/y): project along inward normal
         ptM = [
           sg.sensorM[0] + dm * sg.normalM[0],
           sg.sensorM[1] + dm * sg.normalM[1],
@@ -629,8 +636,8 @@ export default function MapInner({
     // So left = (-normalM[1], normalM[0])
     const leftM: [number, number] = [-normalM[1], normalM[0]]
 
-    // Check if there's a live (or stale) detection for this zone
-    const det = effectiveDetections[zone.id]
+    // Check if there's a live detection for this specific device first, then fall back to zone
+    const det = liveByDevice[sp.device_id] ?? effectiveDetections[zone.id]
     let detectionLatLon: [number, number] | null = null
     if (det?.presence && det.distance > 0) {
       const distM = det.distance / 100 // cm -> meters

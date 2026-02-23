@@ -278,6 +278,7 @@ export default function DevicesPage() {
                 </SelectTrigger>
                 <SelectContent>
                   <SelectItem value="microwave_tx">Microwave TX (LD2450/LD2410)</SelectItem>
+                  <SelectItem value="c4001">Gravity C4001 (depth-only)</SelectItem>
                   <SelectItem value="pir_tx">PIR TX</SelectItem>
                   <SelectItem value="vibration_tx">Vibration TX</SelectItem>
                   <SelectItem value="magnetic_tx">Magnetic Contact TX</SelectItem>

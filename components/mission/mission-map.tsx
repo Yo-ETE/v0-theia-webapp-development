@@ -22,6 +22,7 @@ interface MissionMapProps {
   zones: Zone[]
   events?: DetectionEvent[]
   liveDetections?: Record<string, LiveDetection>
+  liveByDevice?: Record<string, LiveDetection>
   sensorPlacements?: {
     device_id: string
     device_name: string

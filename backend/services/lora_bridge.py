@@ -110,8 +110,9 @@ class PortReader:
             self._last_empty_ts[key] = time.time()
             self._presence_count[key] = 0
             self._tx_validated[key] = True
+            # sensor_type will be overridden from DB in _handle_detection if device is known
             await self._handle_detection(
-                tx_id=tx_id, sensor_type="ld2450",
+                tx_id=tx_id, sensor_type="unknown",
                 x=0, y=0, d=0, v=0,
                 angle=0.0, presence=False, vbatt=vbatt,
             )
@@ -153,7 +154,16 @@ class PortReader:
         else:
             presence = (x != 0 or y != 0) and 15 < d < 600
 
-        sensor_type = "gravity_mw" if has_presence_only else "ld2450"
+        # Detect sensor type:
+        # - gravity_mw: presence-only sensor (no x,y)
+        # - c4001: depth-only sensor (x always 0, y == d)
+        # - ld2450: full 2D sensor (real x,y coordinates)
+        if has_presence_only:
+            sensor_type = "gravity_mw"
+        elif x == 0 and y == d and d > 0:
+            sensor_type = "c4001"
+        else:
+            sensor_type = "ld2450"
 
         # Phantom suppression is handled ONLY in _handle_detection (single gate).
         await self._handle_detection(
@@ -174,15 +184,24 @@ class PortReader:
 
         if tx_id:
             cursor = await db.execute(
-                "SELECT id, mission_id, zone, zone_id, zone_label, side, name "
+                "SELECT id, mission_id, zone, zone_id, zone_label, side, name, type "
                 "FROM devices WHERE dev_eui=? AND enabled=1",
                 (tx_id,),
             )
             row = await cursor.fetchone()
+            if row:
+                # Override sensor_type from DB device type for known sensors
+                db_type = row["type"] or ""
+                if "c4001" in db_type.lower() or db_type == "depth_only":
+                    sensor_type = "c4001"
             if not row:
                 import uuid
                 did = str(uuid.uuid4())[:8]
-                dev_type = "gravity_mw" if sensor_type == "gravity_mw" else "microwave_tx"
+                # Detect C4001 pattern: x==0 and y==d (depth-only sensor)
+                is_c4001 = (x == 0 and y == d and d > 0) or sensor_type == "gravity_mw"
+                dev_type = "c4001" if is_c4001 else ("gravity_mw" if sensor_type == "gravity_mw" else "microwave_tx")
+                if is_c4001:
+                    sensor_type = "c4001"
                 await db.execute(
                     "INSERT INTO devices (id, dev_eui, name, type, serial_port, enabled) VALUES (?, ?, ?, ?, ?, 1)",
                     (did, tx_id, f"TX-{tx_id}", dev_type, self.port),
@@ -195,18 +214,22 @@ class PortReader:
                 )
                 await db.commit()
                 cursor = await db.execute(
-                    "SELECT id, mission_id, zone, zone_id, zone_label, side, name FROM devices WHERE id=?",
+                    "SELECT id, mission_id, zone, zone_id, zone_label, side, name, type FROM devices WHERE id=?",
                     (did,),
                 )
                 row = await cursor.fetchone()
 
         if not row:
             cursor = await db.execute(
-                "SELECT id, mission_id, zone, zone_id, zone_label, side, name "
+                "SELECT id, mission_id, zone, zone_id, zone_label, side, name, type "
                 "FROM devices WHERE serial_port=? AND enabled=1",
                 (self.port,),
             )
             row = await cursor.fetchone()
+            if row:
+                db_type = row["type"] or ""
+                if "c4001" in db_type.lower() or db_type == "depth_only":
+                    sensor_type = "c4001"
 
         device_id = row["id"] if row else None
         mission_id = row["mission_id"] if row else None
