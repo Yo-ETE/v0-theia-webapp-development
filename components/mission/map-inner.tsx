@@ -1005,7 +1005,7 @@ export default function MapInner({
                         background: "rgba(255,255,255,0.92)", padding: "1px 5px",
                         borderRadius: 3, border: `1px solid ${zone.color}`,
                       }}>
-                        {sideLabel || key} ({fmtDist(dist)})
+                        {sideLabel && sideLabel !== key ? `${sideLabel}: ${key}` : key} ({fmtDist(dist)})
                       </span>
                     </Tooltip>
                   </CircleMarker>

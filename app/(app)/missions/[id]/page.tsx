@@ -250,7 +250,7 @@ export default function MissionDetailPage() {
       labels[letter] = ""
       for (const idx of group) segmentToGroup[idx] = letter
     })
-    return { labels, segmentToGroup }
+    return { labels, segmentToGroup, debugBearings: bearings.map((b, i) => `${String.fromCharCode(65+i)}:${b.toFixed(1)}`) }
   }, [])
 
   // ── Zone drawing ──
@@ -258,7 +258,11 @@ export default function MissionDetailPage() {
     setPendingPolygon(polygon)
     setZoneName("")
     setZoneType("facade")
-    const { labels, segmentToGroup } = groupSidesByBearing(polygon)
+    const { labels, segmentToGroup, debugBearings } = groupSidesByBearing(polygon)
+    console.log("[v0] Polygon grouping:", polygon.length, "segments ->", Object.keys(labels).length, "groups")
+    console.log("[v0] Bearings per segment:", debugBearings)
+    console.log("[v0] segmentToGroup:", segmentToGroup)
+    console.log("[v0] Group labels:", labels)
     setSideLabels(labels)
     setSideGrouping(segmentToGroup)
     setZoneDialog(true)
@@ -277,17 +281,17 @@ export default function MissionDetailPage() {
       polygon: pendingPolygon,
       color: ZONE_COLORS[zones.length % ZONE_COLORS.length],
       devices: [],
-      // Build sides map: each edge index -> its group face label
-      // sideGrouping[i] = "A" means edge i belongs to group "A"
-      // sideLabels["A"] = "Nord" means group "A" has custom name "Nord"
-      // So sides["A"] = "Nord" for edge 0, sides["B"] = "Sud" for edge 1, etc.
-      // But we store per-segment: key=letter(idx), value=groupLabel:customName
+      // Build sides map: key = segment letter (A,B,C...), value = display label
+      // Segments in the same bearing group share the same label.
+      // If user gave a custom name (e.g. "Nord"), use it. Otherwise use the group letter.
       sides: (() => {
         const s: Record<string, string> = {}
         for (let i = 0; i < pendingPolygon.length; i++) {
           const groupKey = sideGrouping[i] ?? String.fromCharCode(65 + i)
           const customName = sideLabels[groupKey] ?? ""
-          s[String.fromCharCode(65 + i)] = customName
+          // Store custom name if set, otherwise store the group letter
+          // so parallel segments show the same label on the map
+          s[String.fromCharCode(65 + i)] = customName || groupKey
         }
         return s
       })(),
@@ -841,11 +845,19 @@ export default function MissionDetailPage() {
                           <p className="text-xs font-medium text-foreground truncate">{zone.label}</p>
                           <div className="flex items-center gap-1 flex-wrap">
                             <span className="text-[10px] text-muted-foreground">{zone.type}</span>
-                            {zone.sides && Object.entries(zone.sides).filter(([, v]) => v).length > 0 && (
-                              <span className="text-[9px] font-mono text-primary">
-                                [{Object.entries(zone.sides).filter(([, v]) => v).map(([k, v]) => `${k}:${v}`).join(" ")}]
-                              </span>
-                            )}
+                            {zone.sides && Object.entries(zone.sides).filter(([, v]) => v).length > 0 && (() => {
+                              // Group segments by face label for compact display
+                              const groups: Record<string, string[]> = {}
+                              for (const [seg, face] of Object.entries(zone.sides)) {
+                                if (!face) continue
+                                if (!groups[face]) groups[face] = []
+                                groups[face].push(seg)
+                              }
+                              const summary = Object.entries(groups).map(([face, segs]) =>
+                                segs.length === 1 && segs[0] === face ? face : `${face}:${segs.join("")}`
+                              ).join(" ")
+                              return <span className="text-[9px] font-mono text-primary">[{summary}]</span>
+                            })()}
                           </div>
                           {zoneDetection && (
                             <div className="flex items-center gap-2 mt-0.5">
