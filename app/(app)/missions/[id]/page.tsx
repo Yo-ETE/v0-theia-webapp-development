@@ -222,8 +222,9 @@ export default function MissionDetailPage() {
       // Normalize to 0-180 so parallel edges (0 vs 180) are grouped
       bearings.push(deg >= 180 ? deg - 180 : deg)
     }
-    // Group edges with bearing within 15 degrees of each other
-    const TOLERANCE = 15
+    // Group edges with bearing within 25 degrees of each other
+    // (hand-drawn polygons on mobile are imprecise)
+    const TOLERANCE = 25
     const groups: number[][] = []
     const assigned = new Set<number>()
     for (let i = 0; i < bearings.length; i++) {

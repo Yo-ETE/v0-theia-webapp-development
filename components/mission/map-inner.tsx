@@ -135,6 +135,7 @@ export default function MapInner({
   const [leafletL, setLeafletL] = useState<any>(null)
   const [drawPoints, setDrawPoints] = useState<[number, number][]>([])
   const mapRef = useRef<unknown>(null)
+  const dragSuppressRef = useRef(false)
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const [mapInstance, setMapInstance] = useState<any>(null)
   const mapInstanceSet = useRef(false)
@@ -356,6 +357,8 @@ export default function MapInner({
     }
     if (!drawingMode) return
     const handler = (e: { latlng: { lat: number; lng: number } }) => {
+      // Skip click if it was triggered right after a vertex drag
+      if (dragSuppressRef.current) { dragSuppressRef.current = false; return }
       setDrawPoints((prev) => [...prev, [e.latlng.lat, e.latlng.lng]])
     }
     map.on("click", handler)
@@ -1002,7 +1005,7 @@ export default function MapInner({
                         background: "rgba(255,255,255,0.92)", padding: "1px 5px",
                         borderRadius: 3, border: `1px solid ${zone.color}`,
                       }}>
-                        {key}{sideLabel ? `: ${sideLabel}` : ""} ({fmtDist(dist)})
+                        {sideLabel || key} ({fmtDist(dist)})
                       </span>
                     </Tooltip>
                   </CircleMarker>
@@ -1225,17 +1228,42 @@ export default function MapInner({
           </>
         )}
 
-        {/* Drawing vertices */}
-        {drawPoints.map((pt, i) => (
-          <CircleMarker
-            key={`vertex-${i}`} center={pt} radius={5}
-            pathOptions={{ color: "#0891b2", fillColor: "#0891b2", fillOpacity: 1, weight: 1 }}
-          >
-            <Tooltip permanent direction="top" offset={[0, -8]}>
-              <span style={{ fontSize: 9, fontWeight: 600, color: "#0891b2" }}>P{i + 1}</span>
-            </Tooltip>
-          </CircleMarker>
-        ))}
+        {/* Drawing vertices - draggable */}
+        {drawPoints.map((pt, i) => {
+          if (!RL || !leafletL) return null
+          const DragMarker = RL.Marker
+          const drawVertexIcon = leafletL.divIcon({
+            className: "",
+            html: `<div style="width:18px;height:18px;background:#0891b2;border:2px solid white;border-radius:50%;cursor:grab;box-shadow:0 1px 4px rgba(0,0,0,0.3);display:flex;align-items:center;justify-content:center;color:white;font-size:8px;font-weight:700">${i + 1}</div>`,
+            iconSize: [18, 18],
+            iconAnchor: [9, 9],
+          })
+          return (
+            <DragMarker
+              key={`vertex-${i}`}
+              position={pt}
+              icon={drawVertexIcon}
+              draggable={true}
+              eventHandlers={{
+                dragend: (e: { target: { getLatLng: () => { lat: number; lng: number } } }) => {
+                  dragSuppressRef.current = true
+                  const pos = e.target.getLatLng()
+                  setDrawPoints((prev) => {
+                    const next = [...prev]
+                    next[i] = [pos.lat, pos.lng]
+                    return next
+                  })
+                  // Reset suppress after a short delay in case click never fires
+                  setTimeout(() => { dragSuppressRef.current = false }, 300)
+                },
+              }}
+            >
+              <Tooltip permanent direction="top" offset={[0, -12]}>
+                <span style={{ fontSize: 9, fontWeight: 600, color: "#0891b2" }}>P{i + 1}</span>
+              </Tooltip>
+            </DragMarker>
+          )
+        })}
       </MapContainer>
 
       {/* Canvas-based Gaussian heatmap overlay */}
