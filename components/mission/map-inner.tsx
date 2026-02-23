@@ -532,12 +532,13 @@ export default function MapInner({
       const dm = dist / 100 // cm to meters
 
       // Try 3 methods in priority order:
-      // 1) LD2450 x,y (mm) -> exact 2D position
+      // 1) LD2450 x,y -> exact 2D position
       // 2) angle + distance -> polar projection
       // 3) distance only -> project along inward normal
-      const x_mm = Number(p.x ?? 0)
-      const y_mm = Number(p.y ?? 0)
-      const hasXY = (x_mm !== 0 || y_mm !== 0)
+      // NOTE: payload x,y are in cm (TX firmware divides raw mm by 10 for LoRa)
+      const x_cm = Number(p.x ?? 0)
+      const y_cm = Number(p.y ?? 0)
+      const hasXY = (x_cm !== 0 || y_cm !== 0)
       const evtAngle = Number(p.angle ?? 0)
       const hasAngle = evtAngle !== 0
 
@@ -547,9 +548,9 @@ export default function MapInner({
       const rM: [number, number] = [-sg.leftM[0], -sg.leftM[1]]
 
       if (hasXY) {
-        // LD2450 x,y: x = lateral (mm, + = right), y = depth (mm, always positive)
-        const xm = x_mm / 1000
-        const ym = y_mm / 1000
+        // LD2450 x,y in cm: x = lateral (+ = right), y = depth (always positive)
+        const xm = x_cm / 100   // cm to meters
+        const ym = y_cm / 100   // cm to meters
         // Project: forward by y along normal, sideways by x along rightM
         ptM = [
           sg.sensorM[0] + ym * sg.normalM[0] + xm * rM[0],
@@ -592,33 +593,6 @@ export default function MapInner({
       const gy = Math.round(ptM[1] * 20) / 20
       const gk = `${gx},${gy}`
       pt.weight = gridCounts[gk] ?? 1
-    }
-
-    // Debug: log projection details for first 3 events
-    if (pts.length > 0) {
-      const s0 = Object.values(sensorGeo)[0]?.[0]
-      const dbgEvts = events.slice(0, 3).map(e => {
-        const p = e.payload ?? {}
-        return {
-          x: p.x, y: p.y, dist: p.distance, angle: p.angle,
-          dir: p.direction, sensor_type: p.sensor_type,
-          hasXY: (Number(p.x ?? 0) !== 0 || Number(p.y ?? 0) !== 0),
-          hasAngle: Number(p.angle ?? 0) !== 0,
-        }
-      })
-      console.log("[v0] heatPoints projection:", JSON.stringify({
-        n: pts.length,
-        sensorLL: s0?.sensorLL,
-        sensorM: s0?.sensorM?.map((v: number) => +v.toFixed(2)),
-        normalM: s0?.normalM?.map((v: number) => +v.toFixed(4)),
-        leftM: s0?.leftM?.map((v: number) => +v.toFixed(4)),
-        first3evts: dbgEvts,
-        first3pts: pts.slice(0, 3).map(p => [+p.lat.toFixed(7), +p.lon.toFixed(7), p.weight]),
-        ptsSpread: pts.length > 1 ? {
-          latRange: [+Math.min(...pts.map(p => p.lat)).toFixed(7), +Math.max(...pts.map(p => p.lat)).toFixed(7)],
-          lonRange: [+Math.min(...pts.map(p => p.lon)).toFixed(7), +Math.max(...pts.map(p => p.lon)).toFixed(7)],
-        } : null
-      }, null, 0))
     }
 
     return pts
@@ -1112,7 +1086,7 @@ export default function MapInner({
       <HeatmapCanvas
         map={mapInstance}
         points={heatPoints}
-        radiusMeters={0.8}
+        radiusMeters={2.0}
         opacity={0.7}
         enabled={heatmapMode && heatPoints.length > 0}
         zonePolygons={zones.map(z => z.polygon)}
