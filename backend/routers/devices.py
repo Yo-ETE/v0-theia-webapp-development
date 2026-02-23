@@ -35,14 +35,18 @@ class DeviceUpdate(BaseModel):
 
 
 @router.get("")
-async def list_devices(mission_id: str | None = None):
+async def list_devices(mission_id: str | None = None, include_disabled: bool = False):
     db = await get_db()
+    enabled_filter = "" if include_disabled else " AND enabled=1"
     if mission_id:
         cursor = await db.execute(
-            "SELECT * FROM devices WHERE mission_id=? ORDER BY name", (mission_id,)
+            f"SELECT * FROM devices WHERE mission_id=?{enabled_filter} ORDER BY name",
+            (mission_id,),
         )
     else:
-        cursor = await db.execute("SELECT * FROM devices ORDER BY name")
+        cursor = await db.execute(
+            f"SELECT * FROM devices WHERE 1=1{enabled_filter} ORDER BY name"
+        )
     rows = await cursor.fetchall()
     return [dict(r) for r in rows]
 
@@ -123,6 +127,11 @@ async def update_device(device_id: str, body: DeviceUpdate):
 @router.delete("/{device_id}")
 async def delete_device(device_id: str):
     db = await get_db()
-    await db.execute("DELETE FROM devices WHERE id=?", (device_id,))
+    # Soft-delete: set enabled=0 so auto-enroll won't re-create the device.
+    # The LoRa bridge queries WHERE enabled=1, so disabled devices are ignored.
+    await db.execute(
+        "UPDATE devices SET enabled=0, mission_id='', zone_id='', zone_label='', side='' WHERE id=?",
+        (device_id,),
+    )
     await db.commit()
     return {"ok": True}

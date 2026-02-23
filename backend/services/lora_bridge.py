@@ -195,6 +195,17 @@ class PortReader:
                 if "c4001" in db_type.lower() or db_type == "depth_only":
                     sensor_type = "c4001"
             if not row:
+                # Check if a disabled (soft-deleted) device with this dev_eui exists
+                # If so, do NOT re-create it -- the user intentionally removed it
+                cursor = await db.execute(
+                    "SELECT id FROM devices WHERE dev_eui=? AND enabled=0",
+                    (tx_id,),
+                )
+                disabled_row = await cursor.fetchone()
+                if disabled_row:
+                    # Device was soft-deleted, silently ignore frames from it
+                    return
+
                 import uuid
                 did = str(uuid.uuid4())[:8]
                 # Detect C4001 pattern: x==0 and y==d (depth-only sensor)

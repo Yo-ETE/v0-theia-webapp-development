@@ -57,7 +57,7 @@ export default function DevicesPage() {
   }, [enrollForm, mutate])
 
   const handleDelete = useCallback(async (id: string, name: string) => {
-    if (!confirm(`Delete device "${name}"? This cannot be undone.`)) return
+    if (!confirm(`Remove device "${name}"? It will be disabled and ignored by auto-enroll. You can re-enable it later.`)) return
     await deleteDevice(id)
     mutate()
   }, [mutate])
