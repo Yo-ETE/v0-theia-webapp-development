@@ -143,6 +143,24 @@ export default function HeatmapCanvas({
       octx.clip()
     }
 
+    // Debug: log pixel spread of points
+    if (points.length > 0) {
+      const pxPts = points.slice(0, 5).map(pt => {
+        const px = map.latLngToContainerPoint([pt.lat, pt.lon])
+        return { x: Math.round(px.x), y: Math.round(px.y), w: pt.weight }
+      })
+      const allPx = points.map(pt => map.latLngToContainerPoint([pt.lat, pt.lon]))
+      const xMin = Math.min(...allPx.map((p: {x: number}) => p.x))
+      const xMax = Math.max(...allPx.map((p: {x: number}) => p.x))
+      const yMin = Math.min(...allPx.map((p: {y: number}) => p.y))
+      const yMax = Math.max(...allPx.map((p: {y: number}) => p.y))
+      console.log("[v0] HeatmapCanvas draw:", JSON.stringify({
+        canvasSize: [w, h], radiusPx, nPts: points.length,
+        pxSpread: { xRange: [Math.round(xMin), Math.round(xMax)], yRange: [Math.round(yMin), Math.round(yMax)] },
+        first5: pxPts,
+      }))
+    }
+
     // Find max weight for intensity scaling
     let maxW = 1
     for (const pt of points) if (pt.weight > maxW) maxW = pt.weight

@@ -594,6 +594,33 @@ export default function MapInner({
       pt.weight = gridCounts[gk] ?? 1
     }
 
+    // Debug: log projection details for first 3 events
+    if (pts.length > 0) {
+      const s0 = Object.values(sensorGeo)[0]?.[0]
+      const dbgEvts = events.slice(0, 3).map(e => {
+        const p = e.payload ?? {}
+        return {
+          x: p.x, y: p.y, dist: p.distance, angle: p.angle,
+          dir: p.direction, sensor_type: p.sensor_type,
+          hasXY: (Number(p.x ?? 0) !== 0 || Number(p.y ?? 0) !== 0),
+          hasAngle: Number(p.angle ?? 0) !== 0,
+        }
+      })
+      console.log("[v0] heatPoints projection:", JSON.stringify({
+        n: pts.length,
+        sensorLL: s0?.sensorLL,
+        sensorM: s0?.sensorM?.map((v: number) => +v.toFixed(2)),
+        normalM: s0?.normalM?.map((v: number) => +v.toFixed(4)),
+        leftM: s0?.leftM?.map((v: number) => +v.toFixed(4)),
+        first3evts: dbgEvts,
+        first3pts: pts.slice(0, 3).map(p => [+p.lat.toFixed(7), +p.lon.toFixed(7), p.weight]),
+        ptsSpread: pts.length > 1 ? {
+          latRange: [+Math.min(...pts.map(p => p.lat)).toFixed(7), +Math.max(...pts.map(p => p.lat)).toFixed(7)],
+          lonRange: [+Math.min(...pts.map(p => p.lon)).toFixed(7), +Math.max(...pts.map(p => p.lon)).toFixed(7)],
+        } : null
+      }, null, 0))
+    }
+
     return pts
     } catch (e) { console.warn("[THEIA] heatPoints error:", e); return [] }
   })()
