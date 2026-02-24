@@ -204,6 +204,7 @@ export default function MapInner({
   const [drawPoints, setDrawPoints] = useState<[number, number][]>([])
   const mapRef = useRef<unknown>(null)
   const dragSuppressRef = useRef(false)
+  const fovLayersRef = useRef<unknown[]>([])
   // Edit polygon mode: "move" = drag vertices, "add" = tap edge midpoints, "delete" = tap vertex to remove
   const [editTool, setEditTool] = useState<"move" | "add" | "delete">("move")
   // LOCAL polygon copy for editing -- only this state changes during edit, not the parent's
@@ -1011,7 +1012,6 @@ export default function MapInner({
   }).filter(Boolean) as SensorMarkerData[]
 
   // ── FOV detection zone cones (native Leaflet) ──
-  const fovLayersRef = useRef<unknown[]>([])
   // Serialize sensor positions for stable useEffect dependency
   const sensorMarkersKey = sensorMarkers.map(m => `${m.id}:${m.sensorPos[0].toFixed(7)}:${m.sensorPos[1].toFixed(7)}:${m.fovDeg}:${m.maxRangeM}:${m.normalBearingDeg.toFixed(1)}`).join("|")
   useEffect(() => {
