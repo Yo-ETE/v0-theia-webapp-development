@@ -980,35 +980,57 @@ export default function MapInner({
           )
         })()}
 
-        {/* ── Side labels with distance on saved zones (label-pane = below detection lines) ── */}
+        {/* ── Side labels with distance on saved zones - rotated parallel to edge ── */}
         {(zones ?? []).map((zone) =>
-          zone.polygon?.length >= 2
+          zone.polygon?.length >= 2 && RL && leafletL
             ? zone.polygon.map((pt, idx) => {
                 const nextIdx = (idx + 1) % zone.polygon.length
                 const next = zone.polygon[nextIdx]
                 const mLat = (pt[0] + next[0]) / 2
                 const mLon = (pt[1] + next[1]) / 2
                 const key = String.fromCharCode(65 + idx)
-                const sideLabel = zone.sides?.[key]
+                const sideLabel = zone.sides?.[key] ?? key
+                // Only show the group/face label, not the per-segment letter
+                const displayLabel = sideLabel || key
                 const dist = haversineM(pt[0], pt[1], next[0], next[1])
+                // Compute screen-space angle of the edge for rotation
+                const dLon = (next[1] - pt[1]) * Math.PI / 180
+                const y = Math.sin(dLon) * Math.cos(next[0] * Math.PI / 180)
+                const x = Math.cos(pt[0] * Math.PI / 180) * Math.sin(next[0] * Math.PI / 180) -
+                          Math.sin(pt[0] * Math.PI / 180) * Math.cos(next[0] * Math.PI / 180) * Math.cos(dLon)
+                let angleDeg = Math.atan2(y, x) * 180 / Math.PI
+                // Keep text readable (not upside down): normalize to -90..+90
+                if (angleDeg > 90) angleDeg -= 180
+                if (angleDeg < -90) angleDeg += 180
+                const text = `${displayLabel} (${fmtDist(dist)})`
+                const SideMarker = RL.Marker
+                const icon = leafletL.divIcon({
+                  className: "",
+                  html: `<div style="
+                    transform: translate(-50%, -50%) rotate(${angleDeg.toFixed(1)}deg);
+                    white-space: nowrap;
+                    font-size: 9px;
+                    font-weight: 700;
+                    color: ${zone.color};
+                    background: rgba(255,255,255,0.92);
+                    padding: 1px 5px;
+                    border-radius: 3px;
+                    border: 1px solid ${zone.color};
+                    text-align: center;
+                    pointer-events: none;
+                    width: fit-content;
+                  ">${text}</div>`,
+                  iconSize: [0, 0],
+                  iconAnchor: [0, 0],
+                })
                 return (
-                  <CircleMarker
+                  <SideMarker
                     key={`side-${zone.id}-${key}`}
-                    center={[mLat, mLon]}
-                    radius={0}
+                    position={[mLat, mLon]}
+                    icon={icon}
                     pane="label-pane"
-                    pathOptions={{ opacity: 0, fillOpacity: 0 }}
-                  >
-                    <Tooltip permanent direction="center">
-                      <span style={{
-                        fontSize: 9, fontWeight: 700, color: zone.color,
-                        background: "rgba(255,255,255,0.92)", padding: "1px 5px",
-                        borderRadius: 3, border: `1px solid ${zone.color}`,
-                      }}>
-                        {sideLabel && sideLabel !== key ? `${sideLabel}: ${key}` : key} ({fmtDist(dist)})
-                      </span>
-                    </Tooltip>
-                  </CircleMarker>
+                    interactive={false}
+                  />
                 )
               })
             : null

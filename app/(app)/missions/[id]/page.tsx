@@ -151,7 +151,6 @@ export default function MissionDetailPage() {
     // Also track by device_id for multi-TX per zone
     if (d.device_id) {
       setLiveByDevice(prev => ({ ...prev, [d.device_id]: d }))
-      console.log("[v0] SSE device_id=", d.device_id, "tx_id=", d.tx_id, "dist=", d.distance, "zone=", d.zone_id)
     }
   }, [id, mutateEvents])
 
@@ -207,7 +206,7 @@ export default function MissionDetailPage() {
     if (polygon.length < 3) {
       const labels: Record<string, string> = {}
       for (let i = 0; i < polygon.length; i++) labels[String.fromCharCode(65 + i)] = ""
-      return { labels, segmentToGroup: polygon.map((_,i) => String.fromCharCode(65 + i)), debugBearings: [] as string[] }
+      return { labels, segmentToGroup: polygon.map((_,i) => String.fromCharCode(65 + i)) }
     }
     // Compute the OUTWARD NORMAL bearing (0-360) for each edge.
     // The outward normal tells us which direction the wall faces (not which way it runs).
@@ -269,11 +268,7 @@ export default function MissionDetailPage() {
       labels[letter] = ""
       for (const idx of group) segmentToGroup[idx] = letter
     })
-    return {
-      labels,
-      segmentToGroup,
-      debugBearings: bearings.map((b, i) => `${String.fromCharCode(65+i)}:${b.toFixed(0)}(edge:${edgeBearings[i].toFixed(0)})`)
-    }
+    return { labels, segmentToGroup }
   }, [])
 
   // ── Zone drawing ──
@@ -281,11 +276,7 @@ export default function MissionDetailPage() {
     setPendingPolygon(polygon)
     setZoneName("")
     setZoneType("facade")
-    const { labels, segmentToGroup, debugBearings } = groupSidesByBearing(polygon)
-    console.log("[v0] Polygon grouping:", polygon.length, "segments ->", Object.keys(labels).length, "groups")
-    console.log("[v0] Bearings per segment:", debugBearings)
-    console.log("[v0] segmentToGroup:", segmentToGroup)
-    console.log("[v0] Group labels:", labels)
+    const { labels, segmentToGroup } = groupSidesByBearing(polygon)
     setSideLabels(labels)
     setSideGrouping(segmentToGroup)
     setZoneDialog(true)
@@ -884,17 +875,9 @@ export default function MissionDetailPage() {
                           <div className="flex items-center gap-1 flex-wrap">
                             <span className="text-[10px] text-muted-foreground">{zone.type}</span>
                             {zone.sides && Object.entries(zone.sides).filter(([, v]) => v).length > 0 && (() => {
-                              // Group segments by face label for compact display
-                              const groups: Record<string, string[]> = {}
-                              for (const [seg, face] of Object.entries(zone.sides)) {
-                                if (!face) continue
-                                if (!groups[face]) groups[face] = []
-                                groups[face].push(seg)
-                              }
-                              const summary = Object.entries(groups).map(([face, segs]) =>
-                                segs.length === 1 && segs[0] === face ? face : `${face}:${segs.join("")}`
-                              ).join(" ")
-                              return <span className="text-[9px] font-mono text-primary">[{summary}]</span>
+                              // Show unique face labels only (A, B, C, D)
+                              const faces = [...new Set(Object.values(zone.sides).filter(Boolean))].sort()
+                              return <span className="text-[9px] font-mono text-primary">[{faces.join(" ")}]</span>
                             })()}
                           </div>
                           {zoneDetection && (
