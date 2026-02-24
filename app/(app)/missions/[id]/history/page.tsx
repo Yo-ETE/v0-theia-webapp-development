@@ -22,7 +22,7 @@ import { cn } from "@/lib/utils"
 export default function HistoryPage() {
   const { id } = useParams<{ id: string }>()
   const { data: mission } = useMission(id)
-  const { data: events, isLoading } = useEvents({ mission_id: id })
+  const { data: events, isLoading } = useEvents({ mission_id: id, limit: 10000 })
 
   function handleExport() {
     if (!events) return

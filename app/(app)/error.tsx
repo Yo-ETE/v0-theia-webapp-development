@@ -10,11 +10,15 @@ export default function Error({
   error: Error & { digest?: string }
   reset: () => void
 }) {
+  const isChunkError = error.message?.includes("Failed to load") || error.message?.includes("ChunkLoadError") || error.name === "ChunkLoadError"
+
   useEffect(() => {
     console.error("[THEIA] Runtime error:", error)
-  }, [error])
-
-  const isChunkError = error.message?.includes("Failed to load") || error.message?.includes("ChunkLoadError")
+    // Auto-reload on ChunkLoadError (stale cache after rebuild)
+    if (isChunkError) {
+      window.location.reload()
+    }
+  }, [error, isChunkError])
 
   return (
     <div className="flex min-h-screen items-center justify-center bg-background p-4">

@@ -70,7 +70,7 @@ interface LiveDetection {
 export default function MissionDetailPage() {
   const { id } = useParams<{ id: string }>()
   const { data: mission, isLoading, mutate } = useMission(id)
-  const { data: events, mutate: mutateEvents } = useEvents({ mission_id: id, event_type: "detection", limit: 500 })
+  const { data: events, mutate: mutateEvents } = useEvents({ mission_id: id, event_type: "detection", limit: 10000 })
   const { data: allDevices, mutate: mutateDevices } = useDevices({ refreshInterval: 10000 })
 
   const [drawingMode, setDrawingMode] = useState(false)

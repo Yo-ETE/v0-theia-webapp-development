@@ -26,6 +26,12 @@ export class ErrorBoundary extends Component<Props, State> {
   componentDidCatch(error: Error, errorInfo: ErrorInfo) {
     console.error("[v0] ErrorBoundary caught:", error.message, errorInfo.componentStack)
 
+    // Auto-reload on ChunkLoadError (stale cache after rebuild)
+    if (error.name === "ChunkLoadError" || error.message?.includes("Failed to load chunk")) {
+      window.location.reload()
+      return
+    }
+
     // Auto-retry once for Leaflet "already initialized" errors (transient HMR issue)
     if (
       error.message?.includes("already initialized") &&
