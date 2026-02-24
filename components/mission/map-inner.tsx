@@ -327,12 +327,13 @@ export default function MapInner({
     return () => clearTimeout(timer)
   }, [centerLat, centerLon, zoom])
 
-  // Drawing click handler + disable map drag/touch in draw mode
+  // Disable map drag/touch in draw mode OR zone polygon edit mode
+  const shouldLockMap = drawingMode || !!editingZoneId
   useEffect(() => {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const map = mapRef.current as any
     if (!map || typeof map.on !== "function") {
-      if (drawingMode) {
+      if (shouldLockMap) {
         const t = setTimeout(() => {
           // eslint-disable-next-line @typescript-eslint/no-explicit-any
           const m = mapRef.current as any
@@ -346,7 +347,7 @@ export default function MapInner({
       }
       return
     }
-    if (drawingMode) {
+    if (shouldLockMap) {
       map.dragging?.disable()
       map.touchZoom?.disable()
       map.doubleClickZoom?.disable()
@@ -368,7 +369,7 @@ export default function MapInner({
       map.touchZoom?.enable()
       map.doubleClickZoom?.enable()
     }
-  }, [drawingMode, mapInstance])
+  }, [shouldLockMap, drawingMode, mapInstance])
 
   useEffect(() => { if (drawingMode) setDrawPoints([]) }, [drawingMode])
 
@@ -856,9 +857,9 @@ export default function MapInner({
 
           const vertexIcon = leafletL.divIcon({
             className: "",
-            html: '<div style="width:12px;height:12px;background:#f59e0b;border:2px solid white;border-radius:50%;cursor:grab;box-shadow:0 1px 4px rgba(0,0,0,0.3)"></div>',
-            iconSize: [12, 12],
-            iconAnchor: [6, 6],
+            html: '<div style="width:20px;height:20px;background:#f59e0b;border:2px solid white;border-radius:50%;cursor:grab;box-shadow:0 1px 4px rgba(0,0,0,0.3)"></div>',
+            iconSize: [20, 20],
+            iconAnchor: [10, 10],
           })
           const midpointIcon = leafletL.divIcon({
             className: "",

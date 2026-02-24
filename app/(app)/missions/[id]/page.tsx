@@ -880,39 +880,46 @@ export default function MissionDetailPage() {
                               return <span className="text-[9px] font-mono text-primary">[{faces.join(" ")}]</span>
                             })()}
                           </div>
-                          {zoneDetection && (
-                            <div className="flex items-center gap-2 mt-0.5">
-                              {zoneDetection.presence ? (
-                                <span className="text-[9px] font-mono text-warning font-semibold flex items-center gap-0.5">
-                                  <Eye className="h-2.5 w-2.5" />
-                                  {zoneDetection.distance}cm {zoneDetection.direction}
-                                </span>
-                              ) : (
-                                <span className="text-[9px] font-mono text-success flex items-center gap-0.5">
-                                  <EyeOff className="h-2.5 w-2.5" />RAS
-                                </span>
-                              )}
-                              {zoneDetection.rssi != null && (
-                                <span className="text-[9px] font-mono text-muted-foreground">
-                                  {zoneDetection.rssi}dBm
-                                </span>
-                              )}
-                            </div>
-                          )}
+                          {/* Fixed-height detection row to prevent layout shift */}
+                          <div className="h-4 flex items-center gap-2 mt-0.5">
+                            {zoneDetection ? (
+                              <>
+                                {zoneDetection.presence ? (
+                                  <span className="text-[9px] font-mono text-warning font-semibold flex items-center gap-0.5">
+                                    <Eye className="h-2.5 w-2.5" />
+                                    {zoneDetection.distance}cm {zoneDetection.direction}
+                                  </span>
+                                ) : (
+                                  <span className="text-[9px] font-mono text-success flex items-center gap-0.5">
+                                    <EyeOff className="h-2.5 w-2.5" />RAS
+                                  </span>
+                                )}
+                                {zoneDetection.rssi != null && (
+                                  <span className="text-[9px] font-mono text-muted-foreground">
+                                    {zoneDetection.rssi}dBm
+                                  </span>
+                                )}
+                              </>
+                            ) : (
+                              <span className="text-[9px] font-mono text-muted-foreground/50">--</span>
+                            )}
+                          </div>
                         </div>
                         <span className="text-[10px] text-muted-foreground font-mono">{missionDevices.filter(d => d.zone_id === zone.id).length} TX</span>
-                        <button onClick={() => openEditZone(zone.id)}
-                          className="text-[10px] text-muted-foreground hover:text-foreground transition-colors opacity-0 group-hover:opacity-100"
-                          title="Edit zone name & sides"><MapPin className="h-3 w-3" /></button>
-                        <button onClick={() => setEditingZoneId(editingZoneId === zone.id ? null : zone.id)}
-                          className={cn("text-[10px] transition-colors", editingZoneId === zone.id ? "text-warning opacity-100" : "text-muted-foreground hover:text-foreground opacity-0 group-hover:opacity-100")}
-                          title="Edit zone polygon"><Pencil className="h-3 w-3" /></button>
-                        <button onClick={() => setAssignDialog(zone.id)}
-                          className="text-[10px] text-primary hover:text-primary/80 transition-colors opacity-0 group-hover:opacity-100"
-                          title="Assign device"><Plus className="h-3 w-3" /></button>
-                        <button onClick={() => deleteZone(zone.id)}
-                          className="text-[10px] text-destructive hover:text-destructive/80 transition-colors opacity-0 group-hover:opacity-100"
-                          title="Delete zone"><Trash2 className="h-3 w-3" /></button>
+                        <div className="flex items-center gap-1 shrink-0">
+                          <button onClick={() => openEditZone(zone.id)}
+                            className="text-muted-foreground hover:text-foreground transition-colors p-1"
+                            title="Edit zone name & sides"><MapPin className="h-3.5 w-3.5" /></button>
+                          <button onClick={() => setEditingZoneId(editingZoneId === zone.id ? null : zone.id)}
+                            className={cn("transition-colors p-1", editingZoneId === zone.id ? "text-warning" : "text-muted-foreground hover:text-foreground")}
+                            title="Edit zone polygon"><Pencil className="h-3.5 w-3.5" /></button>
+                          <button onClick={() => setAssignDialog(zone.id)}
+                            className="text-primary hover:text-primary/80 transition-colors p-1"
+                            title="Assign device"><Plus className="h-3.5 w-3.5" /></button>
+                          <button onClick={() => deleteZone(zone.id)}
+                            className="text-destructive hover:text-destructive/80 transition-colors p-1"
+                            title="Delete zone"><Trash2 className="h-3.5 w-3.5" /></button>
+                        </div>
                       </div>
                     )
                   })}
