@@ -83,6 +83,7 @@ export function DetectionTimelapse({ missionId, onDetection, onClose }: Detectio
   } : null
 
   const { data: rawEvents, isLoading } = useEventsRange(fetchParams)
+  console.log("[v0] Timelapse: fetchParams=", JSON.stringify(fetchParams), "rawEvents count=", rawEvents?.length, "first=", rawEvents?.[0]?.timestamp)
 
   // Sort events chronologically (API returns DESC)
   const events = (rawEvents ?? []).slice().reverse()

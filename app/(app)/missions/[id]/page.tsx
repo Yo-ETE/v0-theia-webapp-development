@@ -822,7 +822,7 @@ export default function MissionDetailPage() {
                       zones={zones}
                       events={eventList}
   liveDetections={effectiveLiveByZone}
-  liveByDevice={liveByDevice}
+  liveByDevice={timelapseMode ? {} : liveByDevice}
   sensorPlacements={sensorPlacements}
   heatmapMode={heatmapMode}
   estimatePosition={estimatePosition}
