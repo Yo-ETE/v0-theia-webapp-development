@@ -140,8 +140,25 @@ export default function MapInner({
   const dragSuppressRef = useRef(false)
   // Edit polygon mode: "move" = drag vertices, "add" = tap edge midpoints, "delete" = tap vertex to remove
   const [editTool, setEditTool] = useState<"move" | "add" | "delete">("move")
-  // Reset tool when entering/exiting edit mode
-  useEffect(() => { setEditTool("move") }, [editingZoneId])
+  // LOCAL polygon copy for editing -- only this state changes during edit, not the parent's
+  const [localPoly, setLocalPoly] = useState<[number, number][] | null>(null)
+
+  // Reset tool and sync local polygon when entering/exiting edit mode
+  useEffect(() => {
+    setEditTool("move")
+    if (editingZoneId) {
+      const zone = (zones ?? []).find(z => z.id === editingZoneId)
+      if (zone) setLocalPoly([...zone.polygon])
+    } else {
+      setLocalPoly(null)
+    }
+  }, [editingZoneId]) // eslint-disable-line react-hooks/exhaustive-deps
+  // Also sync if editingPolygon changes from parent (initial load)
+  useEffect(() => {
+    if (editingPolygon && editingZoneId) {
+      setLocalPoly([...editingPolygon])
+    }
+  }, [editingPolygon, editingZoneId])
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const [mapInstance, setMapInstance] = useState<any>(null)
   const mapInstanceSet = useRef(false)
@@ -836,7 +853,7 @@ export default function MapInner({
           return (
             <Polygon
               key={zone.id}
-              positions={isBeingEdited ? (editingPolygon ?? zone.polygon) : zone.polygon}
+              positions={isBeingEdited ? (localPoly ?? zone.polygon) : zone.polygon}
               interactive={!isBeingEdited}
               pathOptions={{
                 color: isBeingEdited ? "#f59e0b" : (heatmapMode ? "#666" : zone.color),
@@ -859,91 +876,99 @@ export default function MapInner({
         })}
 
         {/* ── Zone editing overlay ── */}
-        {editingZoneId && (() => {
+        {editingZoneId && localPoly && localPoly.length >= 3 && RL && leafletL && (() => {
           const zone = (zones ?? []).find(z => z.id === editingZoneId)
-          if (!zone || !RL || !leafletL) return null
-          const poly = editingPolygon ?? zone.polygon
-          if (!poly?.length) return null
+          if (!zone) return null
           const RLMarker = RL.Marker
-
-          // Vertex icon: orange circle with point number
-          const makeVertexIcon = (idx: number, isDeleteMode: boolean) => leafletL.divIcon({
-            className: "",
-            html: `<div style="
-              width:24px;height:24px;
-              background:${isDeleteMode ? "#ef4444" : "#f59e0b"};
-              border:2px solid white;border-radius:50%;
-              display:flex;align-items:center;justify-content:center;
-              box-shadow:0 1px 4px rgba(0,0,0,0.3);
-              cursor:${isDeleteMode ? "pointer" : "grab"};
-            "><span style="color:white;font-size:10px;font-weight:800">${idx + 1}</span></div>`,
-            iconSize: [24, 24],
-            iconAnchor: [12, 12],
-          })
-
-          // Midpoint icon: green circle with + sign (only shown in add mode)
-          const midpointIcon = leafletL.divIcon({
-            className: "",
-            html: `<div style="
-              width:22px;height:22px;
-              background:#22c55e;border:2px solid white;border-radius:50%;
-              display:flex;align-items:center;justify-content:center;
-              box-shadow:0 1px 4px rgba(0,0,0,0.3);cursor:pointer;
-            "><span style="color:white;font-size:14px;font-weight:800;line-height:1">+</span></div>`,
-            iconSize: [22, 22],
-            iconAnchor: [11, 11],
-          })
 
           return (
             <>
-              {/* Outline of editing polygon (non-interactive to not block clicks) */}
+              {/* Outline of editing polygon (non-interactive) */}
               <Polyline
-                positions={[...poly, poly[0]]}
+                positions={[...localPoly, localPoly[0]]}
                 pathOptions={{ color: "#f59e0b", weight: 2, dashArray: "6 4" }}
                 interactive={false}
               />
 
               {/* Vertex markers */}
-              {poly.map((pt, i) => (
-                <RLMarker
-                  key={`edit-v-${i}-${pt[0].toFixed(6)}-${pt[1].toFixed(6)}`}
-                  position={pt}
-                  icon={makeVertexIcon(i, editTool === "delete")}
-                  draggable={editTool === "move"}
-                  eventHandlers={{
-                    dragend: (e: { target: { getLatLng: () => { lat: number; lng: number } } }) => {
-                      if (editTool !== "move") return
-                      dragSuppressRef.current = true
-                      const pos = e.target.getLatLng()
-                      const newPoly = [...poly]
-                      newPoly[i] = [pos.lat, pos.lng]
-                      onZonePolygonUpdate?.(zone.id, newPoly)
-                      setTimeout(() => { dragSuppressRef.current = false }, 300)
-                    },
-                    click: () => {
-                      if (editTool === "delete" && poly.length > 3) {
-                        onZonePolygonUpdate?.(zone.id, poly.filter((_, idx) => idx !== i))
-                      }
-                    },
-                  }}
-                />
-              ))}
-
-              {/* Midpoint markers (only in add mode) */}
-              {editTool === "add" && poly.map((pt, i) => {
-                const next = poly[(i + 1) % poly.length]
-                const midLat = (pt[0] + next[0]) / 2
-                const midLon = (pt[1] + next[1]) / 2
+              {localPoly.map((pt, i) => {
+                const icon = leafletL.divIcon({
+                  className: "",
+                  html: `<div style="
+                    width:24px;height:24px;
+                    background:${editTool === "delete" ? "#ef4444" : "#f59e0b"};
+                    border:2px solid white;border-radius:50%;
+                    display:flex;align-items:center;justify-content:center;
+                    box-shadow:0 2px 6px rgba(0,0,0,0.4);
+                    cursor:${editTool === "move" ? "grab" : "pointer"};
+                  "><span style="color:white;font-size:10px;font-weight:800">${i + 1}</span></div>`,
+                  iconSize: [24, 24],
+                  iconAnchor: [12, 12],
+                })
                 return (
                   <RLMarker
-                    key={`edit-m-${i}-${midLat.toFixed(6)}-${midLon.toFixed(6)}`}
+                    key={`edit-v-${i}`}
+                    position={pt}
+                    icon={icon}
+                    draggable={editTool === "move"}
+                    eventHandlers={{
+                      dragend: (e: { target: { getLatLng: () => { lat: number; lng: number } } }) => {
+                        if (editTool !== "move") return
+                        const pos = e.target.getLatLng()
+                        setLocalPoly(prev => {
+                          if (!prev) return prev
+                          const np = [...prev] as [number, number][]
+                          np[i] = [pos.lat, pos.lng]
+                          // Notify parent with fresh data
+                          onZonePolygonUpdate?.(zone.id, np)
+                          return np
+                        })
+                      },
+                      click: () => {
+                        if (editTool === "delete") {
+                          setLocalPoly(prev => {
+                            if (!prev || prev.length <= 3) return prev
+                            const np = prev.filter((_, idx) => idx !== i)
+                            onZonePolygonUpdate?.(zone.id, np)
+                            return np
+                          })
+                        }
+                      },
+                    }}
+                  />
+                )
+              })}
+
+              {/* Midpoint "add" markers (only in add mode) */}
+              {editTool === "add" && localPoly.map((pt, i) => {
+                const next = localPoly[(i + 1) % localPoly.length]
+                const midLat = (pt[0] + next[0]) / 2
+                const midLon = (pt[1] + next[1]) / 2
+                const addIcon = leafletL.divIcon({
+                  className: "",
+                  html: `<div style="
+                    width:22px;height:22px;
+                    background:#22c55e;border:2px solid white;border-radius:50%;
+                    display:flex;align-items:center;justify-content:center;
+                    box-shadow:0 2px 6px rgba(0,0,0,0.4);cursor:pointer;
+                  "><span style="color:white;font-size:14px;font-weight:800;line-height:1">+</span></div>`,
+                  iconSize: [22, 22],
+                  iconAnchor: [11, 11],
+                })
+                return (
+                  <RLMarker
+                    key={`edit-m-${i}`}
                     position={[midLat, midLon]}
-                    icon={midpointIcon}
+                    icon={addIcon}
                     eventHandlers={{
                       click: () => {
-                        const newPoly = [...poly]
-                        newPoly.splice(i + 1, 0, [midLat, midLon])
-                        onZonePolygonUpdate?.(zone.id, newPoly)
+                        setLocalPoly(prev => {
+                          if (!prev) return prev
+                          const np: [number, number][] = [...prev]
+                          np.splice(i + 1, 0, [midLat, midLon])
+                          onZonePolygonUpdate?.(zone.id, np)
+                          return np
+                        })
                       },
                     }}
                   />
@@ -951,8 +976,8 @@ export default function MapInner({
               })}
 
               {/* Side distance labels */}
-              {poly.map((pt, i) => {
-                const next = poly[(i + 1) % poly.length]
+              {localPoly.map((pt, i) => {
+                const next = localPoly[(i + 1) % localPoly.length]
                 const mLat = (pt[0] + next[0]) / 2
                 const mLon = (pt[1] + next[1]) / 2
                 const dist = haversineM(pt[0], pt[1], next[0], next[1])
@@ -1327,25 +1352,23 @@ export default function MapInner({
         </span>
       </div>
 
-      {/* Edit polygon toolbar */}
-      {editingZoneId && !drawingMode && (() => {
-        const zone = (zones ?? []).find(z => z.id === editingZoneId)
-        if (!zone) return null
-        const poly = editingPolygon ?? zone.polygon
+      {/* Edit polygon toolbar - bottom center, above coords */}
+      {editingZoneId && !drawingMode && localPoly && (() => {
+        const area = polygonAreaM2(localPoly)
         const tools: { id: "move" | "add" | "delete"; label: string; icon: string; color: string }[] = [
-          { id: "move", label: "Deplacer", icon: "M5 9l4-4 4 4M5 15l4 4 4-4", color: "#f59e0b" },
+          { id: "move", label: "Deplacer", icon: "M7 10l5-5 5 5M7 14l5 5 5-5", color: "#f59e0b" },
           { id: "add", label: "Ajouter", icon: "M12 5v14M5 12h14", color: "#22c55e" },
           { id: "delete", label: "Supprimer", icon: "M18 6L6 18M6 6l12 12", color: "#ef4444" },
         ]
         return (
-          <div className="absolute top-2 left-1/2 -translate-x-1/2 z-[500] flex flex-col items-center gap-2">
-            <div className="rounded-xl bg-card/95 backdrop-blur border border-amber-500/30 shadow-lg px-2 py-1.5 flex items-center gap-1">
+          <div className="absolute bottom-10 left-1/2 -translate-x-1/2 z-[500] flex flex-col items-center gap-1.5">
+            <div className="rounded-xl bg-card/95 backdrop-blur border border-amber-500/30 shadow-lg px-1.5 py-1 flex items-center gap-0.5">
               {tools.map((t) => (
                 <button
                   key={t.id}
                   onClick={() => setEditTool(t.id)}
                   className={cn(
-                    "flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-[11px] font-semibold transition-all min-h-[36px]",
+                    "flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-[11px] font-semibold transition-all min-h-[34px]",
                     editTool === t.id
                       ? "text-white shadow-sm"
                       : "text-muted-foreground hover:text-foreground bg-transparent"
@@ -1359,8 +1382,8 @@ export default function MapInner({
                   {t.label}
                 </button>
               ))}
-              <div className="w-px h-6 bg-border mx-1" />
-              <span className="text-[10px] font-mono text-amber-600 px-1">{poly.length} pts</span>
+              <div className="w-px h-5 bg-border/50 mx-0.5" />
+              <span className="text-[9px] font-mono text-amber-500/80 px-1">{localPoly.length}pts {area.toFixed(1)}m2</span>
             </div>
           </div>
         )
@@ -1409,26 +1432,7 @@ export default function MapInner({
         </div>
       )}
 
-      {/* Zone editing mode overlay */}
-      {editingZoneId && (() => {
-        const zone = (zones ?? []).find(z => z.id === editingZoneId)
-        if (!zone) return null
-        const area = polygonAreaM2(zone.polygon)
-        const perim = polygonPerimeterM(zone.polygon)
-        return (
-          <div className="absolute top-2 left-2 z-[500] rounded bg-amber-950/90 backdrop-blur px-3 py-2 border border-amber-500/40 shadow-lg max-w-xs">
-            <p className="text-[11px] font-semibold text-amber-300 font-mono">
-              EDIT: {zone.label} ({zone.polygon.length} pts)
-            </p>
-            <p className="text-[10px] text-amber-200/70 mt-0.5">
-              {area < 1 ? `${Math.round(area * 10000)}cm2` : `${area.toFixed(1)}m2`} | P: {fmtDist(perim)}
-            </p>
-            <p className="text-[9px] text-amber-200/50 mt-1">
-              Drag = deplacer | Milieu = ajouter | Clic-droit = supprimer
-            </p>
-          </div>
-        )
-      })()}
+      {/* (old overlay removed - consolidated into edit toolbar) */}
 
       {/* Sensor placement mode overlay */}
       {sensorPlaceMode && (
