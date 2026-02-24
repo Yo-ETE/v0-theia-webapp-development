@@ -82,6 +82,54 @@ function buildFovArc(
   return arcPoints
 }
 
+/** Sutherland-Hodgman polygon clipping: clips subject polygon to clip boundary */
+function clipPolygonToZone(
+  subject: [number, number][],
+  clip: [number, number][]
+): [number, number][] {
+  if (clip.length < 3 || subject.length < 3) return subject
+
+  let output = [...subject]
+  for (let i = 0; i < clip.length; i++) {
+    if (output.length === 0) return []
+    const edgeStart = clip[i]
+    const edgeEnd = clip[(i + 1) % clip.length]
+    const input = output
+    output = []
+    for (let j = 0; j < input.length; j++) {
+      const current = input[j]
+      const prev = input[(j + input.length - 1) % input.length]
+      const currInside = isInside(current, edgeStart, edgeEnd)
+      const prevInside = isInside(prev, edgeStart, edgeEnd)
+      if (currInside) {
+        if (!prevInside) {
+          const inter = lineIntersect(prev, current, edgeStart, edgeEnd)
+          if (inter) output.push(inter)
+        }
+        output.push(current)
+      } else if (prevInside) {
+        const inter = lineIntersect(prev, current, edgeStart, edgeEnd)
+        if (inter) output.push(inter)
+      }
+    }
+  }
+  return output
+}
+
+function isInside(p: [number, number], a: [number, number], b: [number, number]): boolean {
+  return (b[1] - a[1]) * (p[0] - a[0]) - (b[0] - a[0]) * (p[1] - a[1]) >= 0
+}
+
+function lineIntersect(
+  p1: [number, number], p2: [number, number],
+  p3: [number, number], p4: [number, number]
+): [number, number] | null {
+  const d = (p1[0] - p2[0]) * (p3[1] - p4[1]) - (p1[1] - p2[1]) * (p3[0] - p4[0])
+  if (Math.abs(d) < 1e-12) return null
+  const t = ((p1[0] - p3[0]) * (p3[1] - p4[1]) - (p1[1] - p3[1]) * (p3[0] - p4[0])) / d
+  return [p1[0] + t * (p2[0] - p1[0]), p1[1] + t * (p2[1] - p1[1])]
+}
+
 interface LiveDetection {
   presence: boolean
   distance: number
@@ -833,6 +881,7 @@ export default function MapInner({
   fovDeg: number
   maxRangeM: number
   sensorLabel: string
+  zonePolygon: [number, number][] // zone boundary for clipping
   }
 
   // ── Heatmap: project each detection event to a lat/lon point ──
@@ -1030,6 +1079,7 @@ export default function MapInner({
       fovDeg: specs.fovDeg,
       maxRangeM: specs.maxRangeM,
       sensorLabel: specs.label,
+      zonePolygon: zone.polygon,
     }
   }).filter(Boolean) as SensorMarkerData[]
 
