@@ -1145,6 +1145,7 @@ export default function MapInner({
         })}
 
         {/* ── FOV detection cones (declarative JSX, no extra hooks) ── */}
+        {console.log("[v0] FOV render: showFov=", showFov, "sensorMarkers.length=", sensorMarkers.length, sensorMarkers.map(sm => ({ id: sm.id, pos: sm.sensorPos, bearing: sm.normalBearingDeg, fov: sm.fovDeg, range: sm.maxRangeM, label: sm.sensorLabel })))}
         {showFov && sensorMarkers.map((sm) => {
           const arcPositions = buildFovArc(sm.sensorPos, sm.normalBearingDeg, sm.fovDeg, sm.maxRangeM)
           return (
