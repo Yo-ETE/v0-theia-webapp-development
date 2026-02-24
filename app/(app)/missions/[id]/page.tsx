@@ -106,6 +106,7 @@ export default function MissionDetailPage() {
   const [timelapseMode, setTimelapseMode] = useState(false)
   const [heatmapMode, setHeatmapMode] = useState(false)
   const [estimatePosition, setEstimatePosition] = useState(false)
+  const [showFov, setShowFov] = useState(false)
   const [editingZoneId, setEditingZoneId] = useState<string | null>(null)
   const [editingPolygon, setEditingPolygon] = useState<[number, number][] | null>(null)
   const [errorMsg, setErrorMsg] = useState<string | null>(null)
@@ -635,6 +636,7 @@ export default function MissionDetailPage() {
       zone_id: d.zone_id!,
       side: d.side!,
       sensor_position: Number(d.sensor_position) || 0.5,
+      device_type: d.type ?? "",
     }))
 
   // Map detections: ONLY from SSE (real-time). Never from DB -- DB events are history.
@@ -675,7 +677,7 @@ export default function MissionDetailPage() {
   return (
     <>
       <TopHeader title={mission.name} description={mission.description} />
-      <main className="flex-1 overflow-auto p-4">
+      <main className="flex-1 overflow-auto p-4" style={{ touchAction: "manipulation" }}>
         {errorMsg && (
           <div className="mb-3 flex items-center justify-between rounded-lg border border-destructive/50 bg-destructive/10 px-4 py-2 text-sm text-destructive">
             <span>{errorMsg}</span>
@@ -685,8 +687,8 @@ export default function MissionDetailPage() {
         <div className="flex flex-col gap-4">
           {/* Breadcrumb + tab triggers */}
           <div className="flex items-center justify-between">
-            <Button variant="ghost" size="sm" asChild className="text-muted-foreground hover:text-foreground">
-              <Link href="/missions"><ArrowLeft className="mr-1.5 h-3.5 w-3.5" />Missions</Link>
+            <Button variant="ghost" size="sm" asChild className="text-muted-foreground hover:text-foreground active:text-foreground min-h-[44px] min-w-[44px]">
+              <Link href="/missions"><ArrowLeft className="mr-1.5 h-4 w-4" />Missions</Link>
             </Button>
             <Tabs value={activeTab} onValueChange={(val) => {
               setActiveTab(val)
@@ -695,18 +697,18 @@ export default function MissionDetailPage() {
               if (!entering) setReplayDetections({})
               if (val !== "history") setHeatmapMode(false)
             }}>
-              <TabsList className="h-8">
-                <TabsTrigger value="live" className="text-xs gap-1.5 px-3">
-                  <Zap className="h-3 w-3" />Live
+              <TabsList className="h-9">
+                <TabsTrigger value="live" className="text-xs gap-1.5 px-3 min-h-[36px]">
+                  <Zap className="h-3.5 w-3.5" />Live
                 </TabsTrigger>
-                <TabsTrigger value="history" className="text-xs gap-1.5 px-3">
-                  <BarChart3 className="h-3 w-3" />History
+                <TabsTrigger value="history" className="text-xs gap-1.5 px-3 min-h-[36px]">
+                  <BarChart3 className="h-3.5 w-3.5" />History
                 </TabsTrigger>
-                <TabsTrigger value="sensors" className="text-xs gap-1.5 px-3">
-                  <Radio className="h-3 w-3" />Sensors
+                <TabsTrigger value="sensors" className="text-xs gap-1.5 px-3 min-h-[36px]">
+                  <Radio className="h-3.5 w-3.5" />Sensors
                 </TabsTrigger>
-                <TabsTrigger value="timelapse" className="text-xs gap-1.5 px-3">
-                  <Timer className="h-3 w-3" />Timelapse
+                <TabsTrigger value="timelapse" className="text-xs gap-1.5 px-3 min-h-[36px]">
+                  <Timer className="h-3.5 w-3.5" />Timelapse
                 </TabsTrigger>
               </TabsList>
             </Tabs>
@@ -754,17 +756,17 @@ export default function MissionDetailPage() {
                 )}
                 {mission.status === "active" && (
                   <>
-                    <Button variant="outline" size="sm" className="h-7 text-[10px] gap-1" onClick={() => changeStatus("paused")} disabled={statusUpdating}>
-                      <Pause className="h-3 w-3" />Pause
+                    <Button variant="outline" size="sm" className="min-h-[36px] text-[10px] gap-1 px-3" onClick={() => changeStatus("paused")} disabled={statusUpdating}>
+                      <Pause className="h-3.5 w-3.5" />Pause
                     </Button>
-                    <Button variant="outline" size="sm" className="h-7 text-[10px] gap-1" onClick={() => changeStatus("completed")} disabled={statusUpdating}>
-                      <CheckCircle className="h-3 w-3" />Complete
+                    <Button variant="outline" size="sm" className="min-h-[36px] text-[10px] gap-1 px-3" onClick={() => changeStatus("completed")} disabled={statusUpdating}>
+                      <CheckCircle className="h-3.5 w-3.5" />Complete
                     </Button>
                   </>
                 )}
                 {mission.status === "paused" && (
-                  <Button size="sm" className="h-7 text-[10px] gap-1" onClick={() => changeStatus("active")} disabled={statusUpdating}>
-                    <Play className="h-3 w-3" />Resume
+                  <Button size="sm" className="min-h-[36px] text-[10px] gap-1 px-3" onClick={() => changeStatus("active")} disabled={statusUpdating}>
+                    <Play className="h-3.5 w-3.5" />Resume
                   </Button>
                 )}
                 {mission.started_at && (
@@ -834,6 +836,7 @@ export default function MissionDetailPage() {
                       editingZoneId={editingZoneId}
                       editingPolygon={editingPolygon}
                       onZonePolygonUpdate={updateZonePolygon}
+                      showFov={showFov}
                     />
                   </ErrorBoundary>
 
@@ -928,19 +931,19 @@ export default function MissionDetailPage() {
                           </div>
                         </div>
                         <span className="text-[10px] text-muted-foreground font-mono">{missionDevices.filter(d => d.zone_id === zone.id).length} TX</span>
-                        <div className="flex items-center gap-1 shrink-0">
+                        <div className="flex items-center shrink-0">
                           <button onClick={() => openEditZone(zone.id)}
-                            className="text-muted-foreground hover:text-foreground transition-colors p-1"
-                            title="Edit zone name & sides"><MapPin className="h-3.5 w-3.5" /></button>
+                            className="text-muted-foreground hover:text-foreground active:text-foreground transition-colors p-2.5 min-h-[44px] min-w-[44px] flex items-center justify-center cursor-pointer"
+                            title="Edit zone name & sides"><MapPin className="h-4 w-4" /></button>
                           <button onClick={() => editingZoneId === zone.id ? stopEditingZone() : startEditingZone(zone.id)}
-                            className={cn("transition-colors p-1", editingZoneId === zone.id ? "text-warning" : "text-muted-foreground hover:text-foreground")}
-                            title="Edit zone polygon"><Pencil className="h-3.5 w-3.5" /></button>
+                            className={cn("transition-colors p-2.5 min-h-[44px] min-w-[44px] flex items-center justify-center cursor-pointer", editingZoneId === zone.id ? "text-warning" : "text-muted-foreground hover:text-foreground active:text-foreground")}
+                            title="Edit zone polygon"><Pencil className="h-4 w-4" /></button>
                           <button onClick={() => setAssignDialog(zone.id)}
-                            className="text-primary hover:text-primary/80 transition-colors p-1"
-                            title="Assign device"><Plus className="h-3.5 w-3.5" /></button>
+                            className="text-primary hover:text-primary/80 active:text-primary/70 transition-colors p-2.5 min-h-[44px] min-w-[44px] flex items-center justify-center cursor-pointer"
+                            title="Assign device"><Plus className="h-4 w-4" /></button>
                           <button onClick={() => deleteZone(zone.id)}
-                            className="text-destructive hover:text-destructive/80 transition-colors p-1"
-                            title="Delete zone"><Trash2 className="h-3.5 w-3.5" /></button>
+                            className="text-destructive hover:text-destructive/80 active:text-destructive/70 transition-colors p-2.5 min-h-[44px] min-w-[44px] flex items-center justify-center cursor-pointer"
+                            title="Delete zone"><Trash2 className="h-4 w-4" /></button>
                         </div>
                       </div>
                     )
@@ -987,10 +990,10 @@ export default function MissionDetailPage() {
                             e.stopPropagation()
                             unassignDevice(d.id)
                           }}
-                          className="text-destructive/60 hover:text-destructive transition-colors shrink-0 p-1"
+                          className="text-destructive/60 hover:text-destructive active:text-destructive transition-colors shrink-0 p-2.5 min-h-[44px] min-w-[44px] flex items-center justify-center cursor-pointer"
                           title="Retirer de la mission"
                         >
-                          <Trash2 className="h-3.5 w-3.5" />
+                          <Trash2 className="h-4 w-4" />
                         </button>
                       </div>
                     )
@@ -1008,15 +1011,27 @@ export default function MissionDetailPage() {
                         Detection Feed
                       </CardTitle>
                       <div className="flex items-center gap-2">
+                        {sensorPlacements.length > 0 && (
+                          <Button
+                            variant={showFov ? "default" : "outline"}
+                            size="sm"
+                            className="min-h-[36px] text-[10px] px-2.5 gap-1"
+                            onClick={() => setShowFov(!showFov)}
+                            title="Afficher couverture theorique des capteurs"
+                          >
+                            {showFov ? <EyeOff className="h-3.5 w-3.5" /> : <Eye className="h-3.5 w-3.5" />}
+                            FOV
+                          </Button>
+                        )}
                         {missionDevices.length >= 2 && (
                           <Button
                             variant={estimatePosition ? "default" : "outline"}
                             size="sm"
-                            className="h-6 text-[10px] px-2 gap-1"
+                            className="min-h-[36px] text-[10px] px-2.5 gap-1"
                             onClick={() => setEstimatePosition(!estimatePosition)}
                             title="Estimate position from multiple sensors"
                           >
-                            <Crosshair className="h-3 w-3" />
+                            <Crosshair className="h-3.5 w-3.5" />
                             Position
                           </Button>
                         )}

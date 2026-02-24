@@ -133,7 +133,7 @@ export default function DevicesPage() {
                       <TableHead className="text-[10px]">Name</TableHead>
                       <TableHead className="text-[10px]">DEV EUI</TableHead>
                       <TableHead className="text-[10px]">Port</TableHead>
-                      <TableHead className="text-[10px]">Type</TableHead>
+                      <TableHead className="text-[10px]">Sensor</TableHead>
                       <TableHead className="text-[10px]">Status</TableHead>
                       <TableHead className="text-[10px]">Mission</TableHead>
                       <TableHead className="text-[10px]">Zone / Side</TableHead>
@@ -161,8 +161,25 @@ export default function DevicesPage() {
                           <TableCell className="font-mono text-[10px] text-muted-foreground">
                             {device.serial_port || "---"}
                           </TableCell>
-                          <TableCell className="text-[10px] text-muted-foreground">
-                            {device.type ?? "TX"}
+                          <TableCell>
+                            <Select
+                              value={device.type ?? "microwave_tx"}
+                              onValueChange={async (val) => {
+                                try {
+                                  await updateDevice(device.id, { type: val })
+                                  mutate()
+                                } catch (e) { console.error("Failed to update sensor type:", e) }
+                              }}
+                            >
+                              <SelectTrigger className="h-7 text-[10px] w-[110px] border-border/40">
+                                <SelectValue />
+                              </SelectTrigger>
+                              <SelectContent>
+                                <SelectItem value="microwave_tx" className="text-[10px]">LD2450</SelectItem>
+                                <SelectItem value="c4001" className="text-[10px]">C4001</SelectItem>
+                                <SelectItem value="gravity_mw" className="text-[10px]">Gravity MW V2</SelectItem>
+                              </SelectContent>
+                            </Select>
                           </TableCell>
                           <TableCell>
                             <Badge variant="outline" className={cn("text-[9px] px-1 py-0", sCfg.className)}>

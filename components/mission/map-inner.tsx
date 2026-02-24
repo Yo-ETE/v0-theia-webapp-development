@@ -78,7 +78,17 @@ interface SensorPlacement {
   zone_id: string
   side: string
   sensor_position: number // 0..1 along the side
+  device_type?: string // e.g. "microwave_tx", "c4001", "gravity_mw"
 }
+
+/** Sensor hardware specs for FOV cone visualization */
+const SENSOR_SPECS: Record<string, { fovDeg: number; maxRangeM: number; label: string }> = {
+  microwave_tx:  { fovDeg: 120, maxRangeM: 6,  label: "LD2450" },
+  tx_microwave:  { fovDeg: 120, maxRangeM: 6,  label: "LD2450" },
+  c4001:         { fovDeg: 100, maxRangeM: 8,  label: "C4001" },
+  gravity_mw:    { fovDeg: 75,  maxRangeM: 6,  label: "Gravity MW V2" },
+}
+const DEFAULT_SENSOR_SPECS = { fovDeg: 90, maxRangeM: 6, label: "Unknown" }
 
 interface SensorPlaceMode {
   zoneId: string
@@ -108,6 +118,7 @@ interface MapInnerProps {
   editingZoneId?: string | null
   editingPolygon?: [number, number][] | null
   onZonePolygonUpdate?: (zoneId: string, polygon: [number, number][]) => void
+  showFov?: boolean
 }
 
 // ── Geodesic measurement helpers ──────────────────────────────
@@ -179,6 +190,7 @@ export default function MapInner({
   editingZoneId = null,
   editingPolygon = null,
   onZonePolygonUpdate,
+  showFov = false,
 }: MapInnerProps) {
   const centerLat = Number.isFinite(rawLat) ? rawLat : 48.8566
   const centerLon = Number.isFinite(rawLon) ? rawLon : 2.3522
@@ -359,6 +371,70 @@ export default function MapInner({
     return cleanup
   // Re-run when polygon, tool, or editing zone changes
   }, [localPoly, editTool, editingZoneId, leafletL]) // eslint-disable-line react-hooks/exhaustive-deps
+  // ── FOV detection zone cones (native Leaflet) ──
+  const fovLayersRef = useRef<unknown[]>([])
+  useEffect(() => {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const map = mapRef.current as any
+    const L = leafletL
+    // Cleanup previous
+    const cleanup = () => {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      fovLayersRef.current.forEach((layer: any) => { try { map?.removeLayer(layer) } catch {} })
+      fovLayersRef.current = []
+    }
+    cleanup()
+    if (!map || !L || !showFov || sensorMarkers.length === 0) return
+
+    for (const sm of sensorMarkers) {
+      const { sensorPos, normalBearingDeg, fovDeg, maxRangeM, sensorLabel } = sm
+      const halfFov = fovDeg / 2
+      // Build arc polygon points: sensor center + arc from startAngle to endAngle
+      const arcPoints: [number, number][] = [sensorPos]
+      const STEPS = 24
+      for (let s = 0; s <= STEPS; s++) {
+        const angleDeg = normalBearingDeg - halfFov + (fovDeg * s / STEPS)
+        const angleRad = angleDeg * Math.PI / 180
+        // Offset in meters: east = sin(angle) * range, north = cos(angle) * range
+        const dEast = Math.sin(angleRad) * maxRangeM
+        const dNorth = Math.cos(angleRad) * maxRangeM
+        // Convert meter offset to lat/lon offset
+        const dLat = dNorth / 111320
+        const dLon = dEast / (111320 * Math.cos(sensorPos[0] * Math.PI / 180))
+        arcPoints.push([sensorPos[0] + dLat, sensorPos[1] + dLon])
+      }
+      arcPoints.push(sensorPos) // close the polygon
+
+      const sector = L.polygon(arcPoints, {
+        color: "rgba(180,210,240,0.2)",
+        fillColor: "rgba(180,210,240,0.06)",
+        weight: 1,
+        dashArray: "4 3",
+        interactive: false,
+      }).addTo(map)
+      fovLayersRef.current.push(sector)
+
+      // Small label at the far end of the cone
+      const centerAngleRad = normalBearingDeg * Math.PI / 180
+      const labelDist = maxRangeM * 0.7
+      const labelDLat = (Math.cos(centerAngleRad) * labelDist) / 111320
+      const labelDLon = (Math.sin(centerAngleRad) * labelDist) / (111320 * Math.cos(sensorPos[0] * Math.PI / 180))
+      const labelIcon = L.divIcon({
+        className: "",
+        html: `<div style="font-size:8px;font-weight:600;color:rgba(180,210,240,0.5);white-space:nowrap;transform:translate(-50%,-50%);pointer-events:none">${sensorLabel} ${maxRangeM}m</div>`,
+        iconSize: [0, 0],
+        iconAnchor: [0, 0],
+      })
+      const labelMarker = L.marker(
+        [sensorPos[0] + labelDLat, sensorPos[1] + labelDLon],
+        { icon: labelIcon, interactive: false, zIndexOffset: 100 }
+      ).addTo(map)
+      fovLayersRef.current.push(labelMarker)
+    }
+
+    return cleanup
+  }, [showFov, sensorMarkers, leafletL]) // eslint-disable-line react-hooks/exhaustive-deps
+
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const [mapInstance, setMapInstance] = useState<any>(null)
   const mapInstanceSet = useRef(false)
@@ -786,13 +862,18 @@ export default function MapInner({
 
   // Build sensor markers and detection projections
   type SensorMarkerData = {
-    id: string
-    sensorPos: [number, number]
-    detectionPos: [number, number] | null
-    deviceName: string
-    side: string
-    detection: LiveDetection | null
-    zoneColor: string
+  id: string
+  sensorPos: [number, number]
+  detectionPos: [number, number] | null
+  deviceName: string
+  side: string
+  detection: LiveDetection | null
+  zoneColor: string
+  // FOV cone data
+  normalBearingDeg: number // bearing of inward normal (degrees from north, clockwise)
+  fovDeg: number
+  maxRangeM: number
+  sensorLabel: string
   }
 
   // ── Heatmap: project each detection event to a lat/lon point ──
@@ -971,6 +1052,13 @@ export default function MapInner({
       ]
       detectionLatLon = toLatLon(detM)
     }
+    // Compute inward normal bearing (degrees from north, clockwise)
+    // normalM is [east, north] unit vector -> bearing = atan2(east, north)
+    const normalBearingDeg = ((Math.atan2(normalM[0], normalM[1]) * 180 / Math.PI) + 360) % 360
+
+    // Look up sensor specs from device type
+    const specs = SENSOR_SPECS[sp.device_type ?? ""] ?? DEFAULT_SENSOR_SPECS
+
     return {
       id: sp.device_id,
       sensorPos: sensorLatLon,
@@ -979,6 +1067,10 @@ export default function MapInner({
       side: sp.side,
       detection: det ?? null,
       zoneColor: zone.color,
+      normalBearingDeg,
+      fovDeg: specs.fovDeg,
+      maxRangeM: specs.maxRangeM,
+      sensorLabel: specs.label,
     }
   }).filter(Boolean) as SensorMarkerData[]
 

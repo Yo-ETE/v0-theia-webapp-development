@@ -29,6 +29,7 @@ interface MissionMapProps {
     zone_id: string
     side: string
     sensor_position: number
+    device_type?: string
   }[]
   heatmapMode?: boolean
   className?: string
@@ -46,6 +47,8 @@ interface MissionMapProps {
   editingZoneId?: string | null
   editingPolygon?: [number, number][] | null
   onZonePolygonUpdate?: (zoneId: string, polygon: [number, number][]) => void
+  estimatePosition?: boolean
+  showFov?: boolean
 }
 
 export function MissionMap({ className, ...props }: MissionMapProps) {
