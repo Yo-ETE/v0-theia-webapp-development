@@ -456,15 +456,9 @@ export default function MissionDetailPage() {
     }
     const updatedZones = (mission.zones ?? []).map((z) => {
       if (z.id !== editingZoneId) return z
-      const sides: Record<string, string> = { ...(z.sides ?? {}) }
-      for (let i = 0; i < editingPolygon.length; i++) {
-        const key = String.fromCharCode(65 + i)
-        if (!(key in sides)) sides[key] = ""
-      }
-      for (const key of Object.keys(sides)) {
-        if (key.charCodeAt(0) - 65 >= editingPolygon.length) delete sides[key]
-      }
-      return { ...z, polygon: editingPolygon, sides }
+      // Only update the polygon geometry -- do NOT modify sides/facades.
+      // Side names are managed separately in the zone edit dialog.
+      return { ...z, polygon: editingPolygon }
     })
     mutate({ ...mission, zones: updatedZones }, false)
     try {
