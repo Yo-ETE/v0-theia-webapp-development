@@ -138,9 +138,10 @@ export default function MapInner({
   const [drawPoints, setDrawPoints] = useState<[number, number][]>([])
   const mapRef = useRef<unknown>(null)
   const dragSuppressRef = useRef(false)
-  const selectedVertexRef = useRef<number | null>(null)
-  // Clear selected vertex when zone editing changes
-  useEffect(() => { selectedVertexRef.current = null }, [editingZoneId])
+  // Edit polygon mode: "move" = drag vertices, "add" = tap edge midpoints, "delete" = tap vertex to remove
+  const [editTool, setEditTool] = useState<"move" | "add" | "delete">("move")
+  // Reset tool when entering/exiting edit mode
+  useEffect(() => { setEditTool("move") }, [editingZoneId])
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const [mapInstance, setMapInstance] = useState<any>(null)
   const mapInstanceSet = useRef(false)
@@ -831,18 +832,20 @@ export default function MapInner({
         {(zones ?? []).map((zone) => {
           const det = effectiveDetections[zone.id]
           const hasPresence = det?._state === "live"
+          const isBeingEdited = editingZoneId === zone.id
           return (
             <Polygon
               key={zone.id}
-              positions={zone.polygon}
+              positions={isBeingEdited ? (editingPolygon ?? zone.polygon) : zone.polygon}
+              interactive={!isBeingEdited}
               pathOptions={{
-                color: heatmapMode ? "#666" : zone.color,
-                fillColor: heatmapMode ? "transparent" : zone.color,
-                fillOpacity: heatmapMode ? 0 : (hasPresence ? 0.08 : 0.12),
-                weight: heatmapMode ? 1 : (hasPresence ? 2 : 1.5),
+                color: isBeingEdited ? "#f59e0b" : (heatmapMode ? "#666" : zone.color),
+                fillColor: isBeingEdited ? "#f59e0b" : (heatmapMode ? "transparent" : zone.color),
+                fillOpacity: isBeingEdited ? 0.05 : (heatmapMode ? 0 : (hasPresence ? 0.08 : 0.12)),
+                weight: isBeingEdited ? 0 : (heatmapMode ? 1 : (hasPresence ? 2 : 1.5)),
                 dashArray: heatmapMode ? "4 4" : undefined,
               }}
-              eventHandlers={onZoneClick ? { click: () => onZoneClick(zone.id) } : undefined}
+              eventHandlers={onZoneClick && !isBeingEdited ? { click: () => onZoneClick(zone.id) } : undefined}
             >
               {!heatmapMode && (
                 <Tooltip permanent direction="center" className="zone-label-tip">
@@ -859,43 +862,57 @@ export default function MapInner({
         {editingZoneId && (() => {
           const zone = (zones ?? []).find(z => z.id === editingZoneId)
           if (!zone || !RL || !leafletL) return null
-          // Use local editingPolygon state (not zone.polygon from server)
           const poly = editingPolygon ?? zone.polygon
           if (!poly?.length) return null
           const RLMarker = RL.Marker
 
-          const vertexIcon = leafletL.divIcon({
+          // Vertex icon: orange circle with point number
+          const makeVertexIcon = (idx: number, isDeleteMode: boolean) => leafletL.divIcon({
             className: "",
-            html: '<div style="width:20px;height:20px;background:#f59e0b;border:2px solid white;border-radius:50%;cursor:grab;box-shadow:0 1px 4px rgba(0,0,0,0.3)"></div>',
-            iconSize: [20, 20],
-            iconAnchor: [10, 10],
+            html: `<div style="
+              width:24px;height:24px;
+              background:${isDeleteMode ? "#ef4444" : "#f59e0b"};
+              border:2px solid white;border-radius:50%;
+              display:flex;align-items:center;justify-content:center;
+              box-shadow:0 1px 4px rgba(0,0,0,0.3);
+              cursor:${isDeleteMode ? "pointer" : "grab"};
+            "><span style="color:white;font-size:10px;font-weight:800">${idx + 1}</span></div>`,
+            iconSize: [24, 24],
+            iconAnchor: [12, 12],
           })
+
+          // Midpoint icon: green circle with + sign (only shown in add mode)
           const midpointIcon = leafletL.divIcon({
             className: "",
-            html: '<div style="width:10px;height:10px;background:white;border:2px solid #f59e0b;border-radius:50%;cursor:pointer;box-shadow:0 1px 3px rgba(0,0,0,0.2)"></div>',
-            iconSize: [10, 10],
-            iconAnchor: [5, 5],
+            html: `<div style="
+              width:22px;height:22px;
+              background:#22c55e;border:2px solid white;border-radius:50%;
+              display:flex;align-items:center;justify-content:center;
+              box-shadow:0 1px 4px rgba(0,0,0,0.3);cursor:pointer;
+            "><span style="color:white;font-size:14px;font-weight:800;line-height:1">+</span></div>`,
+            iconSize: [22, 22],
+            iconAnchor: [11, 11],
           })
 
           return (
             <>
-              {/* Vertex markers - draggable with tap-to-select for deletion */}
-              {poly.map((pt, i) => {
-                const isSelected = selectedVertexRef.current === i
-                const selectedIcon = leafletL.divIcon({
-                  className: "",
-                  html: `<div style="width:26px;height:26px;background:#ef4444;border:3px solid white;border-radius:50%;cursor:grab;box-shadow:0 2px 6px rgba(0,0,0,0.4);display:flex;align-items:center;justify-content:center"><span style="color:white;font-size:9px;font-weight:800">${i+1}</span></div>`,
-                  iconSize: [26, 26],
-                  iconAnchor: [13, 13],
-                })
-                return (
+              {/* Outline of editing polygon (non-interactive to not block clicks) */}
+              <Polyline
+                positions={[...poly, poly[0]]}
+                pathOptions={{ color: "#f59e0b", weight: 2, dashArray: "6 4" }}
+                interactive={false}
+              />
+
+              {/* Vertex markers */}
+              {poly.map((pt, i) => (
                 <RLMarker
                   key={`edit-v-${i}-${pt[0].toFixed(6)}-${pt[1].toFixed(6)}`}
                   position={pt}
-                  icon={isSelected ? selectedIcon : vertexIcon}
-                  draggable={true}
+                  icon={makeVertexIcon(i, editTool === "delete")}
+                  draggable={editTool === "move"}
                   eventHandlers={{
                     dragend: (e: { target: { getLatLng: () => { lat: number; lng: number } } }) => {
+                      if (editTool !== "move") return
                       dragSuppressRef.current = true
                       const pos = e.target.getLatLng()
                       const newPoly = [...poly]
@@ -904,40 +921,22 @@ export default function MapInner({
                       setTimeout(() => { dragSuppressRef.current = false }, 300)
                     },
                     click: () => {
-                      if (selectedVertexRef.current === i) {
-                        selectedVertexRef.current = null
-                      } else {
-                        selectedVertexRef.current = i
+                      if (editTool === "delete" && poly.length > 3) {
+                        onZonePolygonUpdate?.(zone.id, poly.filter((_, idx) => idx !== i))
                       }
-                      // Force re-render by updating polygon with same data
-                      onZonePolygonUpdate?.(zone.id, [...poly])
-                    },
-                    contextmenu: (e: { originalEvent: { preventDefault: () => void } }) => {
-                      e.originalEvent.preventDefault()
-                      if (poly.length <= 3) return
-                      const newPoly = poly.filter((_, idx) => idx !== i)
-                      selectedVertexRef.current = null
-                      onZonePolygonUpdate?.(zone.id, newPoly)
                     },
                   }}
-                >
-                  <Tooltip direction="top" offset={[0, -14]}>
-                    <span style={{ fontSize: 9, fontWeight: 600 }}>
-                      P{i + 1} {isSelected ? "| tap pour suppr" : ""}
-                    </span>
-                  </Tooltip>
-                </RLMarker>
-                )
-              })}
+                />
+              ))}
 
-              {/* Midpoint markers - click to add vertex */}
-              {poly.map((pt, i) => {
+              {/* Midpoint markers (only in add mode) */}
+              {editTool === "add" && poly.map((pt, i) => {
                 const next = poly[(i + 1) % poly.length]
                 const midLat = (pt[0] + next[0]) / 2
                 const midLon = (pt[1] + next[1]) / 2
                 return (
                   <RLMarker
-                    key={`edit-m-${i}-${midLat.toFixed(6)}`}
+                    key={`edit-m-${i}-${midLat.toFixed(6)}-${midLon.toFixed(6)}`}
                     position={[midLat, midLon]}
                     icon={midpointIcon}
                     eventHandlers={{
@@ -947,42 +946,30 @@ export default function MapInner({
                         onZonePolygonUpdate?.(zone.id, newPoly)
                       },
                     }}
-                  >
-                    <Tooltip direction="top" offset={[0, -8]}>
-                      <span style={{ fontSize: 9 }}>+ ajouter</span>
-                    </Tooltip>
-                  </RLMarker>
+                  />
                 )
               })}
 
-              {/* Side labels with distances and custom facade names */}
+              {/* Side distance labels */}
               {poly.map((pt, i) => {
                 const next = poly[(i + 1) % poly.length]
                 const mLat = (pt[0] + next[0]) / 2
                 const mLon = (pt[1] + next[1]) / 2
                 const dist = haversineM(pt[0], pt[1], next[0], next[1])
-                const sideKey = String.fromCharCode(65 + i)
-                const customName = zone.sides?.[sideKey]
                 return (
                   <CircleMarker key={`edit-side-${i}`} center={[mLat, mLon]} radius={0} pathOptions={{ opacity: 0, fillOpacity: 0 }}>
                     <Tooltip permanent direction="center">
                       <span style={{
-                        fontSize: 9, fontWeight: 700, color: "#f59e0b",
-                        background: "rgba(255,255,255,0.95)", padding: "1px 5px",
-                        borderRadius: 3, border: "1px solid #f59e0b",
+                        fontSize: 9, fontWeight: 700,
+                        background: "rgba(0,0,0,0.7)", padding: "1px 5px",
+                        borderRadius: 3, color: "#fbbf24",
                       }}>
-                        {sideKey}{customName ? ` (${customName})` : ""}: {fmtDist(dist)}
+                        {fmtDist(dist)}
                       </span>
                     </Tooltip>
                   </CircleMarker>
                 )
               })}
-
-              {/* Outline of editing polygon */}
-              <Polyline
-                positions={[...zone.polygon, zone.polygon[0]]}
-                pathOptions={{ color: "#f59e0b", weight: 2, dashArray: "4 4" }}
-              />
             </>
           )
         })()}
@@ -1345,35 +1332,35 @@ export default function MapInner({
         const zone = (zones ?? []).find(z => z.id === editingZoneId)
         if (!zone) return null
         const poly = editingPolygon ?? zone.polygon
-        const selIdx = selectedVertexRef.current
+        const tools: { id: "move" | "add" | "delete"; label: string; icon: string; color: string }[] = [
+          { id: "move", label: "Deplacer", icon: "M5 9l4-4 4 4M5 15l4 4 4-4", color: "#f59e0b" },
+          { id: "add", label: "Ajouter", icon: "M12 5v14M5 12h14", color: "#22c55e" },
+          { id: "delete", label: "Supprimer", icon: "M18 6L6 18M6 6l12 12", color: "#ef4444" },
+        ]
         return (
-          <div className="absolute top-2 left-2 right-2 z-[500] flex flex-col gap-2">
-            <div className="rounded-lg bg-card/95 backdrop-blur px-3 py-2 border border-amber-500/40 shadow-lg">
-              <span className="text-xs font-mono text-amber-600 font-semibold">
-                EDIT POLYGON -- {poly.length} pts | Drag = move, tap = select, dots = add
-              </span>
-            </div>
-            <div className="flex items-center gap-2">
-              {selIdx !== null && selIdx < poly.length && poly.length > 3 && (
+          <div className="absolute top-2 left-1/2 -translate-x-1/2 z-[500] flex flex-col items-center gap-2">
+            <div className="rounded-xl bg-card/95 backdrop-blur border border-amber-500/30 shadow-lg px-2 py-1.5 flex items-center gap-1">
+              {tools.map((t) => (
                 <button
-                  onClick={() => {
-                    const newPoly = poly.filter((_, idx) => idx !== selIdx)
-                    selectedVertexRef.current = null
-                    onZonePolygonUpdate?.(zone.id, newPoly)
-                  }}
-                  className="rounded-lg bg-destructive px-4 py-2.5 text-xs font-semibold text-white active:bg-destructive/80 shadow-sm transition-colors min-h-[44px]"
+                  key={t.id}
+                  onClick={() => setEditTool(t.id)}
+                  className={cn(
+                    "flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-[11px] font-semibold transition-all min-h-[36px]",
+                    editTool === t.id
+                      ? "text-white shadow-sm"
+                      : "text-muted-foreground hover:text-foreground bg-transparent"
+                  )}
+                  style={editTool === t.id ? { background: t.color } : {}}
                 >
-                  Delete P{selIdx + 1}
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none"
+                    stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                    <path d={t.icon} />
+                  </svg>
+                  {t.label}
                 </button>
-              )}
-              {selIdx !== null && (
-                <button
-                  onClick={() => { selectedVertexRef.current = null; onZonePolygonUpdate?.(zone.id, [...poly]) }}
-                  className="rounded-lg bg-card/95 backdrop-blur px-4 py-2.5 text-xs font-medium text-foreground active:bg-muted border border-border shadow-sm transition-colors min-h-[44px]"
-                >
-                  Deselect
-                </button>
-              )}
+              ))}
+              <div className="w-px h-6 bg-border mx-1" />
+              <span className="text-[10px] font-mono text-amber-600 px-1">{poly.length} pts</span>
             </div>
           </div>
         )
