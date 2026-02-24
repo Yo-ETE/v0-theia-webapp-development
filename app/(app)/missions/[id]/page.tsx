@@ -107,6 +107,7 @@ export default function MissionDetailPage() {
   const [heatmapMode, setHeatmapMode] = useState(false)
   const [estimatePosition, setEstimatePosition] = useState(false)
   const [editingZoneId, setEditingZoneId] = useState<string | null>(null)
+  const [editingPolygon, setEditingPolygon] = useState<[number, number][] | null>(null)
   const [errorMsg, setErrorMsg] = useState<string | null>(null)
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const [replayDetections, setReplayDetections] = useState<Record<string, any>>({})
@@ -432,32 +433,49 @@ export default function MissionDetailPage() {
     }
   }, [mission, id, mutate, mutateDevices, unassigning])
 
-  // ── Zone polygon editing ──
-  const updateZonePolygon = useCallback(async (zoneId: string, newPolygon: [number, number][]) => {
-    if (!mission) return
+  // ── Zone polygon editing (local state only, saved on exit) ──
+  const updateZonePolygon = useCallback((_zoneId: string, newPolygon: [number, number][]) => {
+    setEditingPolygon(newPolygon)
+  }, [])
+
+  // Start editing: copy polygon to local state
+  const startEditingZone = useCallback((zoneId: string | null) => {
+    if (zoneId) {
+      const zone = (mission?.zones ?? []).find(z => z.id === zoneId)
+      if (zone) setEditingPolygon([...zone.polygon])
+    }
+    setEditingZoneId(zoneId)
+  }, [mission])
+
+  // Save polygon on exit
+  const stopEditingZone = useCallback(async () => {
+    if (!mission || !editingZoneId || !editingPolygon) {
+      setEditingZoneId(null)
+      setEditingPolygon(null)
+      return
+    }
     const updatedZones = (mission.zones ?? []).map((z) => {
-      if (z.id !== zoneId) return z
-      // Sync sides map: add keys for new points, keep existing labels
+      if (z.id !== editingZoneId) return z
       const sides: Record<string, string> = { ...(z.sides ?? {}) }
-      for (let i = 0; i < newPolygon.length; i++) {
+      for (let i = 0; i < editingPolygon.length; i++) {
         const key = String.fromCharCode(65 + i)
         if (!(key in sides)) sides[key] = ""
       }
-      // Remove keys beyond polygon length
       for (const key of Object.keys(sides)) {
-        if (key.charCodeAt(0) - 65 >= newPolygon.length) delete sides[key]
+        if (key.charCodeAt(0) - 65 >= editingPolygon.length) delete sides[key]
       }
-      return { ...z, polygon: newPolygon, sides }
+      return { ...z, polygon: editingPolygon, sides }
     })
-    // Optimistic update
     mutate({ ...mission, zones: updatedZones }, false)
     try {
       await updateMission(id, { zones: updatedZones })
     } catch (err) {
-      console.warn("[THEIA] Failed to update zone polygon:", err)
-      mutate() // rollback
+      console.warn("[THEIA] Failed to save zone polygon:", err)
+      mutate()
     }
-  }, [mission, id, mutate])
+    setEditingZoneId(null)
+    setEditingPolygon(null)
+  }, [mission, editingZoneId, editingPolygon, id, mutate])
 
   // ── Zone properties edit ──
   const openEditZone = useCallback((zoneId: string) => {
@@ -812,6 +830,7 @@ export default function MissionDetailPage() {
                       onSensorPlace={handleSensorPlace}
                       onMapMove={handleMapMove}
                       editingZoneId={editingZoneId}
+                      editingPolygon={editingPolygon}
                       onZonePolygonUpdate={updateZonePolygon}
                     />
                   </ErrorBoundary>
@@ -910,7 +929,7 @@ export default function MissionDetailPage() {
                           <button onClick={() => openEditZone(zone.id)}
                             className="text-muted-foreground hover:text-foreground transition-colors p-1"
                             title="Edit zone name & sides"><MapPin className="h-3.5 w-3.5" /></button>
-                          <button onClick={() => setEditingZoneId(editingZoneId === zone.id ? null : zone.id)}
+                          <button onClick={() => editingZoneId === zone.id ? stopEditingZone() : startEditingZone(zone.id)}
                             className={cn("transition-colors p-1", editingZoneId === zone.id ? "text-warning" : "text-muted-foreground hover:text-foreground")}
                             title="Edit zone polygon"><Pencil className="h-3.5 w-3.5" /></button>
                           <button onClick={() => setAssignDialog(zone.id)}

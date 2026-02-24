@@ -44,6 +44,7 @@ interface MissionMapProps {
   onSensorPlace?: (zoneId: string, side: string, position: number) => void
   onMapMove?: (lat: number, lon: number, zoom: number) => void
   editingZoneId?: string | null
+  editingPolygon?: [number, number][] | null
   onZonePolygonUpdate?: (zoneId: string, polygon: [number, number][]) => void
 }
 

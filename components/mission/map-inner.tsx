@@ -52,6 +52,7 @@ interface MapInnerProps {
   onSensorPlace?: (zoneId: string, side: string, position: number) => void
   onMapMove?: (lat: number, lon: number, zoom: number) => void
   editingZoneId?: string | null
+  editingPolygon?: [number, number][] | null
   onZonePolygonUpdate?: (zoneId: string, polygon: [number, number][]) => void
 }
 
@@ -122,6 +123,7 @@ export default function MapInner({
   onSensorPlace,
   onMapMove,
   editingZoneId = null,
+  editingPolygon = null,
   onZonePolygonUpdate,
 }: MapInnerProps) {
   const centerLat = Number.isFinite(rawLat) ? rawLat : 48.8566
@@ -856,7 +858,10 @@ export default function MapInner({
         {/* ── Zone editing overlay ── */}
         {editingZoneId && (() => {
           const zone = (zones ?? []).find(z => z.id === editingZoneId)
-          if (!zone || !zone.polygon?.length || !RL || !leafletL) return null
+          if (!zone || !RL || !leafletL) return null
+          // Use local editingPolygon state (not zone.polygon from server)
+          const poly = editingPolygon ?? zone.polygon
+          if (!poly?.length) return null
           const RLMarker = RL.Marker
 
           const vertexIcon = leafletL.divIcon({
@@ -875,7 +880,7 @@ export default function MapInner({
           return (
             <>
               {/* Vertex markers - draggable with tap-to-select for deletion */}
-              {zone.polygon.map((pt, i) => {
+              {poly.map((pt, i) => {
                 const isSelected = selectedVertexRef.current === i
                 const selectedIcon = leafletL.divIcon({
                   className: "",
@@ -885,7 +890,7 @@ export default function MapInner({
                 })
                 return (
                 <RLMarker
-                  key={`edit-v-${i}`}
+                  key={`edit-v-${i}-${pt[0].toFixed(6)}-${pt[1].toFixed(6)}`}
                   position={pt}
                   icon={isSelected ? selectedIcon : vertexIcon}
                   draggable={true}
@@ -893,25 +898,24 @@ export default function MapInner({
                     dragend: (e: { target: { getLatLng: () => { lat: number; lng: number } } }) => {
                       dragSuppressRef.current = true
                       const pos = e.target.getLatLng()
-                      const newPoly = [...zone.polygon]
+                      const newPoly = [...poly]
                       newPoly[i] = [pos.lat, pos.lng]
                       onZonePolygonUpdate?.(zone.id, newPoly)
                       setTimeout(() => { dragSuppressRef.current = false }, 300)
                     },
                     click: () => {
-                      // Toggle selection for this vertex
                       if (selectedVertexRef.current === i) {
                         selectedVertexRef.current = null
                       } else {
                         selectedVertexRef.current = i
                       }
-                      // Force re-render
-                      onZonePolygonUpdate?.(zone.id, [...zone.polygon])
+                      // Force re-render by updating polygon with same data
+                      onZonePolygonUpdate?.(zone.id, [...poly])
                     },
                     contextmenu: (e: { originalEvent: { preventDefault: () => void } }) => {
                       e.originalEvent.preventDefault()
-                      if (zone.polygon.length <= 3) return
-                      const newPoly = zone.polygon.filter((_, idx) => idx !== i)
+                      if (poly.length <= 3) return
+                      const newPoly = poly.filter((_, idx) => idx !== i)
                       selectedVertexRef.current = null
                       onZonePolygonUpdate?.(zone.id, newPoly)
                     },
@@ -919,7 +923,7 @@ export default function MapInner({
                 >
                   <Tooltip direction="top" offset={[0, -14]}>
                     <span style={{ fontSize: 9, fontWeight: 600 }}>
-                      P{i + 1} {isSelected ? "| tap X pour suppr" : "| tap = select"}
+                      P{i + 1} {isSelected ? "| tap pour suppr" : ""}
                     </span>
                   </Tooltip>
                 </RLMarker>
@@ -927,33 +931,33 @@ export default function MapInner({
               })}
 
               {/* Midpoint markers - click to add vertex */}
-              {zone.polygon.map((pt, i) => {
-                const next = zone.polygon[(i + 1) % zone.polygon.length]
+              {poly.map((pt, i) => {
+                const next = poly[(i + 1) % poly.length]
                 const midLat = (pt[0] + next[0]) / 2
                 const midLon = (pt[1] + next[1]) / 2
                 return (
                   <RLMarker
-                    key={`edit-m-${i}`}
+                    key={`edit-m-${i}-${midLat.toFixed(6)}`}
                     position={[midLat, midLon]}
                     icon={midpointIcon}
                     eventHandlers={{
                       click: () => {
-                        const newPoly = [...zone.polygon]
+                        const newPoly = [...poly]
                         newPoly.splice(i + 1, 0, [midLat, midLon])
                         onZonePolygonUpdate?.(zone.id, newPoly)
                       },
                     }}
                   >
                     <Tooltip direction="top" offset={[0, -8]}>
-                      <span style={{ fontSize: 9 }}>+ ajouter point</span>
+                      <span style={{ fontSize: 9 }}>+ ajouter</span>
                     </Tooltip>
                   </RLMarker>
                 )
               })}
 
               {/* Side labels with distances and custom facade names */}
-              {zone.polygon.map((pt, i) => {
-                const next = zone.polygon[(i + 1) % zone.polygon.length]
+              {poly.map((pt, i) => {
+                const next = poly[(i + 1) % poly.length]
                 const mLat = (pt[0] + next[0]) / 2
                 const mLon = (pt[1] + next[1]) / 2
                 const dist = haversineM(pt[0], pt[1], next[0], next[1])
@@ -1340,19 +1344,20 @@ export default function MapInner({
       {editingZoneId && !drawingMode && (() => {
         const zone = (zones ?? []).find(z => z.id === editingZoneId)
         if (!zone) return null
+        const poly = editingPolygon ?? zone.polygon
         const selIdx = selectedVertexRef.current
         return (
           <div className="absolute top-2 left-2 right-2 z-[500] flex flex-col gap-2">
             <div className="rounded-lg bg-card/95 backdrop-blur px-3 py-2 border border-amber-500/40 shadow-lg">
               <span className="text-xs font-mono text-amber-600 font-semibold">
-                EDIT POLYGON -- {zone.polygon.length} pts | Drag to move, tap to select, mid-dots to add
+                EDIT POLYGON -- {poly.length} pts | Drag = move, tap = select, dots = add
               </span>
             </div>
             <div className="flex items-center gap-2">
-              {selIdx !== null && selIdx < zone.polygon.length && zone.polygon.length > 3 && (
+              {selIdx !== null && selIdx < poly.length && poly.length > 3 && (
                 <button
                   onClick={() => {
-                    const newPoly = zone.polygon.filter((_, idx) => idx !== selIdx)
+                    const newPoly = poly.filter((_, idx) => idx !== selIdx)
                     selectedVertexRef.current = null
                     onZonePolygonUpdate?.(zone.id, newPoly)
                   }}
@@ -1363,7 +1368,7 @@ export default function MapInner({
               )}
               {selIdx !== null && (
                 <button
-                  onClick={() => { selectedVertexRef.current = null; onZonePolygonUpdate?.(zone.id, [...zone.polygon]) }}
+                  onClick={() => { selectedVertexRef.current = null; onZonePolygonUpdate?.(zone.id, [...poly]) }}
                   className="rounded-lg bg-card/95 backdrop-blur px-4 py-2.5 text-xs font-medium text-foreground active:bg-muted border border-border shadow-sm transition-colors min-h-[44px]"
                 >
                   Deselect
