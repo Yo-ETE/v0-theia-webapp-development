@@ -61,11 +61,15 @@ function parseEventToDetection(ev: DetectionEvent): LiveDetection | null {
 }
 
 export function DetectionTimelapse({ missionId, onDetection, onClose }: DetectionTimelapseProps) {
-  // Time range: default to last 1 hour
+  // Time range: default to last 1 hour (local time for datetime-local inputs)
   const now = new Date()
   const oneHourAgo = new Date(now.getTime() - 3600 * 1000)
-  const [fromTime, setFromTime] = useState(oneHourAgo.toISOString().slice(0, 16))
-  const [toTime, setToTime] = useState(now.toISOString().slice(0, 16))
+  const toLocalDatetime = (d: Date) => {
+    const pad = (n: number) => String(n).padStart(2, "0")
+    return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`
+  }
+  const [fromTime, setFromTime] = useState(toLocalDatetime(oneHourAgo))
+  const [toTime, setToTime] = useState(toLocalDatetime(now))
   const [loaded, setLoaded] = useState(false)
 
   // Playback state
@@ -75,15 +79,16 @@ export function DetectionTimelapse({ missionId, onDetection, onClose }: Detectio
   const playRef = useRef<ReturnType<typeof setInterval> | null>(null)
 
   // Fetch range params only when "loaded"
+  // Send timestamps matching the DB format (local time, "YYYY-MM-DD HH:MM:SS")
+  // datetime-local inputs give "YYYY-MM-DDTHH:MM", we convert to "YYYY-MM-DD HH:MM:SS"
   const fetchParams = loaded ? {
     mission_id: missionId,
-    from_ts: new Date(fromTime).toISOString(),
-    to_ts: new Date(toTime).toISOString(),
-    limit: 2000,
+    from_ts: fromTime.replace("T", " ") + ":00",
+    to_ts: toTime.replace("T", " ") + ":59",
+    limit: 5000,
   } : null
 
   const { data: rawEvents, isLoading } = useEventsRange(fetchParams)
-  console.log("[v0] Timelapse: fetchParams=", JSON.stringify(fetchParams), "rawEvents count=", rawEvents?.length, "first=", rawEvents?.[0]?.timestamp)
 
   // Sort events chronologically (API returns DESC)
   const events = (rawEvents ?? []).slice().reverse()
