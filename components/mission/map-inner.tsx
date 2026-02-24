@@ -511,26 +511,38 @@ export default function MapInner({
 
   // Build effective detections by device_id (same hold/fade logic)
   const effectiveByDevice: Record<string, LiveDetection & { _state: DetState }> = {}
-  for (const [devId, det] of Object.entries(liveByDevice)) {
-    if (det.presence && det.distance > 0) {
-      effectiveByDevice[devId] = { ...det, _state: "live" }
+
+  if (replayMode) {
+    // In replay mode, build effectiveByDevice from liveDetections (replay data keyed by zone)
+    // Each replay detection has a device_id we can use
+    for (const [, det] of Object.entries(liveDetections)) {
+      const devId = det.device_id || det.device_name
+      if (devId && det.distance > 0) {
+        effectiveByDevice[devId] = { ...det, _state: "live" }
+      }
     }
-  }
-  for (const [devId, lastPresenceTs] of Object.entries(lastPresenceTsByDevRef.current)) {
-    if (effectiveByDevice[devId]) continue
-    if (lastPresenceTs <= 0) continue
-    const lastGood = lastGoodByDevRef.current[devId]
-    if (!lastGood) continue
-    const sinceLast = now - lastPresenceTs
-    const currentDet = liveByDevice[devId]
-    const sseStillActive = currentDet && (now - (lastEventTsByDevRef.current[devId] ?? 0)) < 3000
-    const explicitlyGone = sseStillActive && !currentDet.presence
-    if (sinceLast < STALE_MS && !explicitlyGone) {
-      effectiveByDevice[devId] = { ...lastGood, _state: "live" }
-    } else if (sinceLast < STALE_MS + HOLD_MS) {
-      effectiveByDevice[devId] = { ...lastGood, _state: "hold" }
-    } else if (sinceLast < STALE_MS + HOLD_MS + FADE_MS) {
-      effectiveByDevice[devId] = { ...lastGood, _state: "fading" }
+  } else {
+    for (const [devId, det] of Object.entries(liveByDevice)) {
+      if (det.presence && det.distance > 0) {
+        effectiveByDevice[devId] = { ...det, _state: "live" }
+      }
+    }
+    for (const [devId, lastPresenceTs] of Object.entries(lastPresenceTsByDevRef.current)) {
+      if (effectiveByDevice[devId]) continue
+      if (lastPresenceTs <= 0) continue
+      const lastGood = lastGoodByDevRef.current[devId]
+      if (!lastGood) continue
+      const sinceLast = now - lastPresenceTs
+      const currentDet = liveByDevice[devId]
+      const sseStillActive = currentDet && (now - (lastEventTsByDevRef.current[devId] ?? 0)) < 3000
+      const explicitlyGone = sseStillActive && !currentDet.presence
+      if (sinceLast < STALE_MS && !explicitlyGone) {
+        effectiveByDevice[devId] = { ...lastGood, _state: "live" }
+      } else if (sinceLast < STALE_MS + HOLD_MS) {
+        effectiveByDevice[devId] = { ...lastGood, _state: "hold" }
+      } else if (sinceLast < STALE_MS + HOLD_MS + FADE_MS) {
+        effectiveByDevice[devId] = { ...lastGood, _state: "fading" }
+      }
     }
   }
 

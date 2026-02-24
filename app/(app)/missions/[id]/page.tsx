@@ -667,7 +667,6 @@ export default function MissionDetailPage() {
   const effectiveLiveByZone: Record<string, LiveDetection> = timelapseMode
     ? { ...replayDetections }
     : { ...liveByZone }
-
   // Detection Feed: combine DB events (persisted) + SSE live detections (this session).
   // DB events populate the feed on page load so it doesn't appear empty after navigation.
   const dbDetections: LiveDetection[] = (events ?? []).map((e: DetectionEvent) => {
