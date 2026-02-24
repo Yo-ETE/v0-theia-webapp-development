@@ -233,9 +233,9 @@ export default function MissionDetailPage() {
       const j = (i + 1) % polygon.length
       signedArea += (polygon[j][1] - polygon[i][1]) * (polygon[j][0] + polygon[i][0])
     }
-    // If signedArea > 0, polygon is CW in screen coords, outward normal = bearing + 90
-    // If signedArea < 0, polygon is CCW, outward normal = bearing - 90
-    const normalOffset = signedArea > 0 ? 90 : -90
+    // Shoelace with (lng,lat): signedArea < 0 means CW on screen → outward normal = bearing + 90
+    // signedArea > 0 means CCW on screen → outward normal = bearing - 90
+    const normalOffset = signedArea < 0 ? 90 : -90
 
     // Compute outward normal bearings
     const bearings: number[] = edgeBearings.map(b => ((b + normalOffset) % 360 + 360) % 360)

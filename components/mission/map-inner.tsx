@@ -993,12 +993,16 @@ export default function MapInner({
                 // Only show the group/face label, not the per-segment letter
                 const displayLabel = sideLabel || key
                 const dist = haversineM(pt[0], pt[1], next[0], next[1])
-                // Compute screen-space angle of the edge for rotation
+                // Compute screen-space angle of the edge for CSS rotation
+                // Geographic bearing: 0=north(up), 90=east(right), 180=south(down)
+                // CSS rotate: 0=horizontal(right), 90=down, -90=up
+                // Conversion: cssAngle = geoBearing - 90
                 const dLon = (next[1] - pt[1]) * Math.PI / 180
                 const y = Math.sin(dLon) * Math.cos(next[0] * Math.PI / 180)
                 const x = Math.cos(pt[0] * Math.PI / 180) * Math.sin(next[0] * Math.PI / 180) -
                           Math.sin(pt[0] * Math.PI / 180) * Math.cos(next[0] * Math.PI / 180) * Math.cos(dLon)
-                let angleDeg = Math.atan2(y, x) * 180 / Math.PI
+                const geoBearing = Math.atan2(y, x) * 180 / Math.PI
+                let angleDeg = geoBearing - 90
                 // Keep text readable (not upside down): normalize to -90..+90
                 if (angleDeg > 90) angleDeg -= 180
                 if (angleDeg < -90) angleDeg += 180
