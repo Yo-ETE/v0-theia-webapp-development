@@ -1222,21 +1222,14 @@ export default function MapInner({
               key={`fov-${sm.id}`}
               positions={arcPositions}
               pathOptions={{
-                color: "#ff6b6b",
-                fillColor: "#ff6b6b",
+                color: "#90b8d8",
+                fillColor: "#90b8d8",
                 weight: 1.5,
-                opacity: 0.5,
-                fillOpacity: 0.12,
+                opacity: 0.35,
+                fillOpacity: 0.1,
                 dashArray: "4 3",
-                interactive: false,
               }}
-            >
-              <Tooltip permanent direction="center" className="fov-label-tip">
-                <span style={{ fontSize: 8, fontWeight: 600, color: "rgba(255,107,107,0.7)" }}>
-                  {sm.sensorLabel} {sm.maxRangeM}m
-                </span>
-              </Tooltip>
-            </Polygon>
+            />
           )
         })}
 
