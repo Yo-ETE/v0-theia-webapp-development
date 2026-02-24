@@ -136,6 +136,9 @@ export default function MapInner({
   const [drawPoints, setDrawPoints] = useState<[number, number][]>([])
   const mapRef = useRef<unknown>(null)
   const dragSuppressRef = useRef(false)
+  const selectedVertexRef = useRef<number | null>(null)
+  // Clear selected vertex when zone editing changes
+  useEffect(() => { selectedVertexRef.current = null }, [editingZoneId])
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const [mapInstance, setMapInstance] = useState<any>(null)
   const mapInstanceSet = useRef(false)
@@ -327,7 +330,7 @@ export default function MapInner({
     return () => clearTimeout(timer)
   }, [centerLat, centerLon, zoom])
 
-  // Disable map drag/touch in draw mode OR zone polygon edit mode
+  // Disable map drag in draw mode OR zone polygon edit mode
   const shouldLockMap = drawingMode || !!editingZoneId
   useEffect(() => {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -339,7 +342,7 @@ export default function MapInner({
           const m = mapRef.current as any
           if (m) {
             m.dragging?.disable()
-            m.touchZoom?.disable()
+            if (drawingMode) m.touchZoom?.disable()
             m.doubleClickZoom?.disable()
           }
         }, 500)
@@ -349,7 +352,8 @@ export default function MapInner({
     }
     if (shouldLockMap) {
       map.dragging?.disable()
-      map.touchZoom?.disable()
+      // Only disable touchZoom in draw mode (need it for edit mode vertex dragging)
+      if (drawingMode) map.touchZoom?.disable()
       map.doubleClickZoom?.disable()
     } else {
       map.dragging?.enable()
@@ -870,35 +874,57 @@ export default function MapInner({
 
           return (
             <>
-              {/* Vertex markers - draggable */}
-              {zone.polygon.map((pt, i) => (
+              {/* Vertex markers - draggable with tap-to-select for deletion */}
+              {zone.polygon.map((pt, i) => {
+                const isSelected = selectedVertexRef.current === i
+                const selectedIcon = leafletL.divIcon({
+                  className: "",
+                  html: `<div style="width:26px;height:26px;background:#ef4444;border:3px solid white;border-radius:50%;cursor:grab;box-shadow:0 2px 6px rgba(0,0,0,0.4);display:flex;align-items:center;justify-content:center"><span style="color:white;font-size:9px;font-weight:800">${i+1}</span></div>`,
+                  iconSize: [26, 26],
+                  iconAnchor: [13, 13],
+                })
+                return (
                 <RLMarker
                   key={`edit-v-${i}`}
                   position={pt}
-                  icon={vertexIcon}
+                  icon={isSelected ? selectedIcon : vertexIcon}
                   draggable={true}
                   eventHandlers={{
                     dragend: (e: { target: { getLatLng: () => { lat: number; lng: number } } }) => {
+                      dragSuppressRef.current = true
                       const pos = e.target.getLatLng()
                       const newPoly = [...zone.polygon]
                       newPoly[i] = [pos.lat, pos.lng]
                       onZonePolygonUpdate?.(zone.id, newPoly)
+                      setTimeout(() => { dragSuppressRef.current = false }, 300)
+                    },
+                    click: () => {
+                      // Toggle selection for this vertex
+                      if (selectedVertexRef.current === i) {
+                        selectedVertexRef.current = null
+                      } else {
+                        selectedVertexRef.current = i
+                      }
+                      // Force re-render
+                      onZonePolygonUpdate?.(zone.id, [...zone.polygon])
                     },
                     contextmenu: (e: { originalEvent: { preventDefault: () => void } }) => {
                       e.originalEvent.preventDefault()
-                      if (zone.polygon.length <= 3) return // min 3 points
+                      if (zone.polygon.length <= 3) return
                       const newPoly = zone.polygon.filter((_, idx) => idx !== i)
+                      selectedVertexRef.current = null
                       onZonePolygonUpdate?.(zone.id, newPoly)
                     },
                   }}
                 >
-                  <Tooltip direction="top" offset={[0, -10]}>
+                  <Tooltip direction="top" offset={[0, -14]}>
                     <span style={{ fontSize: 9, fontWeight: 600 }}>
-                      P{i + 1} | {zone.polygon.length <= 3 ? "min 3 pts" : "clic-droit = suppr"}
+                      P{i + 1} {isSelected ? "| tap X pour suppr" : "| tap = select"}
                     </span>
                   </Tooltip>
                 </RLMarker>
-              ))}
+                )
+              })}
 
               {/* Midpoint markers - click to add vertex */}
               {zone.polygon.map((pt, i) => {
@@ -1309,6 +1335,44 @@ export default function MapInner({
           {centerLat.toFixed(5)}, {centerLon.toFixed(5)} z{zoom}
         </span>
       </div>
+
+      {/* Edit polygon toolbar */}
+      {editingZoneId && !drawingMode && (() => {
+        const zone = (zones ?? []).find(z => z.id === editingZoneId)
+        if (!zone) return null
+        const selIdx = selectedVertexRef.current
+        return (
+          <div className="absolute top-2 left-2 right-2 z-[500] flex flex-col gap-2">
+            <div className="rounded-lg bg-card/95 backdrop-blur px-3 py-2 border border-amber-500/40 shadow-lg">
+              <span className="text-xs font-mono text-amber-600 font-semibold">
+                EDIT POLYGON -- {zone.polygon.length} pts | Drag to move, tap to select, mid-dots to add
+              </span>
+            </div>
+            <div className="flex items-center gap-2">
+              {selIdx !== null && selIdx < zone.polygon.length && zone.polygon.length > 3 && (
+                <button
+                  onClick={() => {
+                    const newPoly = zone.polygon.filter((_, idx) => idx !== selIdx)
+                    selectedVertexRef.current = null
+                    onZonePolygonUpdate?.(zone.id, newPoly)
+                  }}
+                  className="rounded-lg bg-destructive px-4 py-2.5 text-xs font-semibold text-white active:bg-destructive/80 shadow-sm transition-colors min-h-[44px]"
+                >
+                  Delete P{selIdx + 1}
+                </button>
+              )}
+              {selIdx !== null && (
+                <button
+                  onClick={() => { selectedVertexRef.current = null; onZonePolygonUpdate?.(zone.id, [...zone.polygon]) }}
+                  className="rounded-lg bg-card/95 backdrop-blur px-4 py-2.5 text-xs font-medium text-foreground active:bg-muted border border-border shadow-sm transition-colors min-h-[44px]"
+                >
+                  Deselect
+                </button>
+              )}
+            </div>
+          </div>
+        )
+      })()}
 
       {/* Drawing toolbar */}
       {drawingMode && (
