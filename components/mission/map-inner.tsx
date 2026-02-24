@@ -1145,19 +1145,21 @@ export default function MapInner({
         })}
 
         {/* ── FOV detection cones (declarative JSX, no extra hooks) ── */}
-        {console.log("[v0] FOV render: showFov=", showFov, "sensorMarkers.length=", sensorMarkers.length, sensorMarkers.map(sm => ({ id: sm.id, pos: sm.sensorPos, bearing: sm.normalBearingDeg, fov: sm.fovDeg, range: sm.maxRangeM, label: sm.sensorLabel })))}
         {showFov && sensorMarkers.map((sm) => {
           const arcPositions = buildFovArc(sm.sensorPos, sm.normalBearingDeg, sm.fovDeg, sm.maxRangeM)
+          console.log("[v0] FOV arc for", sm.id, "bearing=", sm.normalBearingDeg, "fov=", sm.fovDeg, "range=", sm.maxRangeM, "arcPts=", arcPositions.length, "first=", arcPositions[0], "mid=", arcPositions[Math.floor(arcPositions.length/2)])
           return (
             <Polygon
               key={`fov-${sm.id}`}
               positions={arcPositions}
-              interactive={false}
               pathOptions={{
-                color: "rgba(180,210,240,0.2)",
-                fillColor: "rgba(180,210,240,0.06)",
+                color: "#b4d2f0",
+                fillColor: "#b4d2f0",
                 weight: 1,
+                opacity: 0.3,
+                fillOpacity: 0.08,
                 dashArray: "4 3",
+                interactive: false,
               }}
             >
               <Tooltip permanent direction="center" className="fov-label-tip">
