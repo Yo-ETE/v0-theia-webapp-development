@@ -115,8 +115,32 @@ export default function MissionDetailPage() {
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const handleReplayDetection = useCallback((dets: Record<string, any>) => {
-    setReplayDetections(dets)
-  }, [])
+    // Resolve zone keys: timelapse may send zone_label ("Maison") instead of zone.id (UUID)
+    // We need to map zone_label to zone.id for the map to find the right zone
+    const zones = mission?.zones ?? []
+    const resolved: Record<string, any> = {}
+    for (const [key, det] of Object.entries(dets)) {
+      // Check if key is already a valid zone.id
+      const directMatch = zones.find(z => z.id === key)
+      if (directMatch) {
+        resolved[key] = det
+      } else {
+        // key might be zone_label -- find matching zone by name
+        const byName = zones.find(z => z.name === key || z.name === det?.zone_label)
+        if (byName) {
+          resolved[byName.id] = det
+        } else {
+          // last resort: use first zone if only one exists
+          if (zones.length === 1) {
+            resolved[zones[0].id] = det
+          } else {
+            resolved[key] = det
+          }
+        }
+      }
+    }
+    setReplayDetections(resolved)
+  }, [mission?.zones])
 
   // ── Live SSE detections ──
   const [liveDetections, setLiveDetections] = useState<LiveDetection[]>([])
