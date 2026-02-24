@@ -82,15 +82,34 @@ function buildFovArc(
   return arcPoints
 }
 
-/** Sutherland-Hodgman polygon clipping: clip subject polygon to convex/concave clip polygon */
+/** Compute signed area to determine winding order (positive = CCW) */
+function signedArea(poly: [number, number][]): number {
+  let area = 0
+  for (let i = 0; i < poly.length; i++) {
+    const j = (i + 1) % poly.length
+    area += poly[i][0] * poly[j][1]
+    area -= poly[j][0] * poly[i][1]
+  }
+  return area / 2
+}
+
+/** Ensure polygon is counter-clockwise (required for Sutherland-Hodgman) */
+function ensureCCW(poly: [number, number][]): [number, number][] {
+  return signedArea(poly) < 0 ? [...poly].reverse() : poly
+}
+
+/** Sutherland-Hodgman polygon clipping: clip subject polygon to clip polygon */
 function clipPolygon(subject: [number, number][], clip: [number, number][]): [number, number][] {
   if (clip.length < 3 || subject.length < 3) return subject
 
+  // Normalize both polygons to CCW winding
+  const ccwClip = ensureCCW(clip)
+
   let output = [...subject]
-  for (let i = 0; i < clip.length; i++) {
+  for (let i = 0; i < ccwClip.length; i++) {
     if (output.length === 0) return []
-    const edgeA = clip[i]
-    const edgeB = clip[(i + 1) % clip.length]
+    const edgeA = ccwClip[i]
+    const edgeB = ccwClip[(i + 1) % ccwClip.length]
     const input = [...output]
     output = []
 
