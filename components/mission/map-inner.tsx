@@ -5,6 +5,60 @@ import type { Zone, DetectionEvent } from "@/lib/types"
 import { cn } from "@/lib/utils"
 import HeatmapCanvas from "./heatmap-canvas"
 
+/** Group polygon edges by outward-normal bearing so colinear walls share the same facade letter */
+function groupSidesByBearing(polygon: [number, number][]): string[] {
+  const n = polygon.length
+  if (n < 3) return polygon.map((_, i) => String.fromCharCode(65 + i))
+
+  // Compute edge bearings
+  const edgeBearings: number[] = []
+  for (let i = 0; i < n; i++) {
+    const [lat1, lon1] = polygon[i]
+    const [lat2, lon2] = polygon[(i + 1) % n]
+    const dLon = (lon2 - lon1) * Math.PI / 180
+    const y = Math.sin(dLon) * Math.cos(lat2 * Math.PI / 180)
+    const x = Math.cos(lat1 * Math.PI / 180) * Math.sin(lat2 * Math.PI / 180) -
+              Math.sin(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) * Math.cos(dLon)
+    let deg = Math.atan2(y, x) * 180 / Math.PI
+    deg = ((deg % 360) + 360) % 360
+    edgeBearings.push(deg)
+  }
+
+  // Polygon winding
+  let signedArea = 0
+  for (let i = 0; i < n; i++) {
+    const j = (i + 1) % n
+    signedArea += (polygon[j][1] - polygon[i][1]) * (polygon[j][0] + polygon[i][0])
+  }
+  const normalOffset = signedArea < 0 ? 90 : -90
+  const bearings = edgeBearings.map(b => ((b + normalOffset) % 360 + 360) % 360)
+
+  // Group by similar normal (30 deg tolerance)
+  const TOLERANCE = 30
+  const groups: number[][] = []
+  const assigned = new Set<number>()
+  for (let i = 0; i < n; i++) {
+    if (assigned.has(i)) continue
+    const group = [i]
+    assigned.add(i)
+    for (let j = i + 1; j < n; j++) {
+      if (assigned.has(j)) continue
+      let diff = Math.abs(bearings[i] - bearings[j])
+      if (diff > 180) diff = 360 - diff
+      if (diff <= TOLERANCE) { group.push(j); assigned.add(j) }
+    }
+    groups.push(group)
+  }
+
+  // Map each segment to its group letter
+  const segToGroup = new Array<string>(n)
+  groups.forEach((group, gi) => {
+    const letter = String.fromCharCode(65 + gi)
+    for (const idx of group) segToGroup[idx] = letter
+  })
+  return segToGroup
+}
+
 interface LiveDetection {
   presence: boolean
   distance: number
@@ -280,15 +334,17 @@ export default function MapInner({
       })
     }
 
-    // Side distance labels
+    // Side distance labels with grouped facade letter
+    const editSeg2group = groupSidesByBearing(localPoly)
     localPoly.forEach((pt, i) => {
       const next = localPoly[(i + 1) % localPoly.length]
       const mLat = (pt[0] + next[0]) / 2
       const mLon = (pt[1] + next[1]) / 2
       const dist = haversineM(pt[0], pt[1], next[0], next[1])
+      const facadeLetter = editSeg2group[i] ?? String.fromCharCode(65 + i)
       const labelIcon = L.divIcon({
         className: "",
-        html: `<div style="font-size:9px;font-weight:700;background:rgba(0,0,0,0.7);padding:1px 5px;border-radius:3px;color:#fbbf24;white-space:nowrap;transform:translate(-50%,-50%);pointer-events:none">${fmtDist(dist)}</div>`,
+        html: `<div style="font-size:9px;font-weight:700;background:rgba(0,0,0,0.7);padding:1px 5px;border-radius:3px;color:#fbbf24;white-space:nowrap;transform:translate(-50%,-50%);pointer-events:none">${facadeLetter} (${fmtDist(dist)})</div>`,
         iconSize: [0, 0],
         iconAnchor: [0, 0],
       })
@@ -582,10 +638,10 @@ export default function MapInner({
     const zone = zones.find((z) => z.id === sensorPlaceMode.zoneId)
     if (!zone?.polygon?.length) return
 
-    const sideIdx = sensorPlaceMode.side.charCodeAt(0) - 65
-    if (sideIdx < 0 || sideIdx >= zone.polygon.length) return
-    const pA = zone.polygon[sideIdx]
-    const pB = zone.polygon[(sideIdx + 1) % zone.polygon.length]
+    const edge = getSideEdge(zone, sensorPlaceMode.side)
+    if (!edge) return
+    const pA = edge[0]
+    const pB = edge[1]
 
     const handler = (e: { latlng: { lat: number; lng: number } }) => {
       // Project click onto the side line to get t (0..1)
@@ -674,6 +730,24 @@ export default function MapInner({
   }
 
   function getSideEdge(zone: Zone, sideKey: string): [[number, number], [number, number]] | null {
+    // Use bearing-based grouping to find the segment(s) that belong to this facade
+    const seg2group = zone.polygon.length >= 3 ? groupSidesByBearing(zone.polygon) : []
+    // Find the first segment matching this facade group
+    const segIdx = seg2group.indexOf(sideKey)
+    if (segIdx >= 0) {
+      // For multi-segment facades, compute the combined edge (start of first segment to end of last)
+      const matchingSegs = seg2group.reduce<number[]>((acc, g, i) => g === sideKey ? [...acc, i] : acc, [])
+      if (matchingSegs.length === 1) {
+        const nextIdx = (matchingSegs[0] + 1) % zone.polygon.length
+        return [zone.polygon[matchingSegs[0]], zone.polygon[nextIdx]]
+      }
+      // Multiple segments: return start of first to end of last
+      const first = matchingSegs[0]
+      const last = matchingSegs[matchingSegs.length - 1]
+      const endIdx = (last + 1) % zone.polygon.length
+      return [zone.polygon[first], zone.polygon[endIdx]]
+    }
+    // Fallback: direct index mapping
     const idx = sideKey.charCodeAt(0) - 65
     if (idx < 0 || idx >= zone.polygon.length) return null
     const nextIdx = (idx + 1) % zone.polygon.length
@@ -1046,17 +1120,19 @@ export default function MapInner({
         })()}
 
         {/* ── Side labels with distance on saved zones - rotated parallel to edge ── */}
-        {(zones ?? []).map((zone) =>
-          zone.polygon?.length >= 2 && RL && leafletL
+        {(zones ?? []).map((zone) => {
+          // Compute bearing-based grouping so colinear segments share the same facade letter
+          const seg2group = zone.polygon?.length >= 3 ? groupSidesByBearing(zone.polygon) : []
+          return zone.polygon?.length >= 2 && RL && leafletL
             ? zone.polygon.map((pt, idx) => {
                 const nextIdx = (idx + 1) % zone.polygon.length
                 const next = zone.polygon[nextIdx]
                 const mLat = (pt[0] + next[0]) / 2
                 const mLon = (pt[1] + next[1]) / 2
-                const key = String.fromCharCode(65 + idx)
-                const sideLabel = zone.sides?.[key] ?? key
-                // Only show the group/face label, not the per-segment letter
-                const displayLabel = sideLabel || key
+                // Use grouped facade letter (e.g. two colinear segments both get "D")
+                const groupKey = seg2group[idx] ?? String.fromCharCode(65 + idx)
+                const sideLabel = zone.sides?.[groupKey] ?? groupKey
+                const displayLabel = sideLabel || groupKey
                 const dist = haversineM(pt[0], pt[1], next[0], next[1])
                 // Compute screen-space angle of the edge for CSS rotation
                 // Geographic bearing: 0=north(up), 90=east(right), 180=south(down)
@@ -1094,7 +1170,7 @@ export default function MapInner({
                 })
                 return (
                   <SideMarker
-                    key={`side-${zone.id}-${key}`}
+                    key={`side-${zone.id}-${idx}`}
                     position={[mLat, mLon]}
                     icon={icon}
                     pane="label-pane"
@@ -1103,7 +1179,7 @@ export default function MapInner({
                 )
               })
             : null
-        )}
+        })}
 
         {/* ── Zone area label (always visible) ── */}
         {(zones ?? []).map((zone) => {

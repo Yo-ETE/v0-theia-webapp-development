@@ -456,9 +456,17 @@ export default function MissionDetailPage() {
     }
     const updatedZones = (mission.zones ?? []).map((z) => {
       if (z.id !== editingZoneId) return z
-      // Only update the polygon geometry -- do NOT modify sides/facades.
-      // Side names are managed separately in the zone edit dialog.
-      return { ...z, polygon: editingPolygon }
+      // Re-compute facade grouping for the new polygon shape
+      const { labels: newGroupLabels, segmentToGroup: newSeg2group } = groupSidesByBearing(editingPolygon)
+      // Transfer custom side names: if old group "A" had name "Facade Nord",
+      // find which new group has the same bearing direction and keep the name
+      const newSides: Record<string, string> = { ...newGroupLabels }
+      for (const [oldKey, oldName] of Object.entries(z.sides ?? {})) {
+        if (oldName && newSides[oldKey] !== undefined) {
+          newSides[oldKey] = oldName
+        }
+      }
+      return { ...z, polygon: editingPolygon, sides: newSides }
     })
     mutate({ ...mission, zones: updatedZones }, false)
     try {
@@ -887,9 +895,10 @@ export default function MissionDetailPage() {
                           <p className="text-xs font-medium text-foreground truncate">{zone.label}</p>
                           <div className="flex items-center gap-1 flex-wrap">
                             <span className="text-[10px] text-muted-foreground">{zone.type}</span>
-                            {zone.sides && Object.entries(zone.sides).filter(([, v]) => v).length > 0 && (() => {
-                              // Show unique face labels only (A, B, C, D)
-                              const faces = [...new Set(Object.values(zone.sides).filter(Boolean))].sort()
+                            {zone.polygon?.length >= 3 && (() => {
+                              // Show grouped facade letters from bearing analysis (A, B, C, D)
+                              const { labels: gl } = groupSidesByBearing(zone.polygon)
+                              const faces = Object.keys(gl).sort()
                               return <span className="text-[9px] font-mono text-primary">[{faces.join(" ")}]</span>
                             })()}
                           </div>
