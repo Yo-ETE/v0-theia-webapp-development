@@ -970,8 +970,13 @@ export default function MissionDetailPage() {
                       <div key={d.id} className="flex items-center gap-2 text-xs group">
                         <Radio className={cn("h-3 w-3 shrink-0", det ? "text-warning" : "text-primary")} />
                         <div className="flex-1 min-w-0">
-                          <span className="font-mono text-foreground">{d.name}</span>
-                          <span className="text-[10px] text-muted-foreground ml-1.5 truncate">
+                          <div className="flex items-center gap-1.5">
+                            <span className="font-mono text-foreground">{d.name}</span>
+                            <span className="text-[8px] font-medium px-1.5 py-0.5 rounded bg-muted text-muted-foreground">
+                              {{ microwave_tx: "LD2450", tx_microwave: "LD2450", c4001: "C4001", gravity_mw: "MW V2" }[d.type ?? ""] ?? "TX"}
+                            </span>
+                          </div>
+                          <span className="text-[10px] text-muted-foreground truncate">
                             {d.zone_label || "---"}
                             {d.side && <span className="text-primary ml-0.5">[{d.side}]</span>}
                             {d.sensor_position != null && d.sensor_position !== 0.5 && (

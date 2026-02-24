@@ -371,70 +371,6 @@ export default function MapInner({
     return cleanup
   // Re-run when polygon, tool, or editing zone changes
   }, [localPoly, editTool, editingZoneId, leafletL]) // eslint-disable-line react-hooks/exhaustive-deps
-  // ── FOV detection zone cones (native Leaflet) ──
-  const fovLayersRef = useRef<unknown[]>([])
-  useEffect(() => {
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const map = mapRef.current as any
-    const L = leafletL
-    // Cleanup previous
-    const cleanup = () => {
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      fovLayersRef.current.forEach((layer: any) => { try { map?.removeLayer(layer) } catch {} })
-      fovLayersRef.current = []
-    }
-    cleanup()
-    if (!map || !L || !showFov || sensorMarkers.length === 0) return
-
-    for (const sm of sensorMarkers) {
-      const { sensorPos, normalBearingDeg, fovDeg, maxRangeM, sensorLabel } = sm
-      const halfFov = fovDeg / 2
-      // Build arc polygon points: sensor center + arc from startAngle to endAngle
-      const arcPoints: [number, number][] = [sensorPos]
-      const STEPS = 24
-      for (let s = 0; s <= STEPS; s++) {
-        const angleDeg = normalBearingDeg - halfFov + (fovDeg * s / STEPS)
-        const angleRad = angleDeg * Math.PI / 180
-        // Offset in meters: east = sin(angle) * range, north = cos(angle) * range
-        const dEast = Math.sin(angleRad) * maxRangeM
-        const dNorth = Math.cos(angleRad) * maxRangeM
-        // Convert meter offset to lat/lon offset
-        const dLat = dNorth / 111320
-        const dLon = dEast / (111320 * Math.cos(sensorPos[0] * Math.PI / 180))
-        arcPoints.push([sensorPos[0] + dLat, sensorPos[1] + dLon])
-      }
-      arcPoints.push(sensorPos) // close the polygon
-
-      const sector = L.polygon(arcPoints, {
-        color: "rgba(180,210,240,0.2)",
-        fillColor: "rgba(180,210,240,0.06)",
-        weight: 1,
-        dashArray: "4 3",
-        interactive: false,
-      }).addTo(map)
-      fovLayersRef.current.push(sector)
-
-      // Small label at the far end of the cone
-      const centerAngleRad = normalBearingDeg * Math.PI / 180
-      const labelDist = maxRangeM * 0.7
-      const labelDLat = (Math.cos(centerAngleRad) * labelDist) / 111320
-      const labelDLon = (Math.sin(centerAngleRad) * labelDist) / (111320 * Math.cos(sensorPos[0] * Math.PI / 180))
-      const labelIcon = L.divIcon({
-        className: "",
-        html: `<div style="font-size:8px;font-weight:600;color:rgba(180,210,240,0.5);white-space:nowrap;transform:translate(-50%,-50%);pointer-events:none">${sensorLabel} ${maxRangeM}m</div>`,
-        iconSize: [0, 0],
-        iconAnchor: [0, 0],
-      })
-      const labelMarker = L.marker(
-        [sensorPos[0] + labelDLat, sensorPos[1] + labelDLon],
-        { icon: labelIcon, interactive: false, zIndexOffset: 100 }
-      ).addTo(map)
-      fovLayersRef.current.push(labelMarker)
-    }
-
-    return cleanup
-  }, [showFov, sensorMarkers, leafletL]) // eslint-disable-line react-hooks/exhaustive-deps
-
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const [mapInstance, setMapInstance] = useState<any>(null)
   const mapInstanceSet = useRef(false)
@@ -1073,6 +1009,68 @@ export default function MapInner({
       sensorLabel: specs.label,
     }
   }).filter(Boolean) as SensorMarkerData[]
+
+  // ── FOV detection zone cones (native Leaflet) ──
+  const fovLayersRef = useRef<unknown[]>([])
+  // Serialize sensor positions for stable useEffect dependency
+  const sensorMarkersKey = sensorMarkers.map(m => `${m.id}:${m.sensorPos[0].toFixed(7)}:${m.sensorPos[1].toFixed(7)}:${m.fovDeg}:${m.maxRangeM}:${m.normalBearingDeg.toFixed(1)}`).join("|")
+  useEffect(() => {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const map = mapRef.current as any
+    const L = leafletL
+    const cleanup = () => {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      fovLayersRef.current.forEach((layer: any) => { try { map?.removeLayer(layer) } catch {} })
+      fovLayersRef.current = []
+    }
+    cleanup()
+    if (!map || !L || !showFov || sensorMarkers.length === 0) return
+
+    for (const sm of sensorMarkers) {
+      const { sensorPos, normalBearingDeg, fovDeg, maxRangeM, sensorLabel } = sm
+      const halfFov = fovDeg / 2
+      const arcPoints: [number, number][] = [sensorPos]
+      const STEPS = 24
+      for (let s = 0; s <= STEPS; s++) {
+        const angleDeg = normalBearingDeg - halfFov + (fovDeg * s / STEPS)
+        const angleRad = angleDeg * Math.PI / 180
+        const dEast = Math.sin(angleRad) * maxRangeM
+        const dNorth = Math.cos(angleRad) * maxRangeM
+        const dLat = dNorth / 111320
+        const dLon = dEast / (111320 * Math.cos(sensorPos[0] * Math.PI / 180))
+        arcPoints.push([sensorPos[0] + dLat, sensorPos[1] + dLon])
+      }
+      arcPoints.push(sensorPos)
+
+      const sector = L.polygon(arcPoints, {
+        color: "rgba(180,210,240,0.2)",
+        fillColor: "rgba(180,210,240,0.06)",
+        weight: 1,
+        dashArray: "4 3",
+        interactive: false,
+      }).addTo(map)
+      fovLayersRef.current.push(sector)
+
+      // Small label inside the cone
+      const centerAngleRad = normalBearingDeg * Math.PI / 180
+      const labelDist = maxRangeM * 0.65
+      const labelDLat = (Math.cos(centerAngleRad) * labelDist) / 111320
+      const labelDLon = (Math.sin(centerAngleRad) * labelDist) / (111320 * Math.cos(sensorPos[0] * Math.PI / 180))
+      const labelIcon = L.divIcon({
+        className: "",
+        html: `<div style="font-size:8px;font-weight:600;color:rgba(180,210,240,0.45);white-space:nowrap;transform:translate(-50%,-50%);pointer-events:none">${sensorLabel} ${maxRangeM}m</div>`,
+        iconSize: [0, 0],
+        iconAnchor: [0, 0],
+      })
+      const labelMarker = L.marker(
+        [sensorPos[0] + labelDLat, sensorPos[1] + labelDLon],
+        { icon: labelIcon, interactive: false, zIndexOffset: 100 }
+      ).addTo(map)
+      fovLayersRef.current.push(labelMarker)
+    }
+
+    return cleanup
+  }, [showFov, sensorMarkersKey, leafletL]) // eslint-disable-line react-hooks/exhaustive-deps
 
   // ── Position estimation: weighted average from all simultaneous detections ──
   let estimatedPosition: { lat: number; lon: number; count: number; avgDist: number } | null = null
