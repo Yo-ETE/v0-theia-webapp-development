@@ -139,6 +139,7 @@ export default function MissionDetailPage() {
         }
       }
     }
+    console.log("[v0] handleReplayDetection: input keys=", Object.keys(dets), "resolved keys=", Object.keys(resolved), "zones=", zones.map(z => z.id + ":" + z.name), "resolved det=", JSON.stringify(Object.values(resolved)[0]?.device_id))
     setReplayDetections(resolved)
   }, [mission?.zones])
 

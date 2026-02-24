@@ -515,12 +515,16 @@ export default function MapInner({
   if (replayMode) {
     // In replay mode, build effectiveByDevice from liveDetections (replay data keyed by zone)
     // Each replay detection has a device_id we can use
-    for (const [, det] of Object.entries(liveDetections)) {
+    for (const [zoneKey, det] of Object.entries(liveDetections)) {
       const devId = det.device_id || det.device_name
       if (devId && det.distance > 0) {
         effectiveByDevice[devId] = { ...det, _state: "live" }
       }
+      console.log("[v0] MAP replay: zoneKey=", zoneKey, "det.device_id=", det.device_id, "det.device_name=", det.device_name, "devId=", devId, "dist=", det.distance, "added=", !!(devId && det.distance > 0))
     }
+    // Log what sensorPlacements expect
+    const spIds = zones.flatMap(z => z.sensor_placements?.map((sp: { device_id: string }) => sp.device_id) ?? [])
+    console.log("[v0] MAP replay: effectiveByDevice keys=", Object.keys(effectiveByDevice), "sensorPlacement device_ids=", spIds)
   } else {
     for (const [devId, det] of Object.entries(liveByDevice)) {
       if (det.presence && det.distance > 0) {

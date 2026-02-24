@@ -119,6 +119,7 @@ export function DetectionTimelapse({ missionId, onDetection, onClose }: Detectio
     }
     const ev = events[currentIdx]
     const det = parseEventToDetection(ev)
+    console.log("[v0] TIMELAPSE tick idx=", currentIdx, "ev.device_id=", ev.device_id, "ev.device_name=", ev.device_name, "det.zone_id=", det?.zone_id, "det.zone_label=", det?.zone_label, "det.device_id=", det?.device_id, "det.distance=", det?.distance)
     if (det && det.zone_id) {
       onDetection({ [det.zone_id]: det })
     } else if (det && det.zone_label) {
