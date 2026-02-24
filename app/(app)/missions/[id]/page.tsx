@@ -861,6 +861,7 @@ export default function MissionDetailPage() {
                       editingPolygon={editingPolygon}
                       onZonePolygonUpdate={updateZonePolygon}
                       showFov={showFov}
+                      replayMode={timelapseMode}
                     />
                   </ErrorBoundary>
 

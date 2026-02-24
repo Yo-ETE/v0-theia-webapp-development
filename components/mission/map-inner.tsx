@@ -142,6 +142,7 @@ interface MapInnerProps {
   editingPolygon?: [number, number][] | null
   onZonePolygonUpdate?: (zoneId: string, polygon: [number, number][]) => void
   showFov?: boolean
+  replayMode?: boolean
 }
 
 // ── Geodesic measurement helpers ──────────────────────────────
@@ -214,6 +215,7 @@ export default function MapInner({
   editingPolygon = null,
   onZonePolygonUpdate,
   showFov = false,
+  replayMode = false,
 }: MapInnerProps) {
   const centerLat = Number.isFinite(rawLat) ? rawLat : 48.8566
   const centerLon = Number.isFinite(rawLon) ? rawLon : 2.3522
@@ -464,38 +466,47 @@ export default function MapInner({
   const now = Date.now()
   const effectiveDetections: Record<string, LiveDetection & { _state: DetState }> = {}
 
-  // 1) Current live detections from SSE -- if SSE says presence:true, it's live NOW
-  for (const [zoneId, det] of Object.entries(liveDetections)) {
-    if (det.presence && det.distance > 0) {
-      effectiveDetections[zoneId] = { ...det, _state: "live" }
+  if (replayMode) {
+    // In replay mode, trust the detection data directly -- no stale/hold/fade logic
+    for (const [zoneId, det] of Object.entries(liveDetections)) {
+      if (det.distance > 0) {
+        effectiveDetections[zoneId] = { ...det, _state: "live" }
+      }
     }
-  }
-
-  // 2) Stale / hold / fade for zones that WERE live but no longer
-  for (const [zoneId, lastPresenceTs] of Object.entries(lastPresenceTsRef.current)) {
-    if (effectiveDetections[zoneId]) continue // already live from step 1
-    if (lastPresenceTs <= 0) continue
-    const lastGood = lastGoodRef.current[zoneId]
-    if (!lastGood) continue
-
-    const sinceLast = now - lastPresenceTs
-
-    // If SSE is still active but says presence:false, skip "live" fallback
-    const currentDet = liveDetections[zoneId]
-    const sseStillActive = currentDet && (now - (lastEventTsRef.current[zoneId] ?? 0)) < 3000
-    const explicitlyGone = sseStillActive && !currentDet.presence
-
-    if (sinceLast < STALE_MS && !explicitlyGone) {
-      // Brief gap in SSE -- keep showing as live
-      effectiveDetections[zoneId] = { ...lastGood, _state: "live" }
-    } else if (sinceLast < STALE_MS + HOLD_MS) {
-      // Hold at last known position (yellow)
-      effectiveDetections[zoneId] = { ...lastGood, _state: "hold" }
-    } else if (sinceLast < STALE_MS + HOLD_MS + FADE_MS) {
-      // Fading out
-      effectiveDetections[zoneId] = { ...lastGood, _state: "fading" }
+  } else {
+    // 1) Current live detections from SSE -- if SSE says presence:true, it's live NOW
+    for (const [zoneId, det] of Object.entries(liveDetections)) {
+      if (det.presence && det.distance > 0) {
+        effectiveDetections[zoneId] = { ...det, _state: "live" }
+      }
     }
-    // else: fully expired, remove
+
+    // 2) Stale / hold / fade for zones that WERE live but no longer
+    for (const [zoneId, lastPresenceTs] of Object.entries(lastPresenceTsRef.current)) {
+      if (effectiveDetections[zoneId]) continue // already live from step 1
+      if (lastPresenceTs <= 0) continue
+      const lastGood = lastGoodRef.current[zoneId]
+      if (!lastGood) continue
+
+      const sinceLast = now - lastPresenceTs
+
+      // If SSE is still active but says presence:false, skip "live" fallback
+      const currentDet = liveDetections[zoneId]
+      const sseStillActive = currentDet && (now - (lastEventTsRef.current[zoneId] ?? 0)) < 3000
+      const explicitlyGone = sseStillActive && !currentDet.presence
+
+      if (sinceLast < STALE_MS && !explicitlyGone) {
+        // Brief gap in SSE -- keep showing as live
+        effectiveDetections[zoneId] = { ...lastGood, _state: "live" }
+      } else if (sinceLast < STALE_MS + HOLD_MS) {
+        // Hold at last known position (yellow)
+        effectiveDetections[zoneId] = { ...lastGood, _state: "hold" }
+      } else if (sinceLast < STALE_MS + HOLD_MS + FADE_MS) {
+        // Fading out
+        effectiveDetections[zoneId] = { ...lastGood, _state: "fading" }
+      }
+      // else: fully expired, remove
+    }
   }
 
   // Build effective detections by device_id (same hold/fade logic)

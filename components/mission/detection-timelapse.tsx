@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useEffect, useCallback, useRef } from "react"
+import { useState, useEffect, useCallback, useRef, useMemo } from "react"
 import { Play, Pause, SkipBack, SkipForward, X } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { useEventsRange } from "@/hooks/use-api"
@@ -78,20 +78,30 @@ export function DetectionTimelapse({ missionId, onDetection, onClose }: Detectio
   const [currentIdx, setCurrentIdx] = useState(0)
   const playRef = useRef<ReturnType<typeof setInterval> | null>(null)
 
-  // Fetch range params only when "loaded"
-  // Send timestamps matching the DB format (local time, "YYYY-MM-DD HH:MM:SS")
-  // datetime-local inputs give "YYYY-MM-DDTHH:MM", we convert to "YYYY-MM-DD HH:MM:SS"
+  // Fetch ALL detection events for this mission (same approach as history page)
+  // then filter by date range client-side to avoid timezone mismatch issues
   const fetchParams = loaded ? {
     mission_id: missionId,
-    from_ts: fromTime.replace("T", " ") + ":00",
-    to_ts: toTime.replace("T", " ") + ":59",
-    limit: 5000,
+    event_type: "detection",
+    limit: 10000,
   } : null
 
   const { data: rawEvents, isLoading } = useEventsRange(fetchParams)
 
-  // Sort events chronologically (API returns DESC)
-  const events = (rawEvents ?? []).slice().reverse()
+  // Filter by date range client-side (comparing timestamps as strings)
+  // and sort chronologically (API returns DESC)
+  const events = useMemo(() => {
+    if (!rawEvents) return []
+    const fromStr = fromTime.replace("T", " ")
+    const toStr = toTime.replace("T", " ") + ":59"
+    return rawEvents
+      .filter(e => {
+        const ts = e.timestamp ?? ""
+        return ts >= fromStr && ts <= toStr
+      })
+      .slice()
+      .reverse()
+  }, [rawEvents, fromTime, toTime])
 
   // When events load, reset playback
   useEffect(() => {

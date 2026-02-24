@@ -49,6 +49,7 @@ interface MissionMapProps {
   onZonePolygonUpdate?: (zoneId: string, polygon: [number, number][]) => void
   estimatePosition?: boolean
   showFov?: boolean
+  replayMode?: boolean
 }
 
 export function MissionMap({ className, ...props }: MissionMapProps) {

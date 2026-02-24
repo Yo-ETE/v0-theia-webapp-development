@@ -71,12 +71,14 @@ export function useEventsRange(params: {
   mission_id: string
   from_ts?: string
   to_ts?: string
+  event_type?: string
   limit?: number
 } | null) {
   const qs = new URLSearchParams()
   if (params?.mission_id) qs.set("mission_id", params.mission_id)
   if (params?.from_ts) qs.set("from_ts", params.from_ts)
   if (params?.to_ts) qs.set("to_ts", params.to_ts)
+  if (params?.event_type) qs.set("event_type", params.event_type)
   if (params?.limit) qs.set("limit", String(params.limit))
   const q = qs.toString()
   return useSWR<import("@/lib/types").DetectionEvent[]>(
