@@ -82,6 +82,55 @@ function buildFovArc(
   return arcPoints
 }
 
+/** Sutherland-Hodgman polygon clipping: clip subject polygon to convex/concave clip polygon */
+function clipPolygon(subject: [number, number][], clip: [number, number][]): [number, number][] {
+  if (clip.length < 3 || subject.length < 3) return subject
+
+  let output = [...subject]
+  for (let i = 0; i < clip.length; i++) {
+    if (output.length === 0) return []
+    const edgeA = clip[i]
+    const edgeB = clip[(i + 1) % clip.length]
+    const input = [...output]
+    output = []
+
+    for (let j = 0; j < input.length; j++) {
+      const curr = input[j]
+      const prev = input[(j + input.length - 1) % input.length]
+      const currInside = isInside(curr, edgeA, edgeB)
+      const prevInside = isInside(prev, edgeA, edgeB)
+
+      if (currInside) {
+        if (!prevInside) {
+          const ix = lineIntersect(prev, curr, edgeA, edgeB)
+          if (ix) output.push(ix)
+        }
+        output.push(curr)
+      } else if (prevInside) {
+        const ix = lineIntersect(prev, curr, edgeA, edgeB)
+        if (ix) output.push(ix)
+      }
+    }
+  }
+  return output
+}
+
+function isInside(p: [number, number], a: [number, number], b: [number, number]): boolean {
+  return (b[1] - a[1]) * (p[0] - a[0]) - (b[0] - a[0]) * (p[1] - a[1]) >= 0
+}
+
+function lineIntersect(
+  p1: [number, number], p2: [number, number],
+  p3: [number, number], p4: [number, number]
+): [number, number] | null {
+  const x1 = p1[0], y1 = p1[1], x2 = p2[0], y2 = p2[1]
+  const x3 = p3[0], y3 = p3[1], x4 = p4[0], y4 = p4[1]
+  const den = (x1 - x2) * (y3 - y4) - (y1 - y2) * (x3 - x4)
+  if (Math.abs(den) < 1e-12) return null
+  const t = ((x1 - x3) * (y3 - y4) - (y1 - y3) * (x3 - x4)) / den
+  return [x1 + t * (x2 - x1), y1 + t * (y2 - y1)]
+}
+
 interface LiveDetection {
   presence: boolean
   distance: number
@@ -833,6 +882,7 @@ export default function MapInner({
   fovDeg: number
   maxRangeM: number
   sensorLabel: string
+  zonePolygon: [number, number][]
   }
 
   // ── Heatmap: project each detection event to a lat/lon point ──
@@ -1030,6 +1080,7 @@ export default function MapInner({
       fovDeg: specs.fovDeg,
       maxRangeM: specs.maxRangeM,
       sensorLabel: specs.label,
+      zonePolygon: zone.polygon as [number, number][],
     }
   }).filter(Boolean) as SensorMarkerData[]
 
@@ -1146,20 +1197,32 @@ export default function MapInner({
 
         {/* ── FOV detection cones (declarative JSX, no extra hooks) ── */}
         {showFov && sensorMarkers.map((sm) => {
-          const arcPositions = buildFovArc(sm.sensorPos, sm.normalBearingDeg, sm.fovDeg, sm.maxRangeM)
-          console.log("[v0] FOV arc positions:", JSON.stringify(arcPositions.slice(0, 5)))
+          const rawArc = buildFovArc(sm.sensorPos, sm.normalBearingDeg, sm.fovDeg, sm.maxRangeM)
+          // Clip the FOV cone to the zone polygon so it doesn't go outside walls
+          const clipped = sm.zonePolygon.length >= 3
+            ? clipPolygon(rawArc, sm.zonePolygon as [number, number][])
+            : rawArc
+          if (clipped.length < 3) return null
           return (
             <Polygon
               key={`fov-${sm.id}`}
-              positions={arcPositions}
+              positions={clipped}
               pathOptions={{
-                color: "#ff0000",
-                fillColor: "#ff0000",
-                weight: 3,
-                opacity: 1,
-                fillOpacity: 0.4,
+                color: "#b4d2f0",
+                fillColor: "#b4d2f0",
+                weight: 1,
+                opacity: 0.25,
+                fillOpacity: 0.08,
+                dashArray: "4 3",
+                interactive: false,
               }}
-            />
+            >
+              <Tooltip permanent direction="center" className="fov-label-tip">
+                <span style={{ fontSize: 8, fontWeight: 600, color: "rgba(180,210,240,0.5)" }}>
+                  {sm.sensorLabel} {sm.maxRangeM}m
+                </span>
+              </Tooltip>
+            </Polygon>
           )
         })}
 
