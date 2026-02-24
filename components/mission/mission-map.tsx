@@ -54,7 +54,7 @@ interface MissionMapProps {
 export function MissionMap({ className, ...props }: MissionMapProps) {
   return (
     <div className={cn("relative", className)}>
-      <MapInner key="map-v2" {...props} className="h-full w-full" />
+      <MapInner {...props} className="h-full w-full" />
     </div>
   )
 }

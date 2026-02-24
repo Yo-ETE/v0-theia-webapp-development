@@ -208,3 +208,14 @@
 .zone-label-tip::before {
   display: none !important;
 }
+
+/* FOV cone label tooltip */
+.fov-label-tip {
+  background: transparent !important;
+  border: none !important;
+  box-shadow: none !important;
+  padding: 0 !important;
+}
+.fov-label-tip::before {
+  display: none !important;
+}
