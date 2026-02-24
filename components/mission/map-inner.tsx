@@ -1216,28 +1216,23 @@ export default function MapInner({
 
         {/* ── FOV detection cones (declarative JSX, no extra hooks) ── */}
         {showFov && sensorMarkers.map((sm) => {
-          const rawArc = buildFovArc(sm.sensorPos, sm.normalBearingDeg, sm.fovDeg, sm.maxRangeM)
-          // Clip the FOV cone to the zone polygon so it doesn't go outside walls
-          const clipped = sm.zonePolygon.length >= 3
-            ? clipPolygon(rawArc, sm.zonePolygon as [number, number][])
-            : rawArc
-          if (clipped.length < 3) return null
+          const arcPositions = buildFovArc(sm.sensorPos, sm.normalBearingDeg, sm.fovDeg, sm.maxRangeM)
           return (
             <Polygon
               key={`fov-${sm.id}`}
-              positions={clipped}
+              positions={arcPositions}
               pathOptions={{
-                color: "#b4d2f0",
-                fillColor: "#b4d2f0",
-                weight: 1,
-                opacity: 0.25,
-                fillOpacity: 0.08,
+                color: "#ff6b6b",
+                fillColor: "#ff6b6b",
+                weight: 1.5,
+                opacity: 0.5,
+                fillOpacity: 0.12,
                 dashArray: "4 3",
                 interactive: false,
               }}
             >
               <Tooltip permanent direction="center" className="fov-label-tip">
-                <span style={{ fontSize: 8, fontWeight: 600, color: "rgba(180,210,240,0.5)" }}>
+                <span style={{ fontSize: 8, fontWeight: 600, color: "rgba(255,107,107,0.7)" }}>
                   {sm.sensorLabel} {sm.maxRangeM}m
                 </span>
               </Tooltip>
