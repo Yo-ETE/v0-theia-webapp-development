@@ -82,74 +82,6 @@ function buildFovArc(
   return arcPoints
 }
 
-/** Compute signed area to determine winding order (positive = CCW) */
-function signedArea(poly: [number, number][]): number {
-  let area = 0
-  for (let i = 0; i < poly.length; i++) {
-    const j = (i + 1) % poly.length
-    area += poly[i][0] * poly[j][1]
-    area -= poly[j][0] * poly[i][1]
-  }
-  return area / 2
-}
-
-/** Ensure polygon is counter-clockwise (required for Sutherland-Hodgman) */
-function ensureCCW(poly: [number, number][]): [number, number][] {
-  return signedArea(poly) < 0 ? [...poly].reverse() : poly
-}
-
-/** Sutherland-Hodgman polygon clipping: clip subject polygon to clip polygon */
-function clipPolygon(subject: [number, number][], clip: [number, number][]): [number, number][] {
-  if (clip.length < 3 || subject.length < 3) return subject
-
-  // Normalize both polygons to CCW winding
-  const ccwClip = ensureCCW(clip)
-
-  let output = [...subject]
-  for (let i = 0; i < ccwClip.length; i++) {
-    if (output.length === 0) return []
-    const edgeA = ccwClip[i]
-    const edgeB = ccwClip[(i + 1) % ccwClip.length]
-    const input = [...output]
-    output = []
-
-    for (let j = 0; j < input.length; j++) {
-      const curr = input[j]
-      const prev = input[(j + input.length - 1) % input.length]
-      const currInside = isInside(curr, edgeA, edgeB)
-      const prevInside = isInside(prev, edgeA, edgeB)
-
-      if (currInside) {
-        if (!prevInside) {
-          const ix = lineIntersect(prev, curr, edgeA, edgeB)
-          if (ix) output.push(ix)
-        }
-        output.push(curr)
-      } else if (prevInside) {
-        const ix = lineIntersect(prev, curr, edgeA, edgeB)
-        if (ix) output.push(ix)
-      }
-    }
-  }
-  return output
-}
-
-function isInside(p: [number, number], a: [number, number], b: [number, number]): boolean {
-  return (b[1] - a[1]) * (p[0] - a[0]) - (b[0] - a[0]) * (p[1] - a[1]) >= 0
-}
-
-function lineIntersect(
-  p1: [number, number], p2: [number, number],
-  p3: [number, number], p4: [number, number]
-): [number, number] | null {
-  const x1 = p1[0], y1 = p1[1], x2 = p2[0], y2 = p2[1]
-  const x3 = p3[0], y3 = p3[1], x4 = p4[0], y4 = p4[1]
-  const den = (x1 - x2) * (y3 - y4) - (y1 - y2) * (x3 - x4)
-  if (Math.abs(den) < 1e-12) return null
-  const t = ((x1 - x3) * (y3 - y4) - (y1 - y3) * (x3 - x4)) / den
-  return [x1 + t * (x2 - x1), y1 + t * (y2 - y1)]
-}
-
 interface LiveDetection {
   presence: boolean
   distance: number
@@ -901,7 +833,6 @@ export default function MapInner({
   fovDeg: number
   maxRangeM: number
   sensorLabel: string
-  zonePolygon: [number, number][]
   }
 
   // ── Heatmap: project each detection event to a lat/lon point ──
@@ -1099,7 +1030,6 @@ export default function MapInner({
       fovDeg: specs.fovDeg,
       maxRangeM: specs.maxRangeM,
       sensorLabel: specs.label,
-      zonePolygon: zone.polygon as [number, number][],
     }
   }).filter(Boolean) as SensorMarkerData[]
 
