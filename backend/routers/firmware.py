@@ -9,7 +9,7 @@ import shutil
 import tempfile
 import uuid
 
-from fastapi import APIRouter, HTTPException, UploadFile, File
+from fastapi import APIRouter, HTTPException
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 
@@ -65,22 +65,31 @@ async def list_sketches():
     return sketches
 
 
+class UploadSketchRequest(BaseModel):
+    filename: str
+    content: str  # base64 encoded
+
+
 @router.post("/upload-sketch")
-async def upload_sketch(file: UploadFile = File(...)):
-    """Upload a custom .ino sketch."""
-    if not file.filename or not file.filename.endswith(".ino"):
+async def upload_sketch(req: UploadSketchRequest):
+    """Upload a custom .ino sketch (base64 encoded content)."""
+    import base64
+    if not req.filename.endswith(".ino"):
         raise HTTPException(status_code=400, detail="Le fichier doit etre un .ino")
-    
-    # Create a directory for the sketch (Arduino requires dir name == sketch name)
-    sketch_name = file.filename.replace(".ino", "")
+
+    sketch_name = req.filename.replace(".ino", "")
     sketch_dir = os.path.join(FIRMWARE_DIR, sketch_name)
     os.makedirs(sketch_dir, exist_ok=True)
-    
-    content = await file.read()
-    filepath = os.path.join(sketch_dir, file.filename)
+
+    try:
+        content = base64.b64decode(req.content)
+    except Exception:
+        raise HTTPException(status_code=400, detail="Contenu base64 invalide")
+
+    filepath = os.path.join(sketch_dir, req.filename)
     with open(filepath, "wb") as f:
         f.write(content)
-    
+
     return {"ok": True, "name": sketch_name, "path": sketch_dir}
 
 

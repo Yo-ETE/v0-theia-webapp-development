@@ -684,15 +684,12 @@ class LoRaBridge:
                     if not last_seen_str:
                         continue
                     try:
-                        from datetime import timezone as tz
                         if last_seen_str.endswith("Z"):
                             last_seen_str = last_seen_str[:-1] + "+00:00"
                         if "+" not in last_seen_str and "T" in last_seen_str:
-                            from datetime import datetime as dt
-                            ls_dt = dt.fromisoformat(last_seen_str).replace(tzinfo=tz.utc)
+                            ls_dt = datetime.fromisoformat(last_seen_str).replace(tzinfo=timezone.utc)
                         else:
-                            from datetime import datetime as dt
-                            ls_dt = dt.fromisoformat(last_seen_str)
+                            ls_dt = datetime.fromisoformat(last_seen_str)
                         delta_s = now_ts - ls_dt.timestamp()
                     except Exception:
                         continue

@@ -16,7 +16,12 @@ from backend.database import get_db, close_db
 from backend.services.system_monitor import system_monitor
 from backend.services.gps_reader import gps_reader
 from backend.services.lora_bridge import lora_bridge
-from backend.routers import health, missions, devices, events, logs, stream, tiles, admin, config, notifications, firmware
+from backend.routers import health, missions, devices, events, logs, stream, tiles, admin, config, notifications
+try:
+    from backend.routers import firmware
+except ImportError as e:
+    firmware = None  # type: ignore
+    print(f"[THEIA] firmware router not available: {e}")
 
 _tasks: list[asyncio.Task] = []
 
@@ -79,7 +84,8 @@ app.include_router(tiles.router, prefix="/api")
 app.include_router(admin.router)  # admin has its own /api/admin prefix
 app.include_router(config.router)  # config has its own /api/config prefix
 app.include_router(notifications.router, prefix="/api")
-app.include_router(firmware.router, prefix="/api")
+if firmware:
+    app.include_router(firmware.router, prefix="/api")
 
 
 THEIA_BUILD = "2026-02-22-v9-canvas-heatmap"
