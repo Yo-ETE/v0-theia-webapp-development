@@ -18,14 +18,21 @@ from backend.database import get_db
 router = APIRouter(prefix="/firmware", tags=["firmware"])
 
 APP_DIR = os.getenv("APP_DIR", "/opt/theia/app")
-FIRMWARE_DIR = os.path.join(APP_DIR, "firmware")
-# Fallback for dev: use project-local firmware dir
+FIRMWARE_DIR = os.path.join(APP_DIR, "firmware", "templates")
+# Fallback paths
+if not os.path.isdir(FIRMWARE_DIR):
+    FIRMWARE_DIR = os.path.join(APP_DIR, "firmware")
+if not os.path.isdir(FIRMWARE_DIR):
+    FIRMWARE_DIR = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(__file__))), "firmware", "templates")
 if not os.path.isdir(FIRMWARE_DIR):
     FIRMWARE_DIR = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(__file__))), "firmware")
 
 ARDUINO_CLI = shutil.which("arduino-cli") or "/usr/local/bin/arduino-cli"
 # Default FQBN for Heltec ESP32-S3 WiFi LoRa V3
-DEFAULT_FQBN = "esp32:esp32:heltec_wifi_lora_32_V3"
+# Heltec WiFi LoRa 32 V3 -- use Heltec package FQBN
+# Fallback to esp32:esp32 variant if Heltec package not installed
+DEFAULT_FQBN = "Heltec-esp32:esp32:HTIT-WB32LA"
+FALLBACK_FQBN = "esp32:esp32:heltec_wifi_lora_32_V3"
 
 
 @router.get("/ports")
@@ -259,37 +266,54 @@ async def flash_device(req: FlashRequest):
 
         cli = shutil.which("arduino-cli") or ARDUINO_CLI
 
-        # Compile
-        yield f"data: [STEP] Compilation en cours...\n\n"
-        compile_cmd = [cli, "compile", "--fqbn", fqbn, tmp_sketch_dir]
-        try:
-            proc = await asyncio.create_subprocess_exec(
-                *compile_cmd,
-                stdout=asyncio.subprocess.PIPE,
-                stderr=asyncio.subprocess.STDOUT,
-            )
-            while True:
-                line = await proc.stdout.readline()
-                if not line:
-                    break
-                yield f"data: [COMPILE] {line.decode('utf-8', errors='replace').rstrip()}\n\n"
-            await proc.wait()
+        # Compile -- try primary FQBN, then fallback
+        fqbns_to_try = [fqbn]
+        if fqbn == DEFAULT_FQBN and FALLBACK_FQBN != DEFAULT_FQBN:
+            fqbns_to_try.append(FALLBACK_FQBN)
 
-            if proc.returncode != 0:
-                yield f"data: [ERROR] Compilation echouee (code {proc.returncode})\n\n"
-                yield "data: [DONE] FAIL\n\n"
-                shutil.rmtree(tmp_dir, ignore_errors=True)
-                return
-        except Exception as e:
-            yield f"data: [ERROR] {str(e)}\n\n"
+        compiled = False
+        used_fqbn = fqbn
+        for try_fqbn in fqbns_to_try:
+            yield f"data: [STEP] Compilation en cours (FQBN: {try_fqbn})...\n\n"
+            compile_cmd = [cli, "compile", "--fqbn", try_fqbn, tmp_sketch_dir]
+            try:
+                proc = await asyncio.create_subprocess_exec(
+                    *compile_cmd,
+                    stdout=asyncio.subprocess.PIPE,
+                    stderr=asyncio.subprocess.STDOUT,
+                )
+                output_lines = []
+                while True:
+                    line = await proc.stdout.readline()
+                    if not line:
+                        break
+                    decoded = line.decode('utf-8', errors='replace').rstrip()
+                    output_lines.append(decoded)
+                    yield f"data: [COMPILE] {decoded}\n\n"
+                await proc.wait()
+
+                if proc.returncode == 0:
+                    compiled = True
+                    used_fqbn = try_fqbn
+                    break
+                else:
+                    yield f"data: [WARN] Compilation echouee avec {try_fqbn} (code {proc.returncode})\n\n"
+                    if try_fqbn != fqbns_to_try[-1]:
+                        yield f"data: [INFO] Essai avec FQBN alternatif...\n\n"
+            except Exception as e:
+                yield f"data: [WARN] Erreur: {str(e)}\n\n"
+
+        if not compiled:
+            yield f"data: [ERROR] Compilation echouee avec tous les FQBN testes.\n\n"
+            yield f"data: [INFO] Verifiez que le board Heltec ESP32 est installe: sudo bash install.sh\n\n"
             yield "data: [DONE] FAIL\n\n"
             shutil.rmtree(tmp_dir, ignore_errors=True)
             return
 
-        yield f"data: [STEP] Compilation reussie. Upload vers {req.port}...\n\n"
+        yield f"data: [STEP] Compilation reussie ({used_fqbn}). Upload vers {req.port}...\n\n"
 
         # Upload
-        upload_cmd = [cli, "upload", "--fqbn", fqbn, "-p", req.port, tmp_sketch_dir]
+        upload_cmd = [cli, "upload", "--fqbn", used_fqbn, "-p", req.port, tmp_sketch_dir]
         try:
             proc = await asyncio.create_subprocess_exec(
                 *upload_cmd,
