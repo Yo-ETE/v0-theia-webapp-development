@@ -710,10 +710,12 @@ export default function MissionDetailPage() {
         )}
         <div className="flex flex-col gap-4">
           {/* Breadcrumb + tab triggers */}
-          <div className="flex items-center justify-between">
-            <Button variant="ghost" size="sm" asChild className="text-muted-foreground hover:text-foreground active:text-foreground min-h-[44px] min-w-[44px]">
-              <Link href="/missions"><ArrowLeft className="mr-1.5 h-4 w-4" />Missions</Link>
-            </Button>
+          <div className="flex flex-col gap-2">
+            <div className="flex items-center justify-between">
+              <Button variant="ghost" size="sm" asChild className="text-muted-foreground hover:text-foreground active:text-foreground min-h-[44px] min-w-[44px]">
+                <Link href="/missions"><ArrowLeft className="mr-1.5 h-4 w-4" />Missions</Link>
+              </Button>
+            </div>
             <Tabs value={activeTab} onValueChange={(val) => {
               setActiveTab(val)
               const entering = val === "timelapse"
@@ -721,18 +723,18 @@ export default function MissionDetailPage() {
               if (!entering) setReplayDetections({})
               if (val !== "history") setHeatmapMode(false)
             }}>
-              <TabsList className="h-9">
-                <TabsTrigger value="live" className="text-xs gap-1.5 px-3 min-h-[36px]">
-                  <Zap className="h-3.5 w-3.5" />Live
+              <TabsList className="h-9 w-full">
+                <TabsTrigger value="live" className="text-xs gap-1 px-2 min-h-[36px] flex-1">
+                  <Zap className="h-3.5 w-3.5" /><span className="hidden sm:inline">Live</span>
                 </TabsTrigger>
-                <TabsTrigger value="history" className="text-xs gap-1.5 px-3 min-h-[36px]">
-                  <BarChart3 className="h-3.5 w-3.5" />History
+                <TabsTrigger value="history" className="text-xs gap-1 px-2 min-h-[36px] flex-1">
+                  <BarChart3 className="h-3.5 w-3.5" /><span className="hidden sm:inline">History</span>
                 </TabsTrigger>
-                <TabsTrigger value="sensors" className="text-xs gap-1.5 px-3 min-h-[36px]">
-                  <Radio className="h-3.5 w-3.5" />Sensors
+                <TabsTrigger value="sensors" className="text-xs gap-1 px-2 min-h-[36px] flex-1">
+                  <Radio className="h-3.5 w-3.5" /><span className="hidden sm:inline">Sensors</span>
                 </TabsTrigger>
-                <TabsTrigger value="timelapse" className="text-xs gap-1.5 px-3 min-h-[36px]">
-                  <Timer className="h-3.5 w-3.5" />Timelapse
+                <TabsTrigger value="timelapse" className="text-xs gap-1 px-2 min-h-[36px] flex-1">
+                  <Timer className="h-3.5 w-3.5" /><span className="hidden sm:inline">Timelapse</span>
                 </TabsTrigger>
               </TabsList>
             </Tabs>
@@ -740,7 +742,7 @@ export default function MissionDetailPage() {
 
           {/* Mission info bar */}
           <Card className="border-border/50 bg-card py-3">
-            <CardContent className="flex flex-wrap items-center gap-3 px-4">
+            <CardContent className="flex flex-wrap items-center gap-x-3 gap-y-1 px-4">
               <Badge variant="outline" className={cn("text-[10px] px-1.5 py-0", statusCfg.className)}>
                 {statusCfg.label}
               </Badge>
@@ -850,7 +852,7 @@ export default function MissionDetailPage() {
   sensorPlacements={sensorPlacements}
   heatmapMode={heatmapMode}
   estimatePosition={estimatePosition}
-  className="h-[500px]"
+  className="h-[55vh] sm:h-[500px]"
                       drawingMode={drawingMode}
                       onPolygonDrawn={handlePolygonDrawn}
                       onZoneClick={(zoneId) => !sensorPlaceMode && setAssignDialog(zoneId)}

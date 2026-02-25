@@ -119,7 +119,6 @@ export function DetectionTimelapse({ missionId, onDetection, onClose }: Detectio
     }
     const ev = events[currentIdx]
     const det = parseEventToDetection(ev)
-    console.log("[v0] TIMELAPSE tick idx=", currentIdx, "ev.device_id=", ev.device_id, "ev.device_name=", ev.device_name, "det.zone_id=", det?.zone_id, "det.zone_label=", det?.zone_label, "det.device_id=", det?.device_id, "det.distance=", det?.distance)
     if (det && det.zone_id) {
       onDetection({ [det.zone_id]: det })
     } else if (det && det.zone_label) {
@@ -172,100 +171,102 @@ export function DetectionTimelapse({ missionId, onDetection, onClose }: Detectio
   const speeds = [1, 2, 5, 10, 20]
 
   return (
-    <div className="rounded-lg border border-border/50 bg-card p-3">
-      <div className="flex items-center justify-between mb-3">
-        <h3 className="text-xs font-semibold text-foreground font-mono">TIMELAPSE</h3>
+    <div className="rounded-lg border border-border/50 bg-card p-4">
+      {/* Header */}
+      <div className="flex items-center justify-between mb-4">
+        <h3 className="text-sm font-semibold text-foreground font-mono tracking-wide">TIMELAPSE</h3>
         {onClose && (
-          <Button variant="ghost" size="sm" className="h-6 w-6 p-0" onClick={onClose}>
-            <X className="h-3.5 w-3.5" />
+          <Button variant="ghost" size="sm" className="h-7 w-7 p-0" onClick={onClose}>
+            <X className="h-4 w-4" />
           </Button>
         )}
       </div>
 
       {/* Time range selector */}
-      <div className="flex items-center gap-2 mb-3">
-        <div className="flex-1">
-          <label className="text-[9px] text-muted-foreground font-mono block mb-0.5">FROM</label>
+      <div className="grid grid-cols-[1fr_1fr_auto] gap-2 mb-4">
+        <div>
+          <label className="text-[10px] text-muted-foreground font-mono block mb-1">FROM</label>
           <input
             type="datetime-local"
             value={fromTime}
             onChange={(e) => { setFromTime(e.target.value); setLoaded(false) }}
-            className="w-full h-7 rounded border border-border bg-background px-2 text-[10px] font-mono text-foreground"
+            className="w-full h-9 rounded-md border border-border bg-background px-2 text-xs font-mono text-foreground"
           />
         </div>
-        <div className="flex-1">
-          <label className="text-[9px] text-muted-foreground font-mono block mb-0.5">TO</label>
+        <div>
+          <label className="text-[10px] text-muted-foreground font-mono block mb-1">TO</label>
           <input
             type="datetime-local"
             value={toTime}
             onChange={(e) => { setToTime(e.target.value); setLoaded(false) }}
-            className="w-full h-7 rounded border border-border bg-background px-2 text-[10px] font-mono text-foreground"
+            className="w-full h-9 rounded-md border border-border bg-background px-2 text-xs font-mono text-foreground"
           />
         </div>
-        <div className="pt-3">
-          <Button size="sm" className="h-7 text-[10px] px-3" onClick={handleLoad} disabled={isLoading}>
-            {isLoading ? "Loading..." : loaded ? "Reload" : "Load"}
+        <div className="flex items-end">
+          <Button size="sm" className="h-9 text-xs px-4" onClick={handleLoad} disabled={isLoading}>
+            {isLoading ? "..." : loaded ? "Reload" : "Load"}
           </Button>
         </div>
       </div>
 
       {/* Playback controls */}
       {loaded && events.length > 0 && (
-        <>
+        <div className="space-y-3">
           {/* Timeline scrubber */}
-          <div className="mb-2">
+          <div>
             <input
               type="range"
               min={0}
               max={Math.max(0, events.length - 1)}
               value={currentIdx}
               onChange={(e) => { setCurrentIdx(parseInt(e.target.value)); setPlaying(false) }}
-              className="w-full h-1.5 accent-primary"
+              className="w-full h-2 accent-primary"
             />
-            <div className="flex items-center justify-between mt-0.5">
-              <span className="text-[9px] font-mono text-muted-foreground">
+            <div className="flex items-center justify-between mt-1">
+              <span className="text-[10px] font-mono text-muted-foreground">
                 {events[0]?.timestamp ? new Date(events[0].timestamp).toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit", second: "2-digit" }) : "--"}
               </span>
-              <span className="text-[10px] font-mono font-semibold text-primary">
+              <span className="text-xs font-mono font-bold text-primary">
                 {currentTs ? currentTs.toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit", second: "2-digit" }) : "--"}
               </span>
-              <span className="text-[9px] font-mono text-muted-foreground">
+              <span className="text-[10px] font-mono text-muted-foreground">
                 {events[events.length - 1]?.timestamp ? new Date(events[events.length - 1].timestamp).toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit", second: "2-digit" }) : "--"}
               </span>
             </div>
           </div>
 
-          {/* Controls row */}
-          <div className="flex items-center justify-between">
+          {/* Controls + speed + counter */}
+          <div className="flex items-center gap-3">
+            {/* Transport */}
             <div className="flex items-center gap-1">
               <Button
-                variant="ghost" size="sm" className="h-7 w-7 p-0"
+                variant="ghost" size="sm" className="h-8 w-8 p-0"
                 onClick={() => setCurrentIdx(0)}
               >
-                <SkipBack className="h-3.5 w-3.5" />
+                <SkipBack className="h-4 w-4" />
               </Button>
               <Button
                 variant={playing ? "secondary" : "default"}
-                size="sm" className="h-7 w-7 p-0"
+                size="sm" className="h-9 w-9 p-0"
                 onClick={() => setPlaying(!playing)}
               >
-                {playing ? <Pause className="h-3.5 w-3.5" /> : <Play className="h-3.5 w-3.5" />}
+                {playing ? <Pause className="h-4 w-4" /> : <Play className="h-4 w-4" />}
               </Button>
               <Button
-                variant="ghost" size="sm" className="h-7 w-7 p-0"
+                variant="ghost" size="sm" className="h-8 w-8 p-0"
                 onClick={() => setCurrentIdx(events.length - 1)}
               >
-                <SkipForward className="h-3.5 w-3.5" />
+                <SkipForward className="h-4 w-4" />
               </Button>
             </div>
 
-            {/* Speed selector */}
-            <div className="flex items-center gap-0.5">
+            {/* Speed pills */}
+            <div className="flex items-center gap-1">
               {speeds.map((s) => (
                 <button
                   key={s}
                   onClick={() => setSpeed(s)}
-                  className={`px-1.5 py-0.5 rounded text-[9px] font-mono font-semibold transition-colors ${
+                  className={`px-2 py-1 rounded-md text-[10px] font-mono font-bold transition-colors ${
                     speed === s
                       ? "bg-primary text-primary-foreground"
                       : "text-muted-foreground hover:bg-muted"
@@ -276,8 +277,8 @@ export function DetectionTimelapse({ missionId, onDetection, onClose }: Detectio
               ))}
             </div>
 
-            {/* Event counter */}
-            <span className="text-[9px] font-mono text-muted-foreground">
+            {/* Counter */}
+            <span className="text-xs font-mono text-muted-foreground ml-auto tabular-nums">
               {currentIdx + 1} / {events.length}
             </span>
           </div>
@@ -286,25 +287,25 @@ export function DetectionTimelapse({ missionId, onDetection, onClose }: Detectio
           {currentEvent && (() => {
             const det = parseEventToDetection(currentEvent)
             return det ? (
-              <div className="mt-2 rounded bg-muted/30 px-2 py-1.5 flex items-center gap-2">
-                <div className="h-2 w-2 rounded-full bg-warning shrink-0" />
-                <span className="text-[10px] font-mono text-foreground">
+              <div className="rounded-md bg-muted/40 px-3 py-2 flex items-center gap-3">
+                <div className="h-2.5 w-2.5 rounded-full bg-warning shrink-0" />
+                <span className="text-xs font-mono text-foreground font-medium">
                   {det.zone_label || currentEvent.zone_label} [{det.side}]
                 </span>
-                <span className="text-[10px] font-mono font-semibold text-warning">
+                <span className="text-xs font-mono font-bold text-warning">
                   {det.distance}cm {det.direction}
                 </span>
-                <span className="text-[9px] text-muted-foreground ml-auto font-mono">
+                <span className="text-[10px] text-muted-foreground ml-auto font-mono">
                   {det.device_name}
                 </span>
               </div>
             ) : null
           })()}
-        </>
+        </div>
       )}
 
       {loaded && events.length === 0 && !isLoading && (
-        <p className="text-[10px] text-muted-foreground text-center py-2 font-mono">
+        <p className="text-xs text-muted-foreground text-center py-4 font-mono">
           No detection events in this time range.
         </p>
       )}
