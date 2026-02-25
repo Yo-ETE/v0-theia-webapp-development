@@ -7,7 +7,6 @@ import {
   Crosshair,
   Radio,
   ScrollText,
-  Activity,
   Wifi,
   Settings,
 } from "lucide-react"
@@ -42,8 +41,13 @@ export function AppSidebar() {
       <SidebarHeader className="border-b border-sidebar-border px-4 py-4">
         <div className="flex items-center justify-between">
           <Link href="/dashboard" className="flex items-center gap-3">
-            <div className="flex h-8 w-8 items-center justify-center rounded-md bg-primary">
-              <Activity className="h-4 w-4 text-primary-foreground" />
+            <div className="flex h-9 w-9 items-center justify-center rounded-md bg-primary/10 border border-primary/20">
+              <svg viewBox="0 0 300 300" className="h-5 w-5 text-primary" xmlns="http://www.w3.org/2000/svg">
+                <circle cx="150" cy="150" r="100" stroke="currentColor" strokeWidth="12" fill="none" />
+                <circle cx="150" cy="150" r="60" stroke="currentColor" strokeWidth="8" fill="none" opacity="0.6" />
+                <line x1="150" y1="150" x2="230" y2="120" stroke="currentColor" strokeWidth="10" />
+                <circle cx="150" cy="150" r="18" fill="currentColor" />
+              </svg>
             </div>
             <div className="flex flex-col">
               <span className="text-sm font-semibold tracking-wider text-sidebar-foreground">

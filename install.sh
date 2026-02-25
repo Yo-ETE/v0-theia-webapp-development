@@ -70,27 +70,22 @@ install_arduino_cli() {
         ok "arduino-cli installed"
     fi
 
-    info "Installing ESP32 + Heltec board cores (this may take a few minutes)..."
-    # Init config and add board URLs
+    info "Installing ESP32 board core (this may take a few minutes)..."
+    # Init config and add ESP32 board URL
     sudo -u "$SERVICE_USER" arduino-cli config init --overwrite 2>/dev/null || true
     sudo -u "$SERVICE_USER" arduino-cli config add board_manager.additional_urls \
         "https://raw.githubusercontent.com/espressif/arduino-esp32/gh-pages/package_esp32_index.json" 2>/dev/null || true
-    sudo -u "$SERVICE_USER" arduino-cli config add board_manager.additional_urls \
-        "https://github.com/Heltec-Aaron-Lee/WiFi_Kit_series/releases/download/0.0.9/package_heltec_esp32_index.json" 2>/dev/null || true
     sudo -u "$SERVICE_USER" arduino-cli core update-index 2>/dev/null || true
 
-    # Install Espressif ESP32 core
+    # Install ESP32 core (includes Heltec WiFi LoRa 32 V3 board def)
     sudo -u "$SERVICE_USER" arduino-cli core install esp32:esp32 2>/dev/null || true
 
-    # Install Heltec ESP32 core (provides LoRaWan_APP.h, Heltec.h, etc.)
-    sudo -u "$SERVICE_USER" arduino-cli core install Heltec-esp32:esp32 2>/dev/null || true
-
-    # Install required libraries
+    # Install libraries (RadioLib for LoRa SX1262, no Heltec SDK needed)
     info "Installing Arduino libraries..."
+    sudo -u "$SERVICE_USER" arduino-cli lib install "RadioLib" 2>/dev/null || true
     sudo -u "$SERVICE_USER" arduino-cli lib install "LD2450" 2>/dev/null || true
-    sudo -u "$SERVICE_USER" arduino-cli lib install "Heltec ESP32 Dev-Boards" 2>/dev/null || true
 
-    ok "Arduino CLI + ESP32 + Heltec core configured"
+    ok "Arduino CLI + ESP32 core + RadioLib configured"
 }
 
 # ============================================

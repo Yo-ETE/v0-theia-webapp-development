@@ -28,11 +28,10 @@ if not os.path.isdir(FIRMWARE_DIR):
     FIRMWARE_DIR = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(__file__))), "firmware")
 
 ARDUINO_CLI = shutil.which("arduino-cli") or "/usr/local/bin/arduino-cli"
-# Default FQBN for Heltec ESP32-S3 WiFi LoRa V3
-# Heltec WiFi LoRa 32 V3 -- use Heltec package FQBN
-# Fallback to esp32:esp32 variant if Heltec package not installed
-DEFAULT_FQBN = "Heltec-esp32:esp32:HTIT-WB32LA"
-FALLBACK_FQBN = "esp32:esp32:heltec_wifi_lora_32_V3"
+# Heltec WiFi LoRa 32 V3 FQBN from standard ESP32 core
+# Uses RadioLib for LoRa -- no Heltec SDK dependency
+DEFAULT_FQBN = "esp32:esp32:heltec_wifi_lora_32_V3"
+FALLBACK_FQBN = "esp32:esp32:esp32s3"
 
 
 @router.get("/ports")
