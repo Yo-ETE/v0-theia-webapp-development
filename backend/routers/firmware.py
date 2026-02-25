@@ -30,12 +30,81 @@ DEFAULT_FQBN = "esp32:esp32:heltec_wifi_lora_32_V3"
 
 @router.get("/ports")
 async def list_ports():
-    """List available USB serial ports."""
+    """List available USB serial ports with device identification."""
     ports = []
-    for pattern in ["/dev/ttyUSB*", "/dev/ttyACM*"]:
+    # Also check /dev/theia-* symlinks
+    all_paths = set()
+    for pattern in ["/dev/ttyUSB*", "/dev/ttyACM*", "/dev/theia-*"]:
         for p in sorted(glob.glob(pattern)):
-            real = os.path.realpath(p)
-            ports.append({"port": p, "real": real})
+            all_paths.add(p)
+
+    for p in sorted(all_paths):
+        real = os.path.realpath(p)
+        info: dict = {"port": p, "real": real, "label": "", "vid": "", "pid": "", "manufacturer": "", "description": ""}
+
+        # Try to get USB device info via udevadm
+        try:
+            import subprocess
+            result = subprocess.run(
+                ["udevadm", "info", "-a", real],
+                capture_output=True, text=True, timeout=3
+            )
+            output = result.stdout
+            for line in output.splitlines():
+                line = line.strip()
+                if 'ATTRS{idVendor}' in line and not info["vid"]:
+                    info["vid"] = line.split('"')[1] if '"' in line else ""
+                elif 'ATTRS{idProduct}' in line and not info["pid"]:
+                    info["pid"] = line.split('"')[1] if '"' in line else ""
+                elif 'ATTRS{manufacturer}' in line and not info["manufacturer"]:
+                    info["manufacturer"] = line.split('"')[1] if '"' in line else ""
+                elif 'ATTRS{product}' in line and not info["description"]:
+                    info["description"] = line.split('"')[1] if '"' in line else ""
+        except Exception:
+            pass
+
+        # Check /dev/serial/by-id for a human-readable name
+        try:
+            for link in glob.glob("/dev/serial/by-id/*"):
+                if os.path.realpath(link) == real:
+                    info["label"] = os.path.basename(link)
+                    break
+        except Exception:
+            pass
+
+        # Check if this port is already used by an enrolled device
+        try:
+            db = await get_db()
+            cursor = await db.execute(
+                "SELECT name, dev_eui FROM devices WHERE serial_port=? AND enabled=1", (p,)
+            )
+            row = await cursor.fetchone()
+            if row:
+                d = dict(row)
+                info["in_use_by"] = f"{d['name']} ({d['dev_eui']})"
+            # Also check the real path
+            if not row and real != p:
+                cursor = await db.execute(
+                    "SELECT name, dev_eui FROM devices WHERE serial_port=? AND enabled=1", (real,)
+                )
+                row = await cursor.fetchone()
+                if row:
+                    d = dict(row)
+                    info["in_use_by"] = f"{d['name']} ({d['dev_eui']})"
+        except Exception:
+            pass
+
+        # Build a human-friendly summary
+        parts = []
+        if info["description"]:
+            parts.append(info["description"])
+        elif info["manufacturer"]:
+            parts.append(info["manufacturer"])
+        if info["vid"] and info["pid"]:
+            parts.append(f"{info['vid']}:{info['pid']}")
+        info["summary"] = " - ".join(parts) if parts else os.path.basename(p)
+
+        ports.append(info)
     return ports
 
 

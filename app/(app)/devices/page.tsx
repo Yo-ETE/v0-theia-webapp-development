@@ -499,9 +499,14 @@ export default function DevicesPage() {
                     {ports.length === 0 ? (
                       <SelectItem value="_none" disabled>Aucun port detecte</SelectItem>
                     ) : (
-                      ports.map(p => (
-                        <SelectItem key={p.port} value={p.port} className="text-xs font-mono">
-                          {p.port} {p.real !== p.port ? `(${p.real})` : ""}
+                      ports.map((p: { port: string; real: string; summary?: string; in_use_by?: string; description?: string }) => (
+                        <SelectItem key={p.port} value={p.port} className="text-xs" disabled={!!p.in_use_by}>
+                          <div className="flex flex-col">
+                            <span className="font-mono">{p.port}</span>
+                            <span className="text-[9px] text-muted-foreground">
+                              {p.in_use_by ? `Utilise par ${p.in_use_by}` : (p.summary || p.real)}
+                            </span>
+                          </div>
                         </SelectItem>
                       ))
                     )}

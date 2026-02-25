@@ -1313,23 +1313,81 @@ CONTACT : contact@yoann-ete.fr`}
                   {[
                     {
                       id: "dashboard", icon: Globe, title: "Dashboard",
-                      content: "Vue d'ensemble du systeme : etat du Raspberry Pi (CPU, RAM, disque, temperature), connexion internet avec debit et ping, etat GPS et LoRa RX avec RSSI. Les indicateurs passent au vert/orange/rouge selon les seuils."
+                      content: `Vue d'ensemble du systeme en temps reel :
+- Etat Raspberry Pi : CPU, RAM, disque, temperature (seuils vert/orange/rouge)
+- Connexion internet : debit, ping, IP locale
+- Etat GPS : satellites, precision, position
+- Etat LoRa RX : port serie, RSSI, paquets recus/erreurs
+- Section alertes actives : batterie faible, signal faible, device offline
+- Notifications temps reel via la cloche dans le sidebar`
                     },
                     {
                       id: "missions", icon: Terminal, title: "Missions",
-                      content: "Gestion des missions de surveillance. Creez une mission, assignez des capteurs, definissez des zones de surveillance avec le plan builder integre. Chaque mission contient ses propres evenements de detection, logs, et configurations de capteurs."
+                      content: `Gestion complete des missions de surveillance terrain :
+- Creation : nom, description, coordonnees GPS du centre, zoom
+- Zones de detection : dessin de polygones sur la carte, labellisation
+- Assignation des capteurs TX aux zones (cote A/B)
+- Placement capteurs sur la carte avec orientation (azimuth)
+- Mode FOV : affiche le champ de vision de chaque capteur
+- Mode Position : estimation de position par triangulation multi-capteurs
+- Mode visualisateur plein ecran : carte grand format + barre TX compacte
+- Mode timelapse : replay des detections sur une plage horaire
+- Heatmap des evenements accumules
+- Sourdine : masquer un capteur du feed sans le retirer de la mission
+- Export CSV de tous les evenements de la mission
+- Detection temps reel : distance, direction, vitesse par capteur`
                     },
                     {
-                      id: "sensors", icon: Signal, title: "Capteurs",
-                      content: "Page de gestion des devices LoRa TX. Ajoutez des capteurs par leur Dev EUI, donnez-leur un nom, puis assignez-les a une mission. Le statut (en ligne/hors ligne), RSSI, batterie et derniere activite sont affiches en temps reel."
+                      id: "sensors", icon: Signal, title: "Capteurs (Devices)",
+                      content: `Gestion et provisioning des capteurs LoRa TX :
+- Nouveau capteur (flash firmware) :
+  1. Brancher l'ESP32 en USB sur le Pi
+  2. Cliquer "Nouveau capteur" et configurer TX_ID + type (LD2450/C4001)
+  3. Selectionner le port USB (identifie par fabricant, VID/PID)
+  4. Les ports deja utilises par un device sont indiques
+  5. Compiler & Flash : console temps reel du processus
+  6. Le device est automatiquement enregistre en base
+- Monitoring en temps reel : statut en ligne/hors ligne, RSSI, batterie (voltage)
+- Attribution a une mission et zone de surveillance
+- Suppression de devices obsoletes`
                     },
                     {
-                      id: "events", icon: AlertTriangle, title: "Evenements",
-                      content: "Journal des evenements de detection : intrusions, mouvements, alertes capteurs. Filtrez par mission, type d'evenement, plage de dates. Chaque evenement affiche le capteur source, la zone, l'horodatage et les donnees brutes."
+                      id: "logs", icon: Terminal, title: "Logs",
+                      content: `Deux onglets de visualisation :
+- Applicatif : logs de l'application THEIA (bridges, detections, firmware, erreurs)
+  - Filtres par source (bridge, device, firmware, system) et niveau (info, warning, error)
+  - Recherche textuelle
+  - Export CSV
+- Systeme (Pi) : logs journalctl du service theia-api en temps reel
+  - Rafraichissement automatique
+  - Utile pour diagnostiquer les problemes de demarrage ou de crash`
                     },
                     {
-                      id: "config", icon: Terminal, title: "Configuration Pi",
-                      content: "Cette page. Administration du Raspberry Pi : Wi-Fi (scan, connexion, mot de passe persistant), Ethernet, Tailscale VPN, mises a jour Git avec choix de branche, sauvegardes, alimentation (redemarrage/arret)."
+                      id: "notifications", icon: AlertTriangle, title: "Notifications",
+                      content: `Systeme d'alertes automatiques :
+- Cloche dans le sidebar : badge avec nombre de notifications non lues
+- Types d'alertes :
+  - Batterie critique (< 3.3V) : alerte rouge
+  - Batterie faible (< 3.5V) : alerte orange
+  - Signal RSSI faible (< -90dBm) : alerte orange
+  - Device hors ligne (> 120s sans signal) : alerte orange
+  - Reconnexion d'un device : notification info
+- Anti-spam : maximum 1 notification du meme type par device par heure
+- Actions : marquer comme lu, supprimer individuellement ou tout effacer
+- Section alertes actives en haut du Dashboard`
+                    },
+                    {
+                      id: "config", icon: Terminal, title: "Administration",
+                      content: `Configuration du Raspberry Pi depuis la webapp :
+- Wi-Fi : scan des reseaux, connexion avec mot de passe, reseaux sauvegardes
+- Ethernet : statut et IP
+- Tailscale VPN : activation/desactivation, exit node, peers connectes
+- Gestion Git : branches, historique des commits, mise a jour
+- Mise a jour : git stash + pull + install.sh + pip install + restart services
+- Sauvegardes : creation, restauration, suppression des backups de la base
+- Systeme : redemarrage des services, reboot, arret du Pi
+- Guide d'utilisation (cette section)
+- Licence logicielle`
                     },
                   ].map((section) => (
                     <button
@@ -1357,12 +1415,7 @@ CONTACT : contact@yoann-ete.fr`}
             )}
           </Card>
 
-          {/* ── Footer ── */}
-          <div className="lg:col-span-2 border-t border-border/50 pt-4 pb-2 text-center">
-            <p className="text-[10px] text-muted-foreground">
-              THEIA Hub Control v1.0 - (c) 2026 Yoann ETE
-            </p>
-          </div>
+
         </div>
       </main>
     </>
