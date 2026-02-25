@@ -634,11 +634,19 @@ class LoRaBridge:
             port: {"packets_ok": r.packets_ok, "packets_err": r.packets_err, "rssi": r.last_rssi}
             for port, r in self._readers.items()
         }
+        # Use real RSSI if available, otherwise keep default -120
+        best_rssi = first_reader.last_rssi if first_reader else None
+        # If still at default (-120), check other readers for a better value
+        if best_rssi == -120:
+            for r in self._readers.values():
+                if r.last_rssi != -120:
+                    best_rssi = r.last_rssi
+                    break
         return {
             "connected": len(self._readers) > 0,
             "port": first_port,
             "baud_rate": first_reader.baud if first_reader else 0,
-            "rssi": first_reader.last_rssi if first_reader else None,
+            "rssi": best_rssi,
             "snr": None,
             "ports": ports,
             "total_ports": len(self._readers),

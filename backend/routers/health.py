@@ -28,6 +28,22 @@ async def status():
     net_data = sys_data.pop("network", {}) if isinstance(sys_data, dict) else {}
     import socket
 
+    # Enrich LoRa data with DB fallback for RSSI after restart
+    lora_data = lora_bridge.data
+    if lora_data.get("rssi") == -120 and lora_data.get("connected"):
+        try:
+            from backend.database import get_db
+            db = await get_db()
+            cursor = await db.execute(
+                "SELECT rssi FROM devices WHERE enabled=1 AND rssi IS NOT NULL AND rssi > -120 "
+                "ORDER BY last_seen DESC LIMIT 1"
+            )
+            row = await cursor.fetchone()
+            if row and row["rssi"]:
+                lora_data = {**lora_data, "rssi": row["rssi"]}
+        except Exception:
+            pass
+
     return {
         "hub": {
             "cpu_percent": sys_data.get("cpu_percent", 0),
@@ -41,7 +57,7 @@ async def status():
             "uptime_seconds": sys_data.get("uptime_seconds", 0),
         },
         "gps": gps_reader.data,
-        "lora": lora_bridge.data,
+        "lora": lora_data,
         "network": {
             "hostname": socket.gethostname(),
             "lan_ip": next(iter(net_data.get("interfaces", {}).values()), "---"),
