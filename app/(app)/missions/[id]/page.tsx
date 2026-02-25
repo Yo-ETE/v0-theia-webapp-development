@@ -1048,8 +1048,9 @@ export default function MissionDetailPage() {
                       Click a zone or the + button to assign TX devices
                     </p>
                   ) : missionDevices.map((d) => {
-                    // Prefer device-level detection (multi-TX per zone), fall back to zone-level
-                    const detRaw = liveByDevice[d.id] ?? effectiveLiveByZone[d.zone_id ?? ""]
+                    // Only show this device's own detection -- no zone-level fallback
+                    // (zone fallback would show another device's data when this one is offline)
+                    const detRaw = liveByDevice[d.id]
                     const det = (detRaw?.presence && detRaw?.distance > 0) ? detRaw : null
                     const isMuted = !!(d.muted)
                     // Live RSSI/battery from SSE, fallback to DB values
