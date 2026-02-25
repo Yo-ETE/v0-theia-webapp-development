@@ -100,11 +100,25 @@ async def init_tables(db: aiosqlite.Connection):
             timestamp TEXT DEFAULT (datetime('now'))
         );
 
+        CREATE TABLE IF NOT EXISTS notifications (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            type TEXT NOT NULL,
+            severity TEXT DEFAULT 'warning',
+            device_id TEXT,
+            device_name TEXT,
+            message TEXT NOT NULL,
+            read INTEGER DEFAULT 0,
+            dismissed INTEGER DEFAULT 0,
+            created_at TEXT DEFAULT (datetime('now'))
+        );
+
         CREATE INDEX IF NOT EXISTS idx_events_mission ON events(mission_id);
         CREATE INDEX IF NOT EXISTS idx_events_timestamp ON events(timestamp);
         CREATE INDEX IF NOT EXISTS idx_logs_timestamp ON logs(timestamp);
         CREATE INDEX IF NOT EXISTS idx_logs_source ON logs(source);
         CREATE INDEX IF NOT EXISTS idx_devices_mission ON devices(mission_id);
+        CREATE INDEX IF NOT EXISTS idx_notifications_created ON notifications(created_at);
+        CREATE INDEX IF NOT EXISTS idx_notifications_dismissed ON notifications(dismissed);
     """)
     await db.commit()
 

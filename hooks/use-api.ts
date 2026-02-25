@@ -87,6 +87,31 @@ export function useEventsRange(params: {
   )
 }
 
+export interface Notification {
+  id: number
+  type: string
+  severity: string
+  device_id: string | null
+  device_name: string | null
+  message: string
+  read: number
+  dismissed: number
+  created_at: string
+}
+
+export function useNotifications() {
+  return useSWR<Notification[]>("/api/notifications", fetcher, {
+    refreshInterval: 10000,
+    revalidateOnFocus: true,
+  })
+}
+
+export function useNotificationCount() {
+  return useSWR<{ count: number }>("/api/notifications/count", fetcher, {
+    refreshInterval: 10000,
+  })
+}
+
 export function useLogs(params?: { source?: string; level?: string; search?: string }) {
   const qs = new URLSearchParams()
   if (params?.source && params.source !== "all") qs.set("source", params.source)

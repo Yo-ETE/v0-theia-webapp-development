@@ -1,7 +1,7 @@
 "use client"
 
-import { useState, useCallback } from "react"
-import { Radio, Battery, Signal, Plus, Trash2 } from "lucide-react"
+import { useState, useCallback, useEffect, useRef } from "react"
+import { Radio, Battery, Signal, Plus, Trash2, Cpu, Upload, Terminal } from "lucide-react"
 import { TopHeader } from "@/components/top-header"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
@@ -29,6 +29,103 @@ export default function DevicesPage() {
   const [enrollOpen, setEnrollOpen] = useState(false)
   const [enrollForm, setEnrollForm] = useState({ name: "", dev_eui: "", type: "microwave_tx", serial_port: "" })
   const [enrolling, setEnrolling] = useState(false)
+
+  // Flash / Provisioning state
+  const [flashOpen, setFlashOpen] = useState(false)
+  const [flashForm, setFlashForm] = useState({ tx_id: "", sensor_type: "ld2450", port: "", sketch_name: "" })
+  const [flashLogs, setFlashLogs] = useState<string[]>([])
+  const [flashing, setFlashing] = useState(false)
+  const [flashDone, setFlashDone] = useState<"ok" | "fail" | null>(null)
+  const [ports, setPorts] = useState<{port: string; real: string}[]>([])
+  const [sketches, setSketches] = useState<{name: string; sensor_type: string; is_template: boolean}[]>([])
+  const [txIdError, setTxIdError] = useState("")
+  const logEndRef = useRef<HTMLDivElement>(null)
+
+  const backendBase = typeof window !== "undefined" ? `http://${window.location.hostname}:8000` : ""
+
+  // Load ports and sketches when flash dialog opens
+  useEffect(() => {
+    if (!flashOpen) return
+    const load = async () => {
+      try {
+        const [portsRes, sketchesRes] = await Promise.all([
+          fetch(`${backendBase}/api/firmware/ports`),
+          fetch(`${backendBase}/api/firmware/sketches`),
+        ])
+        if (portsRes.ok) setPorts(await portsRes.json())
+        if (sketchesRes.ok) setSketches(await sketchesRes.json())
+      } catch { /* ignore */ }
+    }
+    load()
+  }, [flashOpen, backendBase])
+
+  // Auto-scroll flash logs
+  useEffect(() => {
+    logEndRef.current?.scrollIntoView({ behavior: "smooth" })
+  }, [flashLogs])
+
+  // Validate TX_ID uniqueness
+  useEffect(() => {
+    if (!flashForm.tx_id.trim()) { setTxIdError(""); return }
+    const existing = devices?.find(d => d.dev_eui === flashForm.tx_id.trim())
+    setTxIdError(existing ? `${flashForm.tx_id} deja cree` : "")
+  }, [flashForm.tx_id, devices])
+
+  const handleFlash = useCallback(async () => {
+    if (!flashForm.tx_id.trim() || !flashForm.port || txIdError) return
+    setFlashing(true)
+    setFlashDone(null)
+    setFlashLogs([])
+
+    try {
+      const res = await fetch(`${backendBase}/api/firmware/flash`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          port: flashForm.port,
+          tx_id: flashForm.tx_id.trim(),
+          sensor_type: flashForm.sensor_type,
+          sketch_name: flashForm.sketch_name || null,
+        }),
+      })
+
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({ detail: "Erreur inconnue" }))
+        setFlashLogs(prev => [...prev, `[ERROR] ${err.detail || res.statusText}`])
+        setFlashDone("fail")
+        setFlashing(false)
+        return
+      }
+
+      const reader = res.body?.getReader()
+      const decoder = new TextDecoder()
+
+      if (reader) {
+        while (true) {
+          const { done, value } = await reader.read()
+          if (done) break
+          const text = decoder.decode(value, { stream: true })
+          const lines = text.split("\n").filter(l => l.startsWith("data: "))
+          for (const line of lines) {
+            const msg = line.replace("data: ", "").trim()
+            if (msg === "[DONE] OK") {
+              setFlashDone("ok")
+            } else if (msg === "[DONE] FAIL") {
+              setFlashDone("fail")
+            } else if (msg) {
+              setFlashLogs(prev => [...prev, msg])
+            }
+          }
+        }
+      }
+    } catch (e) {
+      setFlashLogs(prev => [...prev, `[ERROR] ${e instanceof Error ? e.message : String(e)}`])
+      setFlashDone("fail")
+    } finally {
+      setFlashing(false)
+      mutate()  // Refresh devices list
+    }
+  }, [flashForm, txIdError, backendBase, mutate])
 
   function getMissionName(missionId: string | null) {
     if (!missionId || !missions) return "---"
@@ -105,10 +202,26 @@ export default function DevicesPage() {
                 </div>
               )}
             </div>
-            <Button size="sm" onClick={() => setEnrollOpen(true)} className="gap-1.5">
-              <Plus className="h-3.5 w-3.5" />
-              Enroll Device
-            </Button>
+            <div className="flex items-center gap-2">
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={() => {
+                  setFlashOpen(true)
+                  setFlashLogs([])
+                  setFlashDone(null)
+                  setFlashForm({ tx_id: "", sensor_type: "ld2450", port: "", sketch_name: "" })
+                }}
+                className="gap-1.5"
+              >
+                <Cpu className="h-3.5 w-3.5" />
+                Nouveau capteur
+              </Button>
+              <Button size="sm" onClick={() => setEnrollOpen(true)} className="gap-1.5">
+                <Plus className="h-3.5 w-3.5" />
+                Enroll Device
+              </Button>
+            </div>
           </div>
 
           <Card className="border-border/50 bg-card">

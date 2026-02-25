@@ -14,10 +14,14 @@ import {
   Cable,
   Activity,
   Smartphone,
+  AlertTriangle,
+  Battery,
+  Signal,
+  X,
 } from "lucide-react"
 import { TopHeader } from "@/components/top-header"
 import { StatusCard } from "@/components/dashboard/status-card"
-import { useStatus } from "@/hooks/use-api"
+import { useStatus, useNotifications, type Notification } from "@/hooks/use-api"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { cn } from "@/lib/utils"
@@ -35,8 +39,44 @@ function statusFor(value: number, warn: number, crit: number) {
   return "success" as const
 }
 
+function alertIcon(type: string) {
+  switch (type) {
+    case "battery_low": return <Battery className="h-4 w-4" />
+    case "rssi_weak": return <Signal className="h-4 w-4" />
+    case "device_offline": return <WifiOff className="h-4 w-4" />
+    default: return <AlertTriangle className="h-4 w-4" />
+  }
+}
+
+function getBackendBase(): string | null {
+  if (typeof window === "undefined") return null
+  return `http://${window.location.hostname}:8000`
+}
+
 export default function DashboardPage() {
   const { data: status, isLoading } = useStatus()
+  const { data: allNotifs, mutate: mutateNotifs } = useNotifications()
+
+  // Filter only warning/critical non-dismissed
+  const alerts = (allNotifs ?? []).filter(
+    (n: Notification) => (n.severity === "warning" || n.severity === "critical") && n.dismissed === 0
+  )
+
+  const handleDismiss = async (id: number) => {
+    const base = getBackendBase()
+    if (base) {
+      await fetch(`${base}/api/notifications/${id}`, { method: "DELETE" })
+      mutateNotifs()
+    }
+  }
+
+  const handleDismissAll = async () => {
+    const base = getBackendBase()
+    if (base) {
+      await fetch(`${base}/api/notifications/dismiss-all`, { method: "POST" })
+      mutateNotifs()
+    }
+  }
 
   if (isLoading || !status) {
     return (
@@ -88,6 +128,62 @@ export default function DashboardPage() {
       <TopHeader title="Dashboard" description="Vue d'ensemble du systeme" />
       <main className="flex-1 overflow-auto p-4">
         <div className="flex flex-col gap-4">
+          {/* ── Active Alerts ── */}
+          {alerts.length > 0 && (
+            <section>
+              <div className="mb-3 flex items-center justify-between">
+                <h2 className="text-[11px] uppercase tracking-widest text-muted-foreground flex items-center gap-1.5">
+                  <AlertTriangle className="h-3.5 w-3.5 text-amber-500" />
+                  Alertes actives ({alerts.length})
+                </h2>
+                <button
+                  onClick={handleDismissAll}
+                  className="text-[10px] text-muted-foreground hover:text-foreground transition-colors cursor-pointer"
+                >
+                  Tout effacer
+                </button>
+              </div>
+              <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 lg:grid-cols-3">
+                {alerts.map((n: Notification) => (
+                  <Card
+                    key={n.id}
+                    className={cn(
+                      "border-l-2",
+                      n.severity === "critical"
+                        ? "border-l-destructive bg-destructive/5"
+                        : "border-l-amber-500 bg-amber-500/5"
+                    )}
+                  >
+                    <CardContent className="flex items-center gap-3 px-3 py-2.5">
+                      <div className={cn(
+                        "shrink-0",
+                        n.severity === "critical" ? "text-destructive" : "text-amber-500"
+                      )}>
+                        {alertIcon(n.type)}
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <p className="text-xs font-medium text-foreground truncate">
+                          {n.message}
+                        </p>
+                        {n.device_name && (
+                          <p className="text-[10px] text-muted-foreground font-mono">
+                            {n.device_name}
+                          </p>
+                        )}
+                      </div>
+                      <button
+                        onClick={() => handleDismiss(n.id)}
+                        className="shrink-0 text-muted-foreground/40 hover:text-destructive transition-colors cursor-pointer p-1"
+                      >
+                        <X className="h-3 w-3" />
+                      </button>
+                    </CardContent>
+                  </Card>
+                ))}
+              </div>
+            </section>
+          )}
+
           {/* ── Raspberry Pi ── */}
           <section>
             <h2 className="mb-3 text-[11px] uppercase tracking-widest text-muted-foreground">

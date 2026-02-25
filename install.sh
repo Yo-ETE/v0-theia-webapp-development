@@ -59,6 +59,33 @@ install_system_packages() {
 }
 
 # ============================================
+# STEP 1b: Arduino CLI (for TX firmware flashing)
+# ============================================
+install_arduino_cli() {
+    if command -v arduino-cli &>/dev/null; then
+        ok "arduino-cli already installed ($(arduino-cli version | head -1))"
+    else
+        info "Installing arduino-cli..."
+        curl -fsSL https://raw.githubusercontent.com/arduino/arduino-cli/master/install.sh | BINDIR=/usr/local/bin sh
+        ok "arduino-cli installed"
+    fi
+
+    info "Installing ESP32 board core (this may take a few minutes)..."
+    # Add ESP32 board URL
+    sudo -u "$SERVICE_USER" arduino-cli config init --overwrite 2>/dev/null || true
+    sudo -u "$SERVICE_USER" arduino-cli config add board_manager.additional_urls \
+        "https://raw.githubusercontent.com/espressif/arduino-esp32/gh-pages/package_esp32_index.json" 2>/dev/null || true
+    sudo -u "$SERVICE_USER" arduino-cli core update-index 2>/dev/null || true
+    sudo -u "$SERVICE_USER" arduino-cli core install esp32:esp32 2>/dev/null || true
+
+    # Install required libraries
+    info "Installing Arduino libraries..."
+    sudo -u "$SERVICE_USER" arduino-cli lib install "LD2450" 2>/dev/null || true
+
+    ok "Arduino CLI + ESP32 core configured"
+}
+
+# ============================================
 # STEP 2: Node.js (via NodeSource)
 # ============================================
 install_nodejs() {
@@ -369,6 +396,7 @@ main() {
 
     check_root
     install_system_packages
+    install_arduino_cli
     install_nodejs
     create_directories
     copy_app_files

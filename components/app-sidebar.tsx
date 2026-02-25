@@ -24,6 +24,7 @@ import {
   SidebarFooter,
 } from "@/components/ui/sidebar"
 import { Badge } from "@/components/ui/badge"
+import { NotificationBell } from "@/components/notification-bell"
 
 const navItems = [
   { title: "Dashboard", href: "/dashboard", icon: LayoutDashboard },
@@ -39,19 +40,22 @@ export function AppSidebar() {
   return (
     <Sidebar>
       <SidebarHeader className="border-b border-sidebar-border px-4 py-4">
-        <Link href="/dashboard" className="flex items-center gap-3">
-          <div className="flex h-8 w-8 items-center justify-center rounded-md bg-primary">
-            <Activity className="h-4 w-4 text-primary-foreground" />
-          </div>
-          <div className="flex flex-col">
-            <span className="text-sm font-semibold tracking-wider text-sidebar-foreground">
-              THEIA
-            </span>
-            <span className="text-[10px] uppercase tracking-widest text-muted-foreground">
-              Hub Control
-            </span>
-          </div>
-        </Link>
+        <div className="flex items-center justify-between">
+          <Link href="/dashboard" className="flex items-center gap-3">
+            <div className="flex h-8 w-8 items-center justify-center rounded-md bg-primary">
+              <Activity className="h-4 w-4 text-primary-foreground" />
+            </div>
+            <div className="flex flex-col">
+              <span className="text-sm font-semibold tracking-wider text-sidebar-foreground">
+                THEIA
+              </span>
+              <span className="text-[10px] uppercase tracking-widest text-muted-foreground">
+                Hub Control
+              </span>
+            </div>
+          </Link>
+          <NotificationBell />
+        </div>
       </SidebarHeader>
 
       <SidebarContent>

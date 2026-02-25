@@ -44,6 +44,36 @@ class PortReader:
         self._tx_validated: dict[str, bool] = {}
         self._PRESENCE_WITHOUT_EMPTY_LIMIT = 200
         self._mission_status_cache: dict[str, tuple[str, float]] = {}  # mission_id -> (status, timestamp)
+        # Per-device alert tracking: {tx_id: last_seen_ts}
+        self._device_last_seen: dict[str, float] = {}
+        # Anti-spam: {(type, device_id): last_notif_ts}
+        self._notif_cooldown: dict[tuple[str, str], float] = {}
+
+    async def _create_notification(self, ntype: str, severity: str, device_id: str | None, device_name: str, message: str):
+        """Create a notification with 1-hour anti-spam per (type, device_id)."""
+        cooldown_key = (ntype, device_id or device_name)
+        now = time.time()
+        last = self._notif_cooldown.get(cooldown_key, 0)
+        if now - last < 3600:
+            return  # anti-spam: 1 per type/device per hour
+        self._notif_cooldown[cooldown_key] = now
+        try:
+            db = await get_db()
+            await db.execute(
+                "INSERT INTO notifications (type, severity, device_id, device_name, message) VALUES (?, ?, ?, ?, ?)",
+                (ntype, severity, device_id, device_name, message),
+            )
+            await db.execute(
+                "INSERT INTO logs (level, source, message) VALUES (?, ?, ?)",
+                (severity if severity != "critical" else "error", "device", message),
+            )
+            await db.commit()
+            await sse_manager.broadcast("notification", {
+                "type": ntype, "severity": severity,
+                "device_name": device_name, "message": message,
+            })
+        except Exception as e:
+            print(f"[THEIA] Failed to create notification: {e}")
 
     async def start(self):
         import serial
@@ -398,6 +428,39 @@ class PortReader:
             "timestamp": now_iso,
         })
 
+        # --- Health monitoring: track device activity + check battery/RSSI ---
+        dev_key = tx_id or self.port
+        was_offline = (dev_key in self._device_last_seen and
+                       time.time() - self._device_last_seen.get(dev_key, 0) > 60)
+        self._device_last_seen[dev_key] = time.time()
+
+        # Device came back online after being offline
+        if was_offline and device_id:
+            await self._create_notification(
+                "device_online", "info", device_id, device_name,
+                f"{device_name} reconnecte"
+            )
+
+        # Battery alerts
+        if vbatt is not None and vbatt > 0 and device_id:
+            if vbatt < 3.3:
+                await self._create_notification(
+                    "battery_low", "critical", device_id, device_name,
+                    f"{device_name} batterie critique ({vbatt:.2f}V)"
+                )
+            elif vbatt < 3.5:
+                await self._create_notification(
+                    "battery_low", "warning", device_id, device_name,
+                    f"{device_name} batterie faible ({vbatt:.2f}V)"
+                )
+
+        # RSSI alert (persistent weak signal)
+        if self.last_rssi < -90 and device_id:
+            await self._create_notification(
+                "rssi_weak", "warning", device_id, device_name,
+                f"{device_name} signal faible ({self.last_rssi}dBm)"
+            )
+
     # ------------------------------------------------------------------ LD45 raw
     async def _parse_ld45(self, line: str):
         """Parse LD2450 frames: LD45;TX01;x;y;d;v;vbatt or LD45;x;y;d;v;vbatt"""
@@ -544,6 +607,7 @@ class LoRaBridge:
         self._running = False
         self._readers: dict[str, PortReader] = {}
         self._tasks: list[asyncio.Task] = []
+        self._watchdog_cooldown: dict[tuple[str, str], float] = {}
 
     def invalidate_mission_cache(self, mission_id: str):
         """Clear cached mission status so readers pick up the new status immediately."""
@@ -603,9 +667,69 @@ class LoRaBridge:
             found = [p for p in found if os.path.realpath(p) != gps_real]
         return found
 
+    async def _device_watchdog(self):
+        """Background task: check all devices for offline status every 30s."""
+        await asyncio.sleep(60)  # Wait 60s at startup before first check
+        while self._running:
+            try:
+                db = await get_db()
+                cursor = await db.execute(
+                    "SELECT id, name, last_seen, battery, rssi FROM devices WHERE enabled=1 AND last_seen IS NOT NULL"
+                )
+                rows = await cursor.fetchall()
+                now_ts = time.time()
+                for row in rows:
+                    d = dict(row)
+                    last_seen_str = d.get("last_seen")
+                    if not last_seen_str:
+                        continue
+                    try:
+                        from datetime import timezone as tz
+                        if last_seen_str.endswith("Z"):
+                            last_seen_str = last_seen_str[:-1] + "+00:00"
+                        if "+" not in last_seen_str and "T" in last_seen_str:
+                            from datetime import datetime as dt
+                            ls_dt = dt.fromisoformat(last_seen_str).replace(tzinfo=tz.utc)
+                        else:
+                            from datetime import datetime as dt
+                            ls_dt = dt.fromisoformat(last_seen_str)
+                        delta_s = now_ts - ls_dt.timestamp()
+                    except Exception:
+                        continue
+
+                    device_id = d["id"]
+                    device_name = d["name"]
+
+                    # Offline > 120s and not already notified recently
+                    if delta_s > 120:
+                        cooldown_key = ("device_offline", device_id)
+                        last_notif = self._watchdog_cooldown.get(cooldown_key, 0)
+                        if now_ts - last_notif > 3600:
+                            self._watchdog_cooldown[cooldown_key] = now_ts
+                            await db.execute(
+                                "INSERT INTO notifications (type, severity, device_id, device_name, message) VALUES (?, ?, ?, ?, ?)",
+                                ("device_offline", "warning", device_id, device_name,
+                                 f"{device_name} hors ligne (aucun signal depuis {int(delta_s)}s)"),
+                            )
+                            await db.execute(
+                                "INSERT INTO logs (level, source, message) VALUES (?, ?, ?)",
+                                ("warning", "device", f"{device_name} deconnecte (pas de signal depuis {int(delta_s)}s)"),
+                            )
+                            await db.commit()
+                            await sse_manager.broadcast("notification", {
+                                "type": "device_offline", "severity": "warning",
+                                "device_name": device_name,
+                                "message": f"{device_name} hors ligne",
+                            })
+            except Exception as e:
+                print(f"[THEIA] Watchdog error: {e}")
+            await asyncio.sleep(30)
+
     async def start(self):
         self._running = True
         print("[THEIA] LoRa bridge starting (multi-port mode)")
+        # Start device health watchdog
+        self._tasks.append(asyncio.create_task(self._device_watchdog()))
         _first_scan = True
         while self._running:
             ports = self._scan_ports()
