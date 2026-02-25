@@ -698,9 +698,14 @@ export default function MissionDetailPage() {
     }))
 
   // Map detections: ONLY from SSE (real-time). Never from DB -- DB events are history.
+  // Filter out muted devices from zone-level aggregation
+  const mutedIds = new Set(missionDevices.filter(d => d.muted).map(d => d.id))
+  const filteredLiveByZone = Object.fromEntries(
+    Object.entries(liveByZone).filter(([, det]) => !mutedIds.has(det.device_id))
+  )
   const effectiveLiveByZone: Record<string, LiveDetection> = timelapseMode
-    ? { ...replayDetections }
-    : { ...liveByZone }
+  ? { ...replayDetections }
+  : { ...filteredLiveByZone }
   // Detection Feed: combine DB events (persisted) + SSE live detections (this session).
   // DB events populate the feed on page load so it doesn't appear empty after navigation.
   const dbDetections: LiveDetection[] = (events ?? []).map((e: DetectionEvent) => {
@@ -725,11 +730,13 @@ export default function MissionDetailPage() {
     }
   })
   // Merge: SSE events first (newest), then DB events not already in SSE list
+  // Filter out detections from muted devices
+  const mutedDeviceIds = new Set(missionDevices.filter(d => d.muted).map(d => d.id))
   const sseTimestamps = new Set(liveDetections.map(d => d.timestamp))
   const displayDetections: LiveDetection[] = [
     ...liveDetections,
     ...dbDetections.filter(d => !sseTimestamps.has(d.timestamp)),
-  ].slice(0, 50)
+  ].filter(d => !mutedDeviceIds.has(d.device_id)).slice(0, 50)
 
   return (
     <>

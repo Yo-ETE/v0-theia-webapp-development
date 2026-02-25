@@ -32,7 +32,7 @@ export default function DevicesPage() {
 
   // Flash / Provisioning state
   const [flashOpen, setFlashOpen] = useState(false)
-  const [flashForm, setFlashForm] = useState({ tx_id: "", sensor_type: "ld2450", port: "", sketch_name: "" })
+  const [flashForm, setFlashForm] = useState({ tx_id: "", sensor_type: "ld2450", port: "", sketch_name: "__default__" })
   const [flashLogs, setFlashLogs] = useState<string[]>([])
   const [flashing, setFlashing] = useState(false)
   const [flashDone, setFlashDone] = useState<"ok" | "fail" | null>(null)
@@ -85,7 +85,7 @@ export default function DevicesPage() {
           port: flashForm.port,
           tx_id: flashForm.tx_id.trim(),
           sensor_type: flashForm.sensor_type,
-          sketch_name: flashForm.sketch_name || null,
+          sketch_name: flashForm.sketch_name === "__default__" ? null : (flashForm.sketch_name || null),
         }),
       })
 
@@ -210,17 +210,14 @@ export default function DevicesPage() {
                   setFlashOpen(true)
                   setFlashLogs([])
                   setFlashDone(null)
-                  setFlashForm({ tx_id: "", sensor_type: "ld2450", port: "", sketch_name: "" })
+                  setFlashForm({ tx_id: "", sensor_type: "ld2450", port: "", sketch_name: "__default__" })
                 }}
                 className="gap-1.5"
               >
                 <Cpu className="h-3.5 w-3.5" />
                 Nouveau capteur
               </Button>
-              <Button size="sm" onClick={() => setEnrollOpen(true)} className="gap-1.5">
-                <Plus className="h-3.5 w-3.5" />
-                Enroll Device
-              </Button>
+
             </div>
           </div>
 
@@ -522,7 +519,7 @@ export default function DevicesPage() {
                     <SelectValue placeholder="Template par defaut" />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="" className="text-xs">Template par defaut</SelectItem>
+                    <SelectItem value="__default__" className="text-xs">Template par defaut</SelectItem>
                     {sketches.map(s => (
                       <SelectItem key={s.name} value={s.name} className="text-xs">
                         {s.name} ({s.sensor_type}){s.is_template ? " [template]" : ""}
