@@ -54,16 +54,25 @@ export default function DevicesPage() {
     let cancelled = false
     let baselineReady = false
 
-    // Take baseline snapshot immediately
+    // Take baseline snapshot immediately -- include ALL raw ports, not just free ones.
+    // We call /api/firmware/ports?all=1 to get a full list of USB ports for baseline,
+    // but fall back to the normal list if the query param isn't supported.
     const init = async () => {
       try {
         const res = await fetch(`${backendBase}/api/firmware/ports`)
         if (!res.ok || cancelled) return
         const data = await res.json()
         const portList: PortInfo[] = data.ports ?? data
+        // Baseline = the free ports + system reserved real paths (to know everything present)
+        const allReals = new Set<string>()
+        portList.forEach(p => allReals.add(p.real))
+        // Also include all_raw_ports if the backend returns them
+        if (data.all_raw) {
+          ;(data.all_raw as string[]).forEach(r => allReals.add(r))
+        }
+        baselineRef.current = allReals
         setPorts(portList)
         setSystemPorts(data.system ?? [])
-        baselineRef.current = new Set(portList.map(p => p.real))
         baselineReady = true
         setDetectedPort(null)
       } catch { /* ignore */ }
@@ -80,11 +89,12 @@ export default function DevicesPage() {
         const portList: PortInfo[] = data.ports ?? data
         setPorts(portList)
 
-        // Find a port whose real path wasn't in the baseline
+        // Detect: a free port whose real path wasn't in the baseline snapshot
         const newPort = portList.find(p => !baselineRef.current.has(p.real))
         if (newPort) {
           setDetectedPort(newPort)
           setFlashForm(f => ({ ...f, port: newPort.port }))
+          clearInterval(interval) // Stop polling once found
         }
       } catch { /* ignore */ }
     }, 1500)

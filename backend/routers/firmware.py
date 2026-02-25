@@ -128,8 +128,12 @@ async def list_ports():
 
             ports.append(info)
 
-    # ── Step 4: if no free ports found, return helpful message ──
-    # (frontend handles the empty list with "Aucun port libre detecte")
+    # ── Step 4: build the full list of raw USB real paths (for baseline snapshot) ──
+    all_raw_reals: list[str] = []
+    for pattern in ["/dev/ttyUSB*", "/dev/ttyACM*"]:
+        for p in sorted(glob.glob(pattern)):
+            all_raw_reals.append(os.path.realpath(p))
+
     return {
         "ports": ports,
         "system": [
@@ -137,6 +141,7 @@ async def list_ports():
             for k, v in system_symlinks.items()
         ],
         "enrolled_count": len(enrolled_ports) // 2,  # each device has port + real
+        "all_raw": all_raw_reals,  # complete snapshot of all plugged USB serial devices
     }
 
 

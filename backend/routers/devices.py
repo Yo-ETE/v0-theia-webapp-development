@@ -166,10 +166,16 @@ async def update_device(device_id: str, body: DeviceUpdate):
 @router.delete("/{device_id}")
 async def delete_device(device_id: str):
     db = await get_db()
+    # Check device exists
+    cursor = await db.execute("SELECT id FROM devices WHERE id=?", (device_id,))
+    if not await cursor.fetchone():
+        raise HTTPException(status_code=404, detail="Device not found")
+
     # Soft-delete: set enabled=0 so auto-enroll won't re-create the device.
     # The LoRa bridge queries WHERE enabled=1, so disabled devices are ignored.
+    # NOTE: mission_id must be NULL (not '') because of FOREIGN KEY constraint.
     await db.execute(
-        "UPDATE devices SET enabled=0, mission_id='', zone_id='', zone_label='', side='' WHERE id=?",
+        "UPDATE devices SET enabled=0, mission_id=NULL, zone_id='', zone_label='', side='' WHERE id=?",
         (device_id,),
     )
     await db.commit()
