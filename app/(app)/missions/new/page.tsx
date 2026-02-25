@@ -17,6 +17,7 @@ import type { EnvironmentType } from "@/lib/types"
 import {
   ArrowLeft, ArrowRight, Save, Search, Crosshair,
   Building2, Home, Loader2, MapPin, Check, Warehouse,
+  FileImage, Upload, X,
 } from "lucide-react"
 
 const STEPS = ["Info", "Location", "Type", "Review"] as const
@@ -35,6 +36,11 @@ export default function NewMissionPage() {
   const [locatingGps, setLocatingGps] = useState(false)
   const [searchQuery, setSearchQuery] = useState("")
   const [searchResults, setSearchResults] = useState<GeoResult[]>([])
+
+  // Plan image for "plan" environment type
+  const [planFile, setPlanFile] = useState<File | null>(null)
+  const [planPreview, setPlanPreview] = useState<string | null>(null)
+  const planInputRef = useRef<HTMLInputElement>(null)
 
   // Stable form ref so state persists perfectly across step changes
   const [form, setForm] = useState({
@@ -111,11 +117,31 @@ export default function NewMissionPage() {
     }
   }, [setPosition])
 
+  // Handle plan image selection
+  const handlePlanImageChange = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0]
+    if (!file) return
+    setPlanFile(file)
+    const url = URL.createObjectURL(file)
+    setPlanPreview(url)
+  }, [])
+
   // Submit
   async function handleSubmit() {
     setSaving(true)
     try {
       const mission = await createMission(form)
+      // If plan type, upload the plan image
+      if (form.environment === "plan" && planFile && mission.id) {
+        const fd = new FormData()
+        fd.append("file", planFile)
+        try {
+          const uploadRes = await fetch(`/api/missions/${mission.id}/plan-image`, { method: "POST", body: fd })
+          if (!uploadRes.ok) console.error("Plan image upload failed")
+        } catch (err) {
+          console.error("Plan image upload error:", err)
+        }
+      }
       router.push(`/missions/${mission.id}`)
     } catch (err) {
       console.error("Failed to create mission:", err)
@@ -126,7 +152,7 @@ export default function NewMissionPage() {
 
   const canNext =
     step === 0 ? form.name.trim().length > 0
-    : step === 1 ? positionSet.current || (form.center_lat !== 48.8566 || form.center_lon !== 2.3522)
+    : step === 1 ? form.environment === "plan" ? !!planFile : (positionSet.current || (form.center_lat !== 48.8566 || form.center_lon !== 2.3522))
     : true
 
   return (
@@ -143,14 +169,14 @@ export default function NewMissionPage() {
             </Button>
           </div>
 
-          {/* Step indicator */}
-          <div className="flex items-center gap-1 mb-5">
+          {/* Step indicator -- compact on mobile, full on desktop */}
+          <div className="flex flex-wrap items-center gap-1 mb-5">
             {STEPS.map((s, i) => (
               <div key={s} className="flex items-center gap-1">
                 <button
                   onClick={() => i < step && setStep(i)}
                   disabled={i > step}
-                  className={`flex items-center gap-1.5 rounded-full px-3 py-1 text-xs font-mono transition-colors ${
+                  className={`flex items-center gap-1 rounded-full min-h-[36px] px-2.5 sm:px-3 py-1 text-xs font-mono transition-colors ${
                     i === step
                       ? "bg-primary text-primary-foreground"
                       : i < step
@@ -159,10 +185,10 @@ export default function NewMissionPage() {
                   }`}
                 >
                   {i < step ? <Check className="h-3 w-3" /> : <span className="text-[10px]">{i + 1}</span>}
-                  {s}
+                  <span className={i !== step ? "hidden sm:inline" : ""}>{s}</span>
                 </button>
                 {i < STEPS.length - 1 && (
-                  <div className={`h-px w-6 ${i < step ? "bg-primary/50" : "bg-border"}`} />
+                  <div className={`h-px w-3 sm:w-6 ${i < step ? "bg-primary/50" : "bg-border"}`} />
                 )}
               </div>
             ))}
@@ -315,7 +341,60 @@ export default function NewMissionPage() {
                 </CardContent>
               </Card>
 
-              {/* Live map */}
+              {/* Plan image upload OR map preview */}
+              {form.environment === "plan" ? (
+                <Card className="border-border/50 bg-card">
+                  <CardHeader className="py-2 px-4">
+                    <CardTitle className="text-xs flex items-center gap-2">
+                      <FileImage className="h-3.5 w-3.5" />
+                      Plan du batiment
+                    </CardTitle>
+                  </CardHeader>
+                  <CardContent className="flex flex-col gap-3">
+                    {planPreview ? (
+                      <div className="relative">
+                        <img
+                          src={planPreview}
+                          alt="Plan du batiment"
+                          className="w-full max-h-[350px] object-contain rounded-lg border border-border/50 bg-muted/20"
+                        />
+                        <button
+                          onClick={() => { setPlanFile(null); setPlanPreview(null); if (planInputRef.current) planInputRef.current.value = "" }}
+                          className="absolute top-2 right-2 h-8 w-8 flex items-center justify-center rounded-full bg-background/80 backdrop-blur-sm border border-border text-destructive hover:bg-destructive/10 transition-colors"
+                        >
+                          <X className="h-4 w-4" />
+                        </button>
+                        <p className="mt-2 text-[10px] text-muted-foreground text-center">
+                          {planFile?.name} ({planFile ? (planFile.size / 1024).toFixed(0) : 0} Ko)
+                        </p>
+                      </div>
+                    ) : (
+                      <button
+                        onClick={() => planInputRef.current?.click()}
+                        className="flex flex-col items-center justify-center gap-3 rounded-lg border-2 border-dashed border-border/50 p-8 hover:border-primary/50 hover:bg-primary/5 transition-all cursor-pointer min-h-[200px]"
+                      >
+                        <Upload className="h-8 w-8 text-muted-foreground" />
+                        <div className="text-center">
+                          <p className="text-sm font-medium text-foreground">Importer un plan</p>
+                          <p className="text-xs text-muted-foreground mt-1">
+                            Photo de plan d'evacuation, plan architecte, etc.
+                          </p>
+                          <p className="text-[10px] text-muted-foreground mt-0.5">
+                            JPG, PNG ou WebP
+                          </p>
+                        </div>
+                      </button>
+                    )}
+                    <input
+                      ref={planInputRef}
+                      type="file"
+                      accept="image/jpeg,image/png,image/webp"
+                      className="hidden"
+                      onChange={handlePlanImageChange}
+                    />
+                  </CardContent>
+                </Card>
+              ) : (
               <Card className="border-border/50 bg-card overflow-hidden">
                 <CardHeader className="py-2 px-4">
                   <CardTitle className="text-xs flex items-center gap-2">
@@ -342,6 +421,7 @@ export default function NewMissionPage() {
                   </ErrorBoundary>
                 </CardContent>
               </Card>
+              )}
             </div>
           )}
 
@@ -354,7 +434,7 @@ export default function NewMissionPage() {
                   Determine le mode de configuration des capteurs et le layout de visualisation.
                 </CardDescription>
               </CardHeader>
-              <CardContent className="grid grid-cols-1 gap-4 sm:grid-cols-3">
+              <CardContent className="grid grid-cols-1 gap-4 sm:grid-cols-2">
                 {/* Habitation */}
                 <button
                   onClick={() => setForm({ ...form, environment: "habitation" })}
@@ -435,6 +515,33 @@ export default function NewMissionPage() {
                     <Badge variant="outline" className="text-[9px] py-0">TX par etage</Badge>
                   </div>
                 </button>
+
+                {/* Sur Plan */}
+                <button
+                  onClick={() => setForm({ ...form, environment: "plan" })}
+                  className={`flex flex-col gap-3 rounded-lg border-2 p-5 text-left transition-all ${
+                    form.environment === "plan"
+                      ? "border-primary bg-primary/5"
+                      : "border-border/50 bg-card hover:border-border"
+                  }`}
+                >
+                  <div className="flex items-center gap-3">
+                    <div className={`rounded-lg p-2 ${form.environment === "plan" ? "bg-primary/20 text-primary" : "bg-muted text-muted-foreground"}`}>
+                      <FileImage className="h-5 w-5" />
+                    </div>
+                    <div>
+                      <p className="text-sm font-medium text-foreground">Sur Plan</p>
+                      <p className="text-[10px] text-muted-foreground">Plan de batiment, evacuation</p>
+                    </div>
+                  </div>
+                  <p className="text-xs text-muted-foreground leading-relaxed">
+                    Importez une photo de plan et dessinez les zones directement dessus. Meme principe que Habitation.
+                  </p>
+                  <div className="flex flex-wrap gap-1">
+                    <Badge variant="outline" className="text-[9px] py-0">Plan importe</Badge>
+                    <Badge variant="outline" className="text-[9px] py-0">Zones + Facades</Badge>
+                  </div>
+                </button>
               </CardContent>
             </Card>
           )}
@@ -461,7 +568,10 @@ export default function NewMissionPage() {
                         {form.environment === "habitation" && <Home className="h-3.5 w-3.5 text-primary" />}
                         {form.environment === "garage" && <Warehouse className="h-3.5 w-3.5 text-primary" />}
                         {form.environment === "etages" && <Building2 className="h-3.5 w-3.5 text-primary" />}
-                        <p className="text-sm text-foreground capitalize">{form.environment === "habitation" ? "Habitation" : form.environment === "garage" ? "Garage / Souterrain" : "Etages"}</p>
+                        {form.environment === "plan" && <FileImage className="h-3.5 w-3.5 text-primary" />}
+                        <p className="text-sm text-foreground capitalize">
+                          {{ habitation: "Habitation", garage: "Garage / Souterrain", etages: "Etages", plan: "Sur Plan" }[form.environment] ?? form.environment}
+                        </p>
                       </div>
                     </div>
                     <div className="rounded border border-border/50 p-3 col-span-2">
@@ -483,16 +593,24 @@ export default function NewMissionPage() {
 
               <Card className="border-border/50 bg-card overflow-hidden">
                 <CardContent className="p-0">
-                  <ErrorBoundary>
-                    <MissionMap
-                      key={`review-${form.center_lat}-${form.center_lon}`}
-                      centerLat={form.center_lat}
-                      centerLon={form.center_lon}
-                      zoom={form.zoom}
-                      zones={[]}
-                      className="h-[300px]"
+                  {form.environment === "plan" && planPreview ? (
+                    <img
+                      src={planPreview}
+                      alt="Plan du batiment"
+                      className="w-full max-h-[300px] object-contain bg-muted/20"
                     />
-                  </ErrorBoundary>
+                  ) : (
+                    <ErrorBoundary>
+                      <MissionMap
+                        key={`review-${form.center_lat}-${form.center_lon}`}
+                        centerLat={form.center_lat}
+                        centerLon={form.center_lon}
+                        zoom={form.zoom}
+                        zones={[]}
+                        className="h-[300px]"
+                      />
+                    </ErrorBoundary>
+                  )}
                 </CardContent>
               </Card>
             </div>

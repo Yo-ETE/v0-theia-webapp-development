@@ -23,6 +23,9 @@ class MissionCreate(BaseModel):
     zoom: int = 19
     zones: list = Field(default_factory=list)
     floors: list = Field(default_factory=list)
+    plan_image: str | None = None
+    plan_width: int | None = None
+    plan_height: int | None = None
 
 
 class MissionUpdate(BaseModel):
@@ -36,6 +39,9 @@ class MissionUpdate(BaseModel):
     zoom: int | None = None
     zones: list | None = None
     floors: list | None = None
+    plan_image: str | None = None
+    plan_width: int | None = None
+    plan_height: int | None = None
     started_at: str | None = None
     ended_at: str | None = None
     device_count: int | None = None
@@ -61,6 +67,9 @@ def _row_to_dict(row) -> dict:
     d.setdefault("ended_at", None)
     d.setdefault("device_count", 0)
     d.setdefault("event_count", 0)
+    d.setdefault("plan_image", None)
+    d.setdefault("plan_width", None)
+    d.setdefault("plan_height", None)
     return d
 
 
@@ -118,11 +127,13 @@ async def create_mission(body: MissionCreate):
     now = datetime.now(timezone.utc).isoformat()
     await db.execute(
         """INSERT INTO missions
-           (id, name, description, location, environment, center_lat, center_lon, zoom, zones, floors, status, created_at, updated_at)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+           (id, name, description, location, environment, center_lat, center_lon, zoom, zones, floors,
+            plan_image, plan_width, plan_height, status, created_at, updated_at)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
         (mid, body.name, body.description, body.location, body.environment,
          body.center_lat, body.center_lon, body.zoom,
          json.dumps(body.zones), json.dumps(body.floors),
+         body.plan_image, body.plan_width, body.plan_height,
          "draft", now, now),
     )
     await db.commit()
@@ -190,3 +201,68 @@ async def delete_mission(mission_id: str):
     await db.execute("DELETE FROM missions WHERE id=?", (mission_id,))
     await db.commit()
     return {"ok": True}
+
+
+# ── Plan Image Upload ────────────────────────────────────────
+import os
+from fastapi import UploadFile, File
+
+PLANS_DIR = os.path.join(os.path.dirname(os.path.dirname(__file__)), "data", "plans")
+
+
+@router.post("/{mission_id}/plan-image")
+async def upload_plan_image(mission_id: str, file: UploadFile = File(...)):
+    """Upload a floor plan image for a plan-type mission."""
+    db = await get_db()
+    cursor = await db.execute("SELECT id FROM missions WHERE id=?", (mission_id,))
+    if not await cursor.fetchone():
+        raise HTTPException(status_code=404, detail="Mission not found")
+
+    os.makedirs(PLANS_DIR, exist_ok=True)
+
+    # Determine extension from content type
+    ext = "jpg"
+    if file.content_type and "png" in file.content_type:
+        ext = "png"
+    elif file.content_type and "webp" in file.content_type:
+        ext = "webp"
+
+    filename = f"{mission_id}.{ext}"
+    filepath = os.path.join(PLANS_DIR, filename)
+
+    # Write file
+    content = await file.read()
+    with open(filepath, "wb") as f:
+        f.write(content)
+
+    # Try to get image dimensions
+    plan_width, plan_height = None, None
+    try:
+        from PIL import Image
+        img = Image.open(filepath)
+        plan_width, plan_height = img.size
+        img.close()
+    except Exception:
+        pass
+
+    # Update mission
+    plan_url = f"/api/missions/{mission_id}/plan-image/file"
+    await db.execute(
+        "UPDATE missions SET plan_image=?, plan_width=?, plan_height=?, updated_at=? WHERE id=?",
+        (plan_url, plan_width, plan_height, datetime.now(timezone.utc).isoformat(), mission_id),
+    )
+    await db.commit()
+
+    return {"url": plan_url, "width": plan_width, "height": plan_height}
+
+
+@router.get("/{mission_id}/plan-image/file")
+async def get_plan_image(mission_id: str):
+    """Serve the floor plan image file."""
+    from fastapi.responses import FileResponse
+    for ext in ("jpg", "png", "webp"):
+        filepath = os.path.join(PLANS_DIR, f"{mission_id}.{ext}")
+        if os.path.exists(filepath):
+            media = {"jpg": "image/jpeg", "png": "image/png", "webp": "image/webp"}[ext]
+            return FileResponse(filepath, media_type=media)
+    raise HTTPException(status_code=404, detail="Plan image not found")

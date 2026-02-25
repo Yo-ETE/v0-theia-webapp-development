@@ -48,7 +48,10 @@ async def init_tables(db: aiosqlite.Connection):
             created_at TEXT DEFAULT (datetime('now')),
             updated_at TEXT DEFAULT (datetime('now')),
             started_at TEXT,
-            ended_at TEXT
+            ended_at TEXT,
+            plan_image TEXT DEFAULT NULL,
+            plan_width INTEGER DEFAULT NULL,
+            plan_height INTEGER DEFAULT NULL
         );
 
         CREATE TABLE IF NOT EXISTS devices (
@@ -179,6 +182,12 @@ async def init_tables(db: aiosqlite.Connection):
         await db.execute("ALTER TABLE devices ADD COLUMN muted INTEGER DEFAULT 0")
     except Exception:
         pass
+    # Mission plan_image columns
+    for col, dflt in [("plan_image", "NULL"), ("plan_width", "NULL"), ("plan_height", "NULL")]:
+        try:
+            await db.execute(f"ALTER TABLE missions ADD COLUMN {col} {'TEXT' if col == 'plan_image' else 'INTEGER'} DEFAULT {dflt}")
+        except Exception:
+            pass
     # Events columns
     for col in ["zone_id", "side"]:
         try:

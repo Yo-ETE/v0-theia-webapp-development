@@ -58,7 +58,7 @@ export interface Alert {
 // ─── Missions ────────────────────────────────────────────────────
 
 export type MissionStatus = "draft" | "active" | "paused" | "completed" | "archived"
-export type EnvironmentType = "horizontal" | "vertical" | "habitation" | "garage" | "etages"
+export type EnvironmentType = "horizontal" | "vertical" | "habitation" | "garage" | "etages" | "plan"
 
 export interface Mission {
   id: string
@@ -76,6 +76,9 @@ export interface Mission {
   zoom: number
   zones: Zone[]
   floors?: Floor[]
+  plan_image?: string | null  // URL/path to uploaded floor plan image (for "plan" environment)
+  plan_width?: number | null  // image natural width in px
+  plan_height?: number | null // image natural height in px
   device_count: number
   event_count: number
 }
