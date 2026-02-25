@@ -42,6 +42,8 @@ export default function DevicesPage() {
   const [detectedPort, setDetectedPort] = useState<PortInfo | null>(null)
   const [systemPorts, setSystemPorts] = useState<{symlink: string; real: string; role: string}[]>([])
   const [txIdError, setTxIdError] = useState("")
+  const [portVerified, setPortVerified] = useState<{safe: boolean; reason?: string; vid?: string; pid?: string; manufacturer?: string; description?: string; label?: string; real?: string} | null>(null)
+  const [portVerifying, setPortVerifying] = useState(false)
   const logEndRef = useRef<HTMLDivElement>(null)
   const baselineRef = useRef<Set<string>>(new Set())
   const fileInputRef = useRef<HTMLInputElement>(null)
@@ -120,6 +122,19 @@ export default function DevicesPage() {
 
     return () => { cancelled = true; clearInterval(interval) }
   }, [flashOpen, wizardStep, backendBase])
+
+  // Verify port safety when detected or changed
+  useEffect(() => {
+    if (!flashForm.port) { setPortVerified(null); return }
+    let cancelled = false
+    setPortVerifying(true)
+    setPortVerified(null)
+    fetch(`${backendBase}/api/firmware/verify-port?port=${encodeURIComponent(flashForm.port)}`)
+      .then(r => r.json())
+      .then(data => { if (!cancelled) { setPortVerified(data); setPortVerifying(false) } })
+      .catch(() => { if (!cancelled) { setPortVerified({ safe: true }); setPortVerifying(false) } })
+    return () => { cancelled = true }
+  }, [flashForm.port, backendBase])
 
   // Auto-scroll flash logs
   useEffect(() => {
@@ -605,17 +620,34 @@ export default function DevicesPage() {
                   </>
                 ) : (
                   <>
-                    <div className="h-16 w-16 rounded-full border-2 border-success bg-success/10 flex items-center justify-center">
-                      <Cpu className="h-7 w-7 text-success" />
+                    <div className={cn(
+                      "h-16 w-16 rounded-full border-2 flex items-center justify-center",
+                      portVerified?.safe === false ? "border-destructive bg-destructive/10" : "border-success bg-success/10"
+                    )}>
+                      <Cpu className={cn("h-7 w-7", portVerified?.safe === false ? "text-destructive" : "text-success")} />
                     </div>
-                    <p className="text-sm font-medium text-success">Capteur detecte</p>
-                    <div className="rounded-md border border-success/30 bg-success/5 px-4 py-2.5 w-full">
+                    <p className={cn("text-sm font-medium", portVerified?.safe === false ? "text-destructive" : "text-success")}>
+                      {portVerified?.safe === false ? "Port non securise" : "Capteur detecte"}
+                    </p>
+                    {portVerified?.safe === false && (
+                      <p className="text-[10px] text-destructive text-center max-w-[300px]">{portVerified.reason}</p>
+                    )}
+                    <div className={cn(
+                      "rounded-md border px-4 py-2.5 w-full",
+                      portVerified?.safe === false ? "border-destructive/30 bg-destructive/5" : "border-success/30 bg-success/5"
+                    )}>
                       <div className="flex items-center justify-between">
                         <span className="font-mono text-xs text-foreground">{detectedPort.port}</span>
-                        <Badge variant="outline" className="text-[9px] border-success/40 text-success">nouveau</Badge>
+                        <Badge variant="outline" className={cn("text-[9px]", portVerified?.safe === false ? "border-destructive/40 text-destructive" : "border-success/40 text-success")}>
+                          {portVerifying ? "verification..." : portVerified?.safe === false ? "BLOQUE" : "nouveau"}
+                        </Badge>
                       </div>
+                      <p className="text-[9px] text-muted-foreground mt-1 font-mono">{detectedPort.real}</p>
                       {detectedPort.summary && (
-                        <p className="text-[9px] text-muted-foreground mt-1">{detectedPort.summary}</p>
+                        <p className="text-[9px] text-muted-foreground mt-0.5">{detectedPort.summary}</p>
+                      )}
+                      {portVerified?.label && (
+                        <p className="text-[9px] text-muted-foreground mt-0.5">ID: {portVerified.label}</p>
                       )}
                     </div>
                   </>
@@ -797,7 +829,7 @@ export default function DevicesPage() {
               </Button>
             )}
             {wizardStep === 2 && (
-              <Button size="sm" onClick={() => setWizardStep(3)} disabled={!flashForm.port}>Suivant</Button>
+              <Button size="sm" onClick={() => setWizardStep(3)} disabled={!flashForm.port || portVerifying || portVerified?.safe === false}>Suivant</Button>
             )}
             {wizardStep === 3 && (
               <Button size="sm" onClick={() => { setWizardStep(4); setFlashLogs([]); setFlashDone(null) }}>Suivant</Button>
