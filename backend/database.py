@@ -63,6 +63,7 @@ async def init_tables(db: aiosqlite.Connection):
             zone_label TEXT DEFAULT '',
             side TEXT DEFAULT '',
             sensor_position REAL DEFAULT 0.5,
+            orientation TEXT DEFAULT 'inward',
             floor INTEGER,
             position TEXT DEFAULT '',
             enabled INTEGER DEFAULT 1,
@@ -151,6 +152,11 @@ async def init_tables(db: aiosqlite.Connection):
     # Device REAL columns
     try:
         await db.execute("ALTER TABLE devices ADD COLUMN sensor_position REAL DEFAULT 0.5")
+    except Exception:
+        pass
+    # Device orientation column
+    try:
+        await db.execute("ALTER TABLE devices ADD COLUMN orientation TEXT DEFAULT 'inward'")
     except Exception:
         pass
     # Events columns
