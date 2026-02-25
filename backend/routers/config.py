@@ -453,6 +453,13 @@ async def git_update(body: dict = None):
                 capture_output=True, text=True, cwd=repo_dir, timeout=5
             ).stdout.strip()
 
+            # Stash any local changes first
+            commands.append("git stash")
+            stash_r = subprocess.run(
+                ["git", "stash"], capture_output=True, text=True, cwd=repo_dir, timeout=10
+            )
+            lines.append(stash_r.stdout.strip())
+
             commands.append("git fetch --quiet")
             subprocess.run(["git", "fetch", "--quiet"], capture_output=True, text=True, cwd=repo_dir, timeout=15)
 
@@ -467,9 +474,9 @@ async def git_update(body: dict = None):
                 if r.returncode != 0:
                     lines.append(r.stderr.strip())
 
-            commands.append("git pull --ff-only")
+            commands.append("git pull")
             r = subprocess.run(
-                ["git", "pull", "--ff-only"],
+                ["git", "pull"],
                 capture_output=True, text=True, cwd=repo_dir, timeout=30
             )
             lines.append(r.stdout.strip())
@@ -500,12 +507,34 @@ async def git_update(body: dict = None):
             # Run install if exists
             install = os.path.join(repo_dir, "install.sh")
             if os.path.exists(install):
+                commands.append("chmod +x install.sh")
+                subprocess.run(["chmod", "+x", "install.sh"], cwd=repo_dir, timeout=5)
+
                 commands.append("sudo bash install.sh")
                 r2 = subprocess.run(
                     ["sudo", "bash", "install.sh"],
                     capture_output=True, text=True, cwd=repo_dir, timeout=300
                 )
                 lines.append(r2.stdout.strip()[-500:] if r2.stdout else "")
+
+            # pip install for new dependencies
+            venv_pip = "/opt/theia/.venv/bin/pip"
+            req_file = os.path.join(repo_dir, "backend", "requirements.txt")
+            if os.path.exists(venv_pip) and os.path.exists(req_file):
+                commands.append(f"{venv_pip} install -r backend/requirements.txt")
+                subprocess.run(
+                    ["sudo", venv_pip, "install", "-r", req_file],
+                    capture_output=True, text=True, cwd=repo_dir, timeout=120
+                )
+
+            # Restart services
+            for svc in ("theia-api", "theia-web"):
+                commands.append(f"sudo systemctl restart {svc}")
+                subprocess.run(
+                    ["sudo", "systemctl", "restart", svc],
+                    capture_output=True, text=True, timeout=30
+                )
+            lines.append("Services restarted")
 
             return {"status": "success", "output": "\n".join(lines), "commands": commands, "commits": commits}
 

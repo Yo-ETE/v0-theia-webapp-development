@@ -8,6 +8,7 @@ import {
   Pencil, Play, Pause, CheckCircle, Trash2, Building2, Home,
   Activity, Eye, EyeOff, Zap, Timer, Download, Signal, Battery, Wifi, Unlink,
   Flame, Crosshair, ArrowDownLeft, ArrowUpRight, Bell, BellOff,
+  Maximize2, Minimize2,
 } from "lucide-react"
 import { TopHeader } from "@/components/top-header"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
@@ -133,6 +134,7 @@ export default function MissionDetailPage() {
   const [heatmapMode, setHeatmapMode] = useState(false)
   const [estimatePosition, setEstimatePosition] = useState(false)
   const [showFov, setShowFov] = useState(false)
+  const [fullMapMode, setFullMapMode] = useState(false)
   const [editingZoneId, setEditingZoneId] = useState<string | null>(null)
   const [editingPolygon, setEditingPolygon] = useState<[number, number][] | null>(null)
   const [errorMsg, setErrorMsg] = useState<string | null>(null)
@@ -845,6 +847,140 @@ export default function MissionDetailPage() {
           </Card>
 
           {/* Map / FloorManager + Sidebar */}
+          {fullMapMode ? (
+            /* ── FULLSCREEN VISUALIZER MODE ── */
+            <div className="flex flex-col gap-3">
+              {/* Compact header bar */}
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  {sensorPlacements.length > 0 && (
+                    <Button
+                      variant={showFov ? "default" : "outline"}
+                      size="sm"
+                      className="min-h-[36px] text-[10px] px-2.5 gap-1"
+                      onClick={() => setShowFov(!showFov)}
+                    >
+                      {showFov ? <EyeOff className="h-3.5 w-3.5" /> : <Eye className="h-3.5 w-3.5" />}
+                      FOV
+                    </Button>
+                  )}
+                  {missionDevices.length >= 2 && (
+                    <Button
+                      variant={estimatePosition ? "default" : "outline"}
+                      size="sm"
+                      className="min-h-[36px] text-[10px] px-2.5 gap-1"
+                      onClick={() => setEstimatePosition(!estimatePosition)}
+                    >
+                      <Crosshair className="h-3.5 w-3.5" />
+                      Position
+                    </Button>
+                  )}
+                  {liveDetections.length > 0 && (
+                    <span className="text-[9px] font-mono text-success animate-pulse ml-1">LIVE</span>
+                  )}
+                </div>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="min-h-[36px] text-[10px] px-2.5 gap-1"
+                  onClick={() => setFullMapMode(false)}
+                >
+                  <Minimize2 className="h-3.5 w-3.5" />
+                  Reduire
+                </Button>
+              </div>
+
+              {/* Full-height map */}
+              <ErrorBoundary>
+                <MissionMap
+                  key={`full-${mission.id}`}
+                  centerLat={mission.center_lat}
+                  centerLon={mission.center_lon}
+                  zoom={mission.zoom ?? 19}
+                  zones={zones}
+                  events={eventList}
+                  liveDetections={effectiveLiveByZone}
+                  liveByDevice={liveByDevice}
+                  sensorPlacements={sensorPlacements}
+                  heatmapMode={heatmapMode}
+                  estimatePosition={estimatePosition}
+                  className="h-[calc(100vh-310px)]"
+                  drawingMode={false}
+                  onPolygonDrawn={() => {}}
+                  onZoneClick={() => {}}
+                  sensorPlaceMode={false}
+                  onSensorPlace={() => {}}
+                  onMapMove={handleMapMove}
+                  editingZoneId={null}
+                  editingPolygon={null}
+                  onZonePolygonUpdate={() => {}}
+                  showFov={showFov}
+                  replayMode={false}
+                />
+              </ErrorBoundary>
+
+              {/* Compact TX summary bar */}
+              <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 lg:grid-cols-4">
+                {missionDevices.filter(d => !d.muted).map((d) => {
+                  const det = liveByDevice[d.id]
+                  const hasPresence = det?.presence && det?.distance > 0
+                  const vbatt = det?.vbatt_tx ?? d.battery
+                  const rssi = det?.rssi ?? d.rssi
+                  return (
+                    <div
+                      key={d.id}
+                      className={cn(
+                        "flex items-center gap-3 rounded-md border px-3 py-2 transition-colors",
+                        hasPresence
+                          ? "border-warning/50 bg-warning/5"
+                          : "border-border/50 bg-card"
+                      )}
+                    >
+                      <div className={cn(
+                        "h-2 w-2 rounded-full shrink-0",
+                        hasPresence ? "bg-warning animate-pulse"
+                        : det ? "bg-success" : "bg-muted-foreground/30"
+                      )} />
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center gap-1.5">
+                          <span className="text-[10px] font-semibold text-foreground font-mono">{d.dev_eui || d.name}</span>
+                          {d.zone_label && (
+                            <span className="text-[9px] text-muted-foreground truncate">{d.zone_label} [{d.side}]</span>
+                          )}
+                        </div>
+                        <div className="flex items-center gap-2 mt-0.5">
+                          {hasPresence ? (
+                            <span className="text-[10px] font-mono text-warning font-semibold">
+                              {det!.distance}cm {det!.direction}
+                            </span>
+                          ) : det ? (
+                            <span className="text-[9px] font-mono text-success">RAS</span>
+                          ) : (
+                            <span className="text-[9px] font-mono text-muted-foreground/50">--</span>
+                          )}
+                          {rssi != null && (
+                            <span className="text-[9px] font-mono text-muted-foreground flex items-center gap-0.5">
+                              <Signal className="h-2.5 w-2.5" />{rssi}dBm
+                            </span>
+                          )}
+                          {vbatt != null && vbatt > 0 && (
+                            <span className="text-[9px] font-mono text-muted-foreground flex items-center gap-0.5">
+                              <Battery className="h-2.5 w-2.5" />{Number(vbatt).toFixed(2)}V
+                            </span>
+                          )}
+                        </div>
+                      </div>
+                      {det?.timestamp && (
+                        <span className="text-[8px] font-mono text-muted-foreground shrink-0">
+                          {formatTime(det.timestamp)}
+                        </span>
+                      )}
+                    </div>
+                  )
+                })}
+              </div>
+            </div>
+          ) : (
           <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">
             <div className="lg:col-span-2">
               {isFloorMode ? (
@@ -879,6 +1015,15 @@ export default function MissionDetailPage() {
               ) : (
                 /* ── Horizontal: Map ── */
                 <>
+                  <div className="relative">
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="absolute top-2 right-2 z-[1000] min-h-[32px] text-[10px] px-2 gap-1 bg-background/80 backdrop-blur-sm"
+                    onClick={() => setFullMapMode(true)}
+                  >
+                    <Maximize2 className="h-3.5 w-3.5" />
+                  </Button>
                   <ErrorBoundary>
                     <MissionMap
                       key={mission.id}
@@ -906,6 +1051,7 @@ export default function MissionDetailPage() {
                       replayMode={timelapseMode}
                     />
                   </ErrorBoundary>
+                  </div>
 
                   {/* Timelapse panel */}
                   {timelapseMode && (
@@ -1273,6 +1419,7 @@ export default function MissionDetailPage() {
               )}
             </div>
           </div>
+          )}
 
           {/* ── Inline History Panel (below map) ── */}
           {activeTab === "history" && (
