@@ -1054,11 +1054,7 @@ export default function MissionDetailPage() {
                           onClick={async (e) => {
                             e.stopPropagation()
                             const newOrientation = (d.orientation ?? "inward") === "inward" ? "outward" : "inward"
-                            await fetch(`${API}/devices/${d.id}`, {
-                              method: "PATCH",
-                              headers: { "Content-Type": "application/json" },
-                              body: JSON.stringify({ orientation: newOrientation }),
-                            })
+                            await updateDevice(d.id, { orientation: newOrientation })
                             mutateDevices()
                             mutate()
                           }}
