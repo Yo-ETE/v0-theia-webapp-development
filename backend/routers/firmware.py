@@ -60,13 +60,14 @@ async def list_ports():
     enrolled_ports: set[str] = set()
     try:
         cursor = await db.execute(
-            "SELECT serial_port FROM devices WHERE enabled=1 AND serial_port IS NOT NULL"
+            "SELECT serial_port FROM devices WHERE enabled=1 AND serial_port IS NOT NULL AND serial_port != ''"
         )
         rows = await cursor.fetchall()
         for row in rows:
             sp = dict(row)["serial_port"]
-            enrolled_ports.add(sp)
-            enrolled_ports.add(os.path.realpath(sp))
+            if sp and os.path.exists(sp):
+                enrolled_ports.add(sp)
+                enrolled_ports.add(os.path.realpath(sp))
     except Exception:
         pass
 

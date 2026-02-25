@@ -49,33 +49,37 @@ export default function DevicesPage() {
   const backendBase = typeof window !== "undefined" ? `http://${window.location.hostname}:8000` : ""
 
   // Step 2: snapshot baseline then poll for new ports
+  const [usbDebug, setUsbDebug] = useState("")
   useEffect(() => {
     if (!flashOpen || wizardStep !== 2) return
     let cancelled = false
+    let baselineRawCount = 0
     let baselineReady = false
 
-    // Take baseline snapshot immediately -- include ALL raw ports, not just free ones.
-    // We call /api/firmware/ports?all=1 to get a full list of USB ports for baseline,
-    // but fall back to the normal list if the query param isn't supported.
     const init = async () => {
       try {
         const res = await fetch(`${backendBase}/api/firmware/ports`)
         if (!res.ok || cancelled) return
         const data = await res.json()
         const portList: PortInfo[] = data.ports ?? data
-        // Baseline = the free ports + system reserved real paths (to know everything present)
+        const allRaw: string[] = data.all_raw ?? []
+
+        // Baseline = ALL raw USB ports currently plugged in
         const allReals = new Set<string>()
+        allRaw.forEach(r => allReals.add(r))
+        // Also add free ports' real paths as fallback
         portList.forEach(p => allReals.add(p.real))
-        // Also include all_raw_ports if the backend returns them
-        if (data.all_raw) {
-          ;(data.all_raw as string[]).forEach(r => allReals.add(r))
-        }
+
         baselineRef.current = allReals
+        baselineRawCount = allRaw.length || allReals.size
         setPorts(portList)
         setSystemPorts(data.system ?? [])
         baselineReady = true
         setDetectedPort(null)
-      } catch { /* ignore */ }
+        setUsbDebug(`Baseline: ${baselineRawCount} ports USB (${[...allReals].map(r => r.replace("/dev/","")).join(", ")})`)
+      } catch (err) {
+        setUsbDebug(`Erreur init: ${err instanceof Error ? err.message : String(err)}`)
+      }
     }
     init()
 
@@ -87,16 +91,31 @@ export default function DevicesPage() {
         if (!res.ok || cancelled) return
         const data = await res.json()
         const portList: PortInfo[] = data.ports ?? data
+        const allRaw: string[] = data.all_raw ?? []
+        const currentRawCount = allRaw.length
+
         setPorts(portList)
 
-        // Detect: a free port whose real path wasn't in the baseline snapshot
-        const newPort = portList.find(p => !baselineRef.current.has(p.real))
+        // Method 1: check if any free port has a real path NOT in the baseline
+        let newPort = portList.find(p => !baselineRef.current.has(p.real))
+
+        // Method 2: if raw count increased, there's a new device even if
+        // it landed on a different ttyUSB number after re-enumeration
+        if (!newPort && currentRawCount > baselineRawCount && portList.length > 0) {
+          newPort = portList[portList.length - 1] // take the last free port
+        }
+
         if (newPort) {
           setDetectedPort(newPort)
           setFlashForm(f => ({ ...f, port: newPort.port }))
-          clearInterval(interval) // Stop polling once found
+          setUsbDebug(`Detecte: ${newPort.port} (${newPort.real})`)
+          clearInterval(interval)
+        } else {
+          setUsbDebug(`Recherche... ${currentRawCount} ports raw, ${portList.length} libres`)
         }
-      } catch { /* ignore */ }
+      } catch (err) {
+        setUsbDebug(`Erreur poll: ${err instanceof Error ? err.message : String(err)}`)
+      }
     }, 1500)
 
     return () => { cancelled = true; clearInterval(interval) }
@@ -227,8 +246,12 @@ export default function DevicesPage() {
   }, [enrollForm, mutate])
 
   const handleDelete = useCallback(async (id: string, name: string) => {
-    if (!confirm(`Remove device "${name}"? It will be disabled and ignored by auto-enroll. You can re-enable it later.`)) return
-    await deleteDevice(id)
+    if (!confirm(`Supprimer le device "${name}" ? Cette action est irreversible.`)) return
+    try {
+      await deleteDevice(id)
+    } catch (err) {
+      console.error("[v0] Delete failed:", err)
+    }
     mutate()
   }, [mutate])
 
@@ -576,6 +599,9 @@ export default function DevicesPage() {
                       <span className="h-1.5 w-1.5 rounded-full bg-primary animate-pulse" />
                       <span className="text-[10px] text-muted-foreground">Recherche en cours...</span>
                     </div>
+                    {usbDebug && (
+                      <p className="text-[9px] font-mono text-muted-foreground/60 mt-1 max-w-[320px] text-center">{usbDebug}</p>
+                    )}
                   </>
                 ) : (
                   <>

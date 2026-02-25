@@ -167,16 +167,30 @@ async def update_device(device_id: str, body: DeviceUpdate):
 async def delete_device(device_id: str):
     db = await get_db()
     # Check device exists
-    cursor = await db.execute("SELECT id FROM devices WHERE id=?", (device_id,))
-    if not await cursor.fetchone():
+    cursor = await db.execute("SELECT id, name, dev_eui FROM devices WHERE id=?", (device_id,))
+    row = await cursor.fetchone()
+    if not row:
         raise HTTPException(status_code=404, detail="Device not found")
 
-    # Soft-delete: set enabled=0 so auto-enroll won't re-create the device.
-    # The LoRa bridge queries WHERE enabled=1, so disabled devices are ignored.
-    # NOTE: mission_id must be NULL (not '') because of FOREIGN KEY constraint.
+    device = dict(row)
+
+    # ── Clean up references in other tables BEFORE deleting ──
+    # Events: set device_id to NULL (don't lose event history)
+    await db.execute("UPDATE events SET device_id=NULL WHERE device_id=?", (device_id,))
+    # Notifications: clear device_id reference
     await db.execute(
-        "UPDATE devices SET enabled=0, mission_id=NULL, zone_id='', zone_label='', side='' WHERE id=?",
-        (device_id,),
+        "UPDATE notifications SET device_id=NULL WHERE device_id=?", (device_id,)
+    )
+
+    # ── Hard DELETE the device row ──
+    await db.execute("DELETE FROM devices WHERE id=?", (device_id,))
+    await db.commit()
+
+    # Log the deletion
+    await db.execute(
+        "INSERT INTO logs (level, source, message) VALUES (?, ?, ?)",
+        ("info", "api", f"Device deleted: {device.get('name', '')} ({device.get('dev_eui', '')})"),
     )
     await db.commit()
-    return {"ok": True}
+
+    return {"ok": True, "deleted": device_id}

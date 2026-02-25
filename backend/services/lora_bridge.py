@@ -93,7 +93,7 @@ class PortReader:
                             await self._process_line(line)
             except Exception as e:
                 print(f"[THEIA] LoRa reader error on {self.port}: {e}")
-                await asyncio.sleep(5)
+                await asyncio.sleep(2)  # fast reconnect (USB re-enumeration)
 
     def stop(self):
         self.running = False
