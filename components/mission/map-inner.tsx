@@ -514,6 +514,17 @@ export default function MapInner({
     }
   }
 
+  // Clean up stale refs for devices no longer in sensorPlacements
+  // This ensures muted/removed devices don't linger as hold/fading markers
+  const placedDeviceIds = new Set(sensorPlacements.map(sp => sp.device_id))
+  for (const devId of Object.keys(lastGoodByDevRef.current)) {
+    if (!placedDeviceIds.has(devId) && !(devId in liveByDevice)) {
+      delete lastGoodByDevRef.current[devId]
+      delete lastPresenceTsByDevRef.current[devId]
+      delete lastEventTsByDevRef.current[devId]
+    }
+  }
+
   // Build effective detections by device_id (same hold/fade logic)
   const effectiveByDevice: Record<string, LiveDetection & { _state: DetState }> = {}
 
@@ -696,35 +707,57 @@ export default function MapInner({
   }, [onMapMove])
 
   // ── Sensor placement click handler ──
+  // Allows placing the sensor on ANY facade of ANY zone by finding the closest edge
   useEffect(() => {
     if (!sensorPlaceMode || !onSensorPlace) return
-    const zone = zones.find((z) => z.id === sensorPlaceMode.zoneId)
-    if (!zone?.polygon?.length) return
-
-    const edge = getSideEdge(zone, sensorPlaceMode.side)
-    if (!edge) return
-    const pA = edge[0]
-    const pB = edge[1]
+    if (!zones.length) return
 
     const handler = (e: { latlng: { lat: number; lng: number } }) => {
-      // Project click onto the side line to get t (0..1)
       const cLat = e.latlng.lat
       const cLon = e.latlng.lng
       const cosRef = Math.cos(cLat * Math.PI / 180)
-      // Convert to meters relative to pA
-      const ax = 0, ay = 0
-      const bx = (pB[1] - pA[1]) * 111320 * cosRef
-      const by = (pB[0] - pA[0]) * 111320
-      const cx = (cLon - pA[1]) * 111320 * cosRef
-      const cy = (cLat - pA[0]) * 111320
-      // Project c onto AB
-      const abx = bx - ax, aby = by - ay
-      const acx = cx - ax, acy = cy - ay
-      const abLen2 = abx * abx + aby * aby
-      if (abLen2 === 0) return
-      let t = (acx * abx + acy * aby) / abLen2
-      t = Math.max(0.02, Math.min(0.98, t)) // Clamp slightly off edges
-      onSensorPlace(sensorPlaceMode.zoneId, sensorPlaceMode.side, t)
+
+      // Find the closest edge among ALL zones
+      let bestZoneId = ""
+      let bestSide = ""
+      let bestT = 0.5
+      let bestDist = Infinity
+
+      for (const zone of zones) {
+        if (!zone.polygon?.length || zone.polygon.length < 3) continue
+        const sides = zone.sides ?? zone.polygon.map((_: unknown, i: number) => String.fromCharCode(65 + i))
+        for (let i = 0; i < zone.polygon.length; i++) {
+          const pA = zone.polygon[i] as [number, number]
+          const pB = zone.polygon[(i + 1) % zone.polygon.length] as [number, number]
+          const side = sides[i] ?? String.fromCharCode(65 + i)
+
+          // Project click onto this edge
+          const bx = (pB[1] - pA[1]) * 111320 * cosRef
+          const by = (pB[0] - pA[0]) * 111320
+          const cx = (cLon - pA[1]) * 111320 * cosRef
+          const cy = (cLat - pA[0]) * 111320
+          const abLen2 = bx * bx + by * by
+          if (abLen2 === 0) continue
+          let t = (cx * bx + cy * by) / abLen2
+          t = Math.max(0, Math.min(1, t))
+          // Point on edge at parameter t
+          const px = t * bx
+          const py = t * by
+          const dist = Math.sqrt((cx - px) ** 2 + (cy - py) ** 2)
+
+          if (dist < bestDist) {
+            bestDist = dist
+            bestZoneId = zone.id
+            bestSide = side
+            bestT = Math.max(0.02, Math.min(0.98, t))
+          }
+        }
+      }
+
+      // Only accept if click is within ~15m of an edge
+      if (bestZoneId && bestDist < 15) {
+        onSensorPlace(bestZoneId, bestSide, bestT)
+      }
     }
 
     const attach = () => {
@@ -1201,27 +1234,26 @@ export default function MapInner({
 
         {/* ── Canvas heatmap overlay (rendered outside React tree into Leaflet pane) ── */}
 
-        {/* ── Highlighted side for sensor placement mode ── */}
-        {sensorPlaceMode && (() => {
-          const zone = zones.find((z) => z.id === sensorPlaceMode.zoneId)
-          if (!zone?.polygon?.length) return null
-          const idx = sensorPlaceMode.side.charCodeAt(0) - 65
-          if (idx < 0 || idx >= zone.polygon.length) return null
-          const pA = zone.polygon[idx]
-          const pB = zone.polygon[(idx + 1) % zone.polygon.length]
-          return (
-            <Polyline
-              positions={[pA, pB]}
-              pathOptions={{
-                color: "#22d3ee",
-                weight: 6,
-                opacity: 0.9,
-                dashArray: "8 4",
-                className: "sensor-place-side",
-              }}
-            />
-          )
-        })()}
+        {/* ── Highlighted edges for sensor placement mode (all facades clickable) ── */}
+        {sensorPlaceMode && zones.map((zone) => {
+          if (!zone.polygon?.length || zone.polygon.length < 3) return null
+          return zone.polygon.map((pt: [number, number], idx: number) => {
+            const nextPt = zone.polygon[(idx + 1) % zone.polygon.length]
+            return (
+              <Polyline
+                key={`place-edge-${zone.id}-${idx}`}
+                positions={[pt, nextPt]}
+                pathOptions={{
+                  color: "#22d3ee",
+                  weight: 5,
+                  opacity: 0.7,
+                  dashArray: "8 4",
+                  className: "sensor-place-side",
+                }}
+              />
+            )
+          })
+        })}
 
         {/* ── Side labels with distance on saved zones - rotated parallel to edge ── */}
         {(zones ?? []).map((zone) => {

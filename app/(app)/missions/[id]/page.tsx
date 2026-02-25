@@ -907,10 +907,19 @@ export default function MissionDetailPage() {
                 </Button>
               </div>
 
-              {/* Full-height map */}
-              <ErrorBoundary>
-                <MissionMap
-                  key={`full-${mission.id}`}
+          {/* Sensor placement banner */}
+          {sensorPlaceMode && (
+            <div className="flex items-center justify-between gap-2 rounded-lg border border-cyan-500/50 bg-cyan-500/10 px-3 py-2 mb-2">
+              <p className="text-xs text-cyan-300">
+                Cliquer sur une facade pour placer <span className="font-semibold">{sensorPlaceMode.deviceName}</span>
+              </p>
+              <Button variant="ghost" size="sm" className="h-7 px-2 text-[10px] text-cyan-400" onClick={() => setSensorPlaceMode(null)}>Annuler</Button>
+            </div>
+          )}
+          {/* Full-height map */}
+          <ErrorBoundary>
+          <MissionMap
+            key={`full-${mission.id}`}
                   centerLat={mission.center_lat}
                   centerLon={mission.center_lon}
                   zoom={mission.zoom ?? 19}
@@ -1031,19 +1040,28 @@ export default function MissionDetailPage() {
                 </div>
               ) : (
                 /* ── Horizontal: Map ── */
-                <>
-                  <div className="relative">
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    className="absolute top-2 right-2 z-[1000] min-h-[32px] text-[10px] px-2 gap-1 bg-background/80 backdrop-blur-sm"
-                    onClick={() => setFullMapMode(true)}
-                  >
-                    <Maximize2 className="h-3.5 w-3.5" />
-                  </Button>
-                  <ErrorBoundary>
-                    <MissionMap
-                      key={mission.id}
+            <>
+          {/* Sensor placement banner (normal map) */}
+          {sensorPlaceMode && (
+            <div className="flex items-center justify-between gap-2 rounded-lg border border-cyan-500/50 bg-cyan-500/10 px-3 py-2 mb-2">
+              <p className="text-xs text-cyan-300">
+                Cliquer sur une facade pour placer <span className="font-semibold">{sensorPlaceMode.deviceName}</span>
+              </p>
+              <Button variant="ghost" size="sm" className="h-7 px-2 text-[10px] text-cyan-400" onClick={() => setSensorPlaceMode(null)}>Annuler</Button>
+            </div>
+          )}
+          <div className="relative">
+          <Button
+            variant="outline"
+            size="sm"
+            className="absolute top-2 right-2 z-[1000] min-h-[32px] text-[10px] px-2 gap-1 bg-background/80 backdrop-blur-sm"
+            onClick={() => setFullMapMode(true)}
+          >
+          <Maximize2 className="h-3.5 w-3.5" />
+          </Button>
+          <ErrorBoundary>
+          <MissionMap
+            key={mission.id}
                       centerLat={mission.center_lat}
                       centerLon={mission.center_lon}
                       zoom={mission.zoom ?? 19}

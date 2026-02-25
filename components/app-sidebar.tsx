@@ -8,6 +8,7 @@ import {
   Radio,
   ScrollText,
   Settings,
+  RefreshCw,
 } from "lucide-react"
 import {
   Sidebar,
@@ -93,9 +94,29 @@ export function AppSidebar() {
       </SidebarContent>
 
       <SidebarFooter className="border-t border-sidebar-border p-3">
-        <p className="text-[9px] text-muted-foreground/50 text-center tracking-wider">
-          THEIA Hub Control v1.0
-        </p>
+        <div className="flex items-center justify-between">
+          <p className="text-[9px] text-muted-foreground/50 tracking-wider">
+            THEIA Hub Control v1.0
+          </p>
+          <button
+            onClick={async () => {
+              // Clear all caches (service workers, browser cache API)
+              if ("serviceWorker" in navigator) {
+                const regs = await navigator.serviceWorker.getRegistrations()
+                for (const r of regs) await r.unregister()
+              }
+              if ("caches" in window) {
+                const names = await caches.keys()
+                for (const n of names) await caches.delete(n)
+              }
+              window.location.reload()
+            }}
+            className="flex items-center gap-1 text-[9px] text-muted-foreground/50 hover:text-foreground transition-colors min-h-[32px] min-w-[32px] justify-center rounded"
+            title="Vider le cache et recharger"
+          >
+            <RefreshCw className="h-3 w-3" />
+          </button>
+        </div>
       </SidebarFooter>
     </Sidebar>
   )
