@@ -313,7 +313,11 @@ class PortReader:
             self._presence_count[phantom_key] = 0
 
         # Check muted flag: muted devices still broadcast SSE but skip DB event storage
-        is_muted = bool(row.get("muted", 0) if row else False)
+        # sqlite3.Row doesn't support .get(), so convert to dict or use try/except
+        try:
+            is_muted = bool(dict(row).get("muted", 0)) if row else False
+        except Exception:
+            is_muted = False
 
         # Store detection in DB (rate-limited: 1 per 2s per device)
         # Only record when mission status is "active" (Pause stops recording)
