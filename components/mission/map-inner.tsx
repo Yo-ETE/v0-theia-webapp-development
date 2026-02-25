@@ -102,6 +102,7 @@ interface SensorPlacement {
   side: string
   sensor_position: number // 0..1 along the side
   device_type?: string // e.g. "microwave_tx", "c4001", "gravity_mw"
+  orientation?: "inward" | "outward" // detection direction; default "inward"
 }
 
 /** Sensor hardware specs for FOV cone visualization */
@@ -467,9 +468,13 @@ export default function MapInner({
   const effectiveDetections: Record<string, LiveDetection & { _state: DetState }> = {}
 
   if (replayMode) {
-    // In replay mode, trust the detection data directly -- no stale/hold/fade logic
-    for (const [zoneId, det] of Object.entries(liveDetections)) {
+    // In replay mode, keys are "zoneId::deviceId" composites
+    // Extract zone_id and trust the data directly (no stale/hold/fade)
+    for (const [compositeKey, det] of Object.entries(liveDetections)) {
       if (det.distance > 0) {
+        // Extract zone_id from composite key or from det.zone_id
+        const zoneId = compositeKey.includes("::") ? compositeKey.split("::")[0] : (det.zone_id || compositeKey)
+        // Use zone_id as key (last device per zone wins for zone highlighting)
         effectiveDetections[zoneId] = { ...det, _state: "live" }
       }
     }
@@ -513,18 +518,14 @@ export default function MapInner({
   const effectiveByDevice: Record<string, LiveDetection & { _state: DetState }> = {}
 
   if (replayMode) {
-    // In replay mode, build effectiveByDevice from liveDetections (replay data keyed by zone)
-    // Each replay detection has a device_id we can use
-    for (const [zoneKey, det] of Object.entries(liveDetections)) {
+    // In replay mode, keys are "zoneId::deviceId" composites
+    // Extract device_id from each detection
+    for (const [, det] of Object.entries(liveDetections)) {
       const devId = det.device_id || det.device_name
       if (devId && det.distance > 0) {
         effectiveByDevice[devId] = { ...det, _state: "live" }
       }
-      console.log("[v0] MAP replay: zoneKey=", zoneKey, "det.device_id=", det.device_id, "det.device_name=", det.device_name, "devId=", devId, "dist=", det.distance, "added=", !!(devId && det.distance > 0))
     }
-    // Log what sensorPlacements expect
-    const spIds = zones.flatMap(z => z.sensor_placements?.map((sp: { device_id: string }) => sp.device_id) ?? [])
-    console.log("[v0] MAP replay: effectiveByDevice keys=", Object.keys(effectiveByDevice), "sensorPlacement device_ids=", spIds)
   } else {
     for (const [devId, det] of Object.entries(liveByDevice)) {
       if (det.presence && det.distance > 0) {
@@ -888,7 +889,9 @@ export default function MapInner({
       const centroid = zoneCentroids[zone.id]
       if (!centroid) continue
       const sLL = pointAlongSide(edge[0], edge[1], sp.sensor_position)
-      const nM = inwardNormalM(edge[0], edge[1], centroid)
+      const rawNM = inwardNormalM(edge[0], edge[1], centroid)
+      // Flip normal when sensor faces outward
+      const nM: [number, number] = sp.orientation === "outward" ? [-rawNM[0], -rawNM[1]] : rawNM
       const lM: [number, number] = [-nM[1], nM[0]]
       const sM = toMeters(sLL)
       const geo: SensorGeo = { sensorM: sM, sensorLL: sLL, normalM: nM, leftM: lM }
@@ -992,7 +995,11 @@ export default function MapInner({
     const centroid = zoneCentroids[zone.id]
     if (!centroid) return null
     const sensorLatLon = pointAlongSide(edge[0], edge[1], sp.sensor_position)
-    const normalM = inwardNormalM(edge[0], edge[1], centroid)
+    const rawNormalM = inwardNormalM(edge[0], edge[1], centroid)
+    // Flip normal direction when sensor faces outward (exterior detection)
+    const normalM: [number, number] = sp.orientation === "outward"
+      ? [-rawNormalM[0], -rawNormalM[1]]
+      : rawNormalM
 
     // Compute lateral (tangent) direction along the side in meter-space.
     // "Left" of someone facing inward = cross(inward, up) = rotate normal -90 deg.

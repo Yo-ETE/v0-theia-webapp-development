@@ -7,7 +7,7 @@ import {
   ArrowLeft, Radio, MapPin, Clock, Users, BarChart3, Plus,
   Pencil, Play, Pause, CheckCircle, Trash2, Building2, Home,
   Activity, Eye, EyeOff, Zap, Timer, Download, Signal, Battery, Wifi, Unlink,
-  Flame, Crosshair,
+  Flame, Crosshair, ArrowDownLeft, ArrowUpRight,
 } from "lucide-react"
 import { TopHeader } from "@/components/top-header"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
@@ -115,31 +115,37 @@ export default function MissionDetailPage() {
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const handleReplayDetection = useCallback((dets: Record<string, any>) => {
-    // Resolve zone keys: timelapse may send zone_label ("Maison") instead of zone.id (UUID)
-    // We need to map zone_label to zone.id for the map to find the right zone
+    // Timelapse sends detections keyed by device_id (rolling window of all active devices).
+    // We resolve to zone_id keys for zone highlighting on the map.
+    // Each detection carries its own device_id for effectiveByDevice in map-inner.
     const zones = mission?.zones ?? []
     const resolved: Record<string, any> = {}
-    for (const [key, det] of Object.entries(dets)) {
-      // Check if key is already a valid zone.id
-      const directMatch = zones.find(z => z.id === key)
-      if (directMatch) {
-        resolved[key] = det
-      } else {
-        // key might be zone_label -- find matching zone by name
-        const byName = zones.find(z => z.name === key || z.name === det?.zone_label)
-        if (byName) {
-          resolved[byName.id] = det
-        } else {
-          // last resort: use first zone if only one exists
-          if (zones.length === 1) {
-            resolved[zones[0].id] = det
-          } else {
-            resolved[key] = det
-          }
-        }
+    for (const [, det] of Object.entries(dets)) {
+      if (!det) continue
+      // Find the zone for this detection
+      const zoneId = det.zone_id
+      const zoneLabel = det.zone_label
+      let resolvedZoneId: string | null = null
+
+      // Try direct zone_id match
+      if (zoneId && zones.find(z => z.id === zoneId)) {
+        resolvedZoneId = zoneId
+      } else if (zoneLabel) {
+        // Try by name
+        const byName = zones.find(z => z.name === zoneLabel)
+        if (byName) resolvedZoneId = byName.id
+      }
+      // Fallback: single zone
+      if (!resolvedZoneId && zones.length === 1) {
+        resolvedZoneId = zones[0].id
+      }
+
+      if (resolvedZoneId) {
+        // Use a composite key "zoneId::deviceId" so multiple devices per zone coexist
+        const devId = det.device_id || det.device_name || "unknown"
+        resolved[`${resolvedZoneId}::${devId}`] = { ...det, zone_id: resolvedZoneId }
       }
     }
-    console.log("[v0] handleReplayDetection: input keys=", Object.keys(dets), "resolved keys=", Object.keys(resolved), "zones=", zones.map(z => z.id + ":" + z.name), "resolved det=", JSON.stringify(Object.values(resolved)[0]?.device_id))
     setReplayDetections(resolved)
   }, [mission?.zones])
 
@@ -662,6 +668,7 @@ export default function MissionDetailPage() {
       side: d.side!,
       sensor_position: Number(d.sensor_position) || 0.5,
       device_type: d.type ?? "",
+      orientation: (d.orientation as "inward" | "outward") ?? "inward",
     }))
 
   // Map detections: ONLY from SSE (real-time). Never from DB -- DB events are history.
@@ -869,7 +876,32 @@ export default function MissionDetailPage() {
 
                   {/* Timelapse panel */}
                   {timelapseMode && (
-                    <div className="mt-3">
+                    <div className="mt-3 space-y-2">
+                      {/* FOV/Position toggles for timelapse replay */}
+                      <div className="flex items-center gap-2">
+                        {sensorPlacements.length > 0 && (
+                          <Button
+                            variant={showFov ? "default" : "outline"}
+                            size="sm"
+                            className="min-h-[36px] text-[10px] px-2.5 gap-1"
+                            onClick={() => setShowFov(!showFov)}
+                          >
+                            {showFov ? <EyeOff className="h-3.5 w-3.5" /> : <Eye className="h-3.5 w-3.5" />}
+                            FOV
+                          </Button>
+                        )}
+                        {missionDevices.length >= 2 && (
+                          <Button
+                            variant={estimatePosition ? "default" : "outline"}
+                            size="sm"
+                            className="min-h-[36px] text-[10px] px-2.5 gap-1"
+                            onClick={() => setEstimatePosition(!estimatePosition)}
+                          >
+                            <Crosshair className="h-3.5 w-3.5" />
+                            Position
+                          </Button>
+                        )}
+                      </div>
                       <DetectionTimelapse
                         missionId={id}
                         onDetection={handleReplayDetection}
@@ -1017,6 +1049,33 @@ export default function MissionDetailPage() {
                             {det.presence ? `${det.distance}cm` : "RAS"}
                           </span>
                         )}
+                        {/* Orientation toggle: inward (toward polygon) / outward (away) */}
+                        <button
+                          onClick={async (e) => {
+                            e.stopPropagation()
+                            const newOrientation = (d.orientation ?? "inward") === "inward" ? "outward" : "inward"
+                            await fetch(`${API}/devices/${d.id}`, {
+                              method: "PATCH",
+                              headers: { "Content-Type": "application/json" },
+                              body: JSON.stringify({ orientation: newOrientation }),
+                            })
+                            mutateDevices()
+                            mutate()
+                          }}
+                          className={cn(
+                            "shrink-0 p-1.5 min-h-[36px] min-w-[36px] flex items-center justify-center rounded transition-colors cursor-pointer",
+                            (d.orientation ?? "inward") === "inward"
+                              ? "text-primary hover:bg-primary/10"
+                              : "text-orange-400 hover:bg-orange-400/10"
+                          )}
+                          title={`Detection: ${(d.orientation ?? "inward") === "inward" ? "interieur" : "exterieur"} - cliquer pour inverser`}
+                        >
+                          {(d.orientation ?? "inward") === "inward" ? (
+                            <ArrowDownLeft className="h-3.5 w-3.5" />
+                          ) : (
+                            <ArrowUpRight className="h-3.5 w-3.5" />
+                          )}
+                        </button>
                         <button
                           onClick={(e) => {
                             e.stopPropagation()

@@ -29,6 +29,7 @@ class DeviceUpdate(BaseModel):
     zone_label: str | None = None
     side: str | None = None
     sensor_position: float | None = None
+    orientation: str | None = None  # "inward" or "outward"
     floor: int | None = None
     position: str | None = None
     enabled: bool | None = None
@@ -106,7 +107,7 @@ async def patch_device(device_id: str, body: DeviceUpdate):
             updates[col] = None
 
     # Convert None to empty string for non-FK TEXT columns (SQLite compat)
-    nullable_text_cols = {"zone_id", "zone_label", "side", "zone", "position"}
+    nullable_text_cols = {"zone_id", "zone_label", "side", "zone", "position", "orientation"}
     for col in nullable_text_cols:
         if col in updates and updates[col] is None:
             updates[col] = ""

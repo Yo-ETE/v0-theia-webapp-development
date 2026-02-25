@@ -78,6 +78,10 @@ export function DetectionTimelapse({ missionId, onDetection, onClose }: Detectio
   const [currentIdx, setCurrentIdx] = useState(0)
   const playRef = useRef<ReturnType<typeof setInterval> | null>(null)
 
+  // Rolling window: keep last detection per device within WINDOW_MS of current event
+  const WINDOW_MS = 5000
+  const lastDetByDeviceRef = useRef<Record<string, { det: LiveDetection; ts: number }>>({})
+
   // Fetch ALL detection events for this mission (same approach as history page)
   // then filter by date range client-side to avoid timezone mismatch issues
   const fetchParams = loaded ? {
@@ -108,25 +112,44 @@ export function DetectionTimelapse({ missionId, onDetection, onClose }: Detectio
     if (events.length > 0) {
       setCurrentIdx(0)
       setPlaying(false)
+      lastDetByDeviceRef.current = {}
     }
   }, [events.length])
 
-  // Feed detection at current index to parent
+  // Feed detection at current index to parent using rolling window
+  // Keeps recent detections from ALL devices within WINDOW_MS of current event
   useEffect(() => {
     if (!events.length || currentIdx >= events.length) {
+      lastDetByDeviceRef.current = {}
       onDetection({})
       return
     }
     const ev = events[currentIdx]
     const det = parseEventToDetection(ev)
-    if (det && det.zone_id) {
-      onDetection({ [det.zone_id]: det })
-    } else if (det && det.zone_label) {
-      // Fallback: use zone_label as key
-      onDetection({ [det.zone_label]: det })
-    } else {
-      onDetection({})
+    const currentTsMs = new Date(ev.timestamp).getTime()
+
+    // Update rolling window with current detection
+    if (det) {
+      const devKey = det.device_id || det.device_name
+      if (devKey) {
+        lastDetByDeviceRef.current[devKey] = { det, ts: currentTsMs }
+      }
     }
+
+    // Expire old entries outside the window
+    for (const [devKey, entry] of Object.entries(lastDetByDeviceRef.current)) {
+      if (currentTsMs - entry.ts > WINDOW_MS) {
+        delete lastDetByDeviceRef.current[devKey]
+      }
+    }
+
+    // Build combined detections keyed by device_id so ALL active devices are present
+    // The parent's handleReplayDetection will resolve zone_ids
+    const combined: Record<string, LiveDetection> = {}
+    for (const [devKey, entry] of Object.entries(lastDetByDeviceRef.current)) {
+      combined[devKey] = entry.det
+    }
+    onDetection(combined)
   }, [currentIdx, events, onDetection])
 
   // Playback timer

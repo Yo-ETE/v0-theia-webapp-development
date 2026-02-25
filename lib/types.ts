@@ -116,6 +116,7 @@ export interface Device {
   zone_label: string | null
   side?: string | null
   sensor_position?: number | null  // 0..1 along the assigned side
+  orientation?: "inward" | "outward"  // detection direction relative to polygon
   floor?: number | null
   rssi: number | null
   snr: number | null
