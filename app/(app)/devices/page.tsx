@@ -36,7 +36,8 @@ export default function DevicesPage() {
   const [flashLogs, setFlashLogs] = useState<string[]>([])
   const [flashing, setFlashing] = useState(false)
   const [flashDone, setFlashDone] = useState<"ok" | "fail" | null>(null)
-  const [ports, setPorts] = useState<{port: string; real: string}[]>([])
+  const [ports, setPorts] = useState<{port: string; real: string; summary?: string; in_use_by?: string; label?: string}[]>([])
+  const [systemPorts, setSystemPorts] = useState<{symlink: string; real: string; role: string}[]>([])
   const [sketches, setSketches] = useState<{name: string; sensor_type: string; is_template: boolean}[]>([])
   const [txIdError, setTxIdError] = useState("")
   const logEndRef = useRef<HTMLDivElement>(null)
@@ -52,7 +53,11 @@ export default function DevicesPage() {
           fetch(`${backendBase}/api/firmware/ports`),
           fetch(`${backendBase}/api/firmware/sketches`),
         ])
-        if (portsRes.ok) setPorts(await portsRes.json())
+        if (portsRes.ok) {
+          const data = await portsRes.json()
+          setPorts(data.ports ?? data)
+          setSystemPorts(data.system ?? [])
+        }
         if (sketchesRes.ok) setSketches(await sketchesRes.json())
       } catch { /* ignore */ }
     }
@@ -497,14 +502,17 @@ export default function DevicesPage() {
                   </SelectTrigger>
                   <SelectContent>
                     {ports.length === 0 ? (
-                      <SelectItem value="_none" disabled>Aucun port detecte</SelectItem>
+                      <SelectItem value="_none" disabled>
+                        Aucun port libre detecte
+                      </SelectItem>
                     ) : (
-                      ports.map((p: { port: string; real: string; summary?: string; in_use_by?: string; description?: string }) => (
-                        <SelectItem key={p.port} value={p.port} className="text-xs" disabled={!!p.in_use_by}>
+                      ports.map((p) => (
+                        <SelectItem key={p.port} value={p.port} className="text-xs">
                           <div className="flex flex-col">
                             <span className="font-mono">{p.port}</span>
                             <span className="text-[9px] text-muted-foreground">
-                              {p.in_use_by ? `Utilise par ${p.in_use_by}` : (p.summary || p.real)}
+                              {p.summary || p.real}
+                              {p.label ? ` (${p.label})` : ""}
                             </span>
                           </div>
                         </SelectItem>
@@ -512,6 +520,11 @@ export default function DevicesPage() {
                     )}
                   </SelectContent>
                 </Select>
+                {systemPorts.length > 0 && (
+                  <p className="text-[9px] text-muted-foreground">
+                    Ports systeme exclus : {systemPorts.map(s => `${s.symlink} (${s.role})`).join(", ")}
+                  </p>
+                )}
               </div>
               <div className="flex flex-col gap-1.5">
                 <Label className="text-xs">Sketch</Label>
