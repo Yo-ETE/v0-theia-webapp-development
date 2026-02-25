@@ -118,6 +118,36 @@ class PortReader:
             )
             return
 
+        # LD45 semicolon format: LD45;TXnn;x;y;d;v;battV
+        if data_str.startswith("LD45;"):
+            parts = data_str.split(";")
+            if len(parts) >= 6:
+                try:
+                    x = int(parts[2])
+                    y = int(parts[3])
+                    d = int(parts[4])
+                    v = int(parts[5])
+                    vbatt = float(parts[6]) if len(parts) >= 7 else None
+                except (ValueError, IndexError):
+                    self.packets_err += 1
+                    return
+                self.packets_ok += 1
+                angle = math.degrees(math.atan2(x, y)) if (x != 0 or y != 0) else 0.0
+                presence = (x != 0 or y != 0) and 15 < d < 600
+                # Also detect presence when x==0 but d>15 (C4001 depth-only)
+                if not presence and d > 15:
+                    presence = True
+                if x == 0 and y == d and d > 0:
+                    sensor_type = "c4001"
+                else:
+                    sensor_type = "ld2450"
+                await self._handle_detection(
+                    tx_id=tx_id, sensor_type=sensor_type,
+                    x=x, y=y, d=d, v=v,
+                    angle=angle, presence=presence, vbatt=vbatt,
+                )
+                return
+
         kv = {}
         for match in re.finditer(r'(\w+)=([^\s]+)', data_str):
             kv[match.group(1)] = match.group(2)
