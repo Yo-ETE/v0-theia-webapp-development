@@ -196,6 +196,74 @@ async def upload_sketch(
     return {"ok": True, "name": sketch_name, "path": sketch_dir}
 
 
+async def _build_reserved_map(db) -> dict[str, str]:
+    """Build a map of reserved port paths -> reason label."""
+    reserved: dict[str, str] = {}
+    # 1) System symlinks
+    for symlink in glob.glob("/dev/theia-*"):
+        real = os.path.realpath(symlink)
+        role = symlink.replace("/dev/theia-", "").upper()
+        reserved[symlink] = f"{role} systeme ({symlink})"
+        reserved[real] = f"{role} systeme ({symlink})"
+    # 2) Enrolled device ports
+    try:
+        cursor = await db.execute(
+            "SELECT serial_port, name, dev_eui FROM devices WHERE enabled=1 AND serial_port IS NOT NULL AND serial_port != ''"
+        )
+        for row in await cursor.fetchall():
+            d = dict(row)
+            sp = d["serial_port"]
+            label = f"device {d.get('dev_eui') or d.get('name', '?')}"
+            if sp and os.path.exists(sp):
+                reserved[sp] = label
+                reserved[os.path.realpath(sp)] = label
+    except Exception:
+        pass
+    return reserved
+
+
+@router.get("/verify-port")
+async def verify_port(port: str):
+    """Verify a port is safe to flash -- not a system/enrolled device."""
+    import subprocess as _sp
+    if not os.path.exists(port):
+        raise HTTPException(status_code=404, detail=f"Port {port} n'existe pas")
+
+    real = os.path.realpath(port)
+    db = await get_db()
+    reserved = await _build_reserved_map(db)
+
+    block = reserved.get(port) or reserved.get(real)
+    if block:
+        return {"safe": False, "reason": block, "port": port, "real": real}
+
+    # Get device info via udevadm
+    info: dict[str, str] = {}
+    try:
+        result = _sp.run(["udevadm", "info", "-a", real], capture_output=True, text=True, timeout=3)
+        for line in result.stdout.splitlines():
+            line = line.strip()
+            if 'ATTRS{idVendor}' in line and "vid" not in info:
+                info["vid"] = line.split('"')[1] if '"' in line else ""
+            elif 'ATTRS{idProduct}' in line and "pid" not in info:
+                info["pid"] = line.split('"')[1] if '"' in line else ""
+            elif 'ATTRS{manufacturer}' in line and "manufacturer" not in info:
+                info["manufacturer"] = line.split('"')[1] if '"' in line else ""
+            elif 'ATTRS{product}' in line and "description" not in info:
+                info["description"] = line.split('"')[1] if '"' in line else ""
+    except Exception:
+        pass
+
+    # Build a label from serial-by-id if available
+    label = ""
+    for link in glob.glob("/dev/serial/by-id/*"):
+        if os.path.realpath(link) == real:
+            label = os.path.basename(link)
+            break
+
+    return {"safe": True, "port": port, "real": real, "label": label, **info}
+
+
 class FlashRequest(BaseModel):
     port: str
     tx_id: str
@@ -210,32 +278,7 @@ async def flash_device(req: FlashRequest):
     db = await get_db()
 
     # ── SAFETY: block flashing to system ports (RX, GPS, TX already enrolled) ──
-    reserved: dict[str, str] = {}  # real_path -> label
-
-    # 1) All /dev/theia-* symlinks (rx, gps, tx, etc.)
-    for symlink in glob.glob("/dev/theia-*"):
-        real = os.path.realpath(symlink)
-        role = symlink.replace("/dev/theia-", "").upper()
-        reserved[symlink] = f"{role} systeme ({symlink})"
-        reserved[real] = f"{role} systeme ({symlink})"
-
-    # 2) All enrolled (enabled) device serial ports
-    try:
-        cursor = await db.execute(
-            "SELECT serial_port, name, dev_eui FROM devices WHERE enabled=1 AND serial_port IS NOT NULL AND serial_port != ''"
-        )
-        rows = await cursor.fetchall()
-        for row in rows:
-            d = dict(row)
-            sp = d["serial_port"]
-            label = f"device {d.get('dev_eui') or d.get('name', '?')}"
-            if sp and os.path.exists(sp):
-                reserved[sp] = label
-                reserved[os.path.realpath(sp)] = label
-    except Exception:
-        pass
-
-    # Check target port against all reserved paths
+    reserved = await _build_reserved_map(db)
     target_real = os.path.realpath(req.port)
     block_reason = reserved.get(req.port) or reserved.get(target_real)
     if block_reason:
@@ -351,16 +394,17 @@ async def flash_device(req: FlashRequest):
 
         yield f"data: [STEP] Compilation reussie ({used_fqbn}). Upload vers {req.port}...\n\n"
 
-        # ── PRE-UPLOAD SAFETY: re-check port hasn't shifted to a system device ──
+        # ── PRE-UPLOAD SAFETY: FULL re-check (symlinks + enrolled devices) ──
+        # USB re-enumeration may have swapped port assignments since detection
+        pre_reserved = await _build_reserved_map(db)
         current_real = os.path.realpath(req.port)
-        for symlink in glob.glob("/dev/theia-*"):
-            if os.path.realpath(symlink) == current_real:
-                role = symlink.replace("/dev/theia-", "").upper()
-                yield f"data: [ERROR] SECURITE: {req.port} pointe maintenant vers {role} ({symlink}). Flash annule.\n\n"
-                yield "data: [DONE] FAIL\n\n"
-                shutil.rmtree(tmp_dir, ignore_errors=True)
-                return
-        yield f"data: [INFO] Port verifie: {req.port} -> {current_real}\n\n"
+        pre_block = pre_reserved.get(req.port) or pre_reserved.get(current_real)
+        if pre_block:
+            yield f"data: [ERROR] SECURITE: {req.port} ({current_real}) est maintenant {pre_block}. Flash annule.\n\n"
+            yield "data: [DONE] FAIL\n\n"
+            shutil.rmtree(tmp_dir, ignore_errors=True)
+            return
+        yield f"data: [INFO] Port verifie: {req.port} -> {current_real} (OK)\n\n"
 
         # Upload
         upload_cmd = [cli, "upload", "--fqbn", used_fqbn, "-p", req.port, tmp_sketch_dir]

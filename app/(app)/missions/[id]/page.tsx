@@ -54,6 +54,7 @@ interface LiveDetection {
   device_id: string
   device_name: string
   tx_id: string | null
+  mission_id: string
   zone_id: string | null
   zone_label: string
   side: string
@@ -184,12 +185,23 @@ export default function MissionDetailPage() {
   const [liveByDevice, setLiveByDevice] = useState<Record<string, LiveDetection>>({})
   const feedRef = useRef<HTMLDivElement>(null)
 
+  // Keep a ref of muted device IDs so SSE handler can filter without re-creating
+  const mutedIdsRef = useRef<Set<string>>(new Set())
+  useEffect(() => {
+    mutedIdsRef.current = new Set(
+      (allDevices ?? []).filter(d => d.muted).map(d => d.id)
+    )
+  }, [allDevices])
+
   // SSE handler: accumulate live detections for this mission
   const sseCountRef = useRef(0)
   const handleSSE = useCallback((event: { type: string; data: Record<string, unknown> }) => {
     if (event.type !== "detection") return
     const d = event.data as unknown as LiveDetection
     if (d.mission_id !== id) return
+
+    // Skip muted devices -- no feed, no map markers, no state update
+    if (d.device_id && mutedIdsRef.current.has(d.device_id)) return
 
     // Only add to feed if it's a real presence event
     if (d.presence && d.distance > 0) {
