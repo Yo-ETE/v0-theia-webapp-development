@@ -1068,7 +1068,13 @@ export default function MissionDetailPage() {
                       zones={zones}
                       events={eventList}
   liveDetections={effectiveLiveByZone}
-                  liveByDevice={timelapseMode ? {} : filteredLiveByDevice}
+                  liveByDevice={timelapseMode
+                    ? Object.fromEntries(
+                        Object.entries(replayDetections)
+                          .map(([key, det]) => [det.device_id || key.split("::")[1] || key, det])
+                      )
+                    : filteredLiveByDevice
+                  }
   sensorPlacements={sensorPlacements}
   heatmapMode={heatmapMode}
   estimatePosition={estimatePosition}

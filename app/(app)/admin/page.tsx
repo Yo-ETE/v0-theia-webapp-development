@@ -496,8 +496,8 @@ export default function AdminPage() {
   return (
     <>
       <TopHeader title="Configuration" description="Administration reseau et systeme du Raspberry Pi" />
-      <main className="flex-1 overflow-auto p-4">
-        <div className="grid gap-6 lg:grid-cols-2">
+<main className="flex-1 overflow-auto p-4">
+<div className="grid gap-4 sm:gap-6 lg:grid-cols-2">
 
           {/* ── Connection Status ── */}
           <Card className="border-border/50 bg-card">
@@ -526,7 +526,7 @@ export default function AdminPage() {
                   {wifiStatus?.connected && <span className="ml-auto text-xs text-success">Connecte</span>}
                 </div>
                 {wifiStatus?.connected ? (
-                  <div className="grid grid-cols-2 gap-3 pl-6 text-sm">
+                  <div className="grid grid-cols-1 gap-3 pl-6 text-sm sm:grid-cols-2">
                     <div>
                       <p className="text-[10px] text-muted-foreground">SSID</p>
                       <p className="text-xs font-medium text-foreground">{wifiStatus.ssid}</p>
@@ -629,11 +629,11 @@ export default function AdminPage() {
               ) : (
                 <>
                   {tsStatus.running && tsStatus.online && (
-                    <div className="grid grid-cols-2 gap-3 text-sm">
+                    <div className="grid grid-cols-1 gap-3 text-sm sm:grid-cols-2">
                       <div>
                         <p className="text-[10px] text-muted-foreground">IP Tailscale</p>
                         <div className="flex items-center gap-1.5">
-                          <p className="font-mono text-xs text-foreground">{tsStatus.tailscaleIp}</p>
+                          <p className="font-mono text-xs text-foreground break-all">{tsStatus.tailscaleIp}</p>
                           <button onClick={() => navigator.clipboard.writeText(tsStatus.tailscaleIp)}
                             className="text-muted-foreground hover:text-foreground transition-colors" title="Copier">
                             <Copy className="h-3 w-3" />
@@ -877,17 +877,17 @@ export default function AdminPage() {
           {/* ── THEIA Update ── */}
           <Card className="border-border/50 bg-card">
             <CardHeader>
-              <div className="flex items-center justify-between">
-                <div className="flex items-center gap-3">
-                  <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-success/10">
+              <div className="flex items-center justify-between gap-2">
+                <div className="flex items-center gap-3 min-w-0">
+                  <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-success/10">
                     <GitBranch className="h-5 w-5 text-success" />
                   </div>
-                  <div>
-                    <CardTitle className="text-base">Mise a jour THEIA</CardTitle>
-                    <CardDescription>Version et mise a jour depuis Git</CardDescription>
+                  <div className="min-w-0">
+                    <CardTitle className="text-base truncate">Mise a jour THEIA</CardTitle>
+                    <CardDescription className="truncate">Version et mise a jour depuis Git</CardDescription>
                   </div>
                 </div>
-                <Button variant="outline" size="sm" onClick={fetchVersionInfo} disabled={isCheckingVersion} className="bg-transparent">
+                <Button variant="outline" size="sm" onClick={fetchVersionInfo} disabled={isCheckingVersion} className="bg-transparent shrink-0">
                   <RefreshCw className={cn("h-4 w-4", isCheckingVersion && "animate-spin")} />
                 </Button>
               </div>

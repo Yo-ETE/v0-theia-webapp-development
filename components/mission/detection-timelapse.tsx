@@ -206,30 +206,28 @@ export function DetectionTimelapse({ missionId, onDetection, onClose }: Detectio
       </div>
 
       {/* Time range selector */}
-      <div className="grid grid-cols-[1fr_1fr_auto] gap-2 mb-4">
-        <div>
+      <div className="flex flex-col gap-2 mb-4 sm:flex-row sm:items-end">
+        <div className="flex-1 min-w-0">
           <label className="text-[10px] text-muted-foreground font-mono block mb-1">FROM</label>
           <input
             type="datetime-local"
             value={fromTime}
             onChange={(e) => { setFromTime(e.target.value); setLoaded(false) }}
-            className="w-full h-9 rounded-md border border-border bg-background px-2 text-xs font-mono text-foreground"
+            className="w-full h-10 rounded-md border border-border bg-background px-2 text-[16px] sm:text-xs font-mono text-foreground"
           />
         </div>
-        <div>
+        <div className="flex-1 min-w-0">
           <label className="text-[10px] text-muted-foreground font-mono block mb-1">TO</label>
           <input
             type="datetime-local"
             value={toTime}
             onChange={(e) => { setToTime(e.target.value); setLoaded(false) }}
-            className="w-full h-9 rounded-md border border-border bg-background px-2 text-xs font-mono text-foreground"
+            className="w-full h-10 rounded-md border border-border bg-background px-2 text-[16px] sm:text-xs font-mono text-foreground"
           />
         </div>
-        <div className="flex items-end">
-          <Button size="sm" className="h-9 text-xs px-4" onClick={handleLoad} disabled={isLoading}>
-            {isLoading ? "..." : loaded ? "Reload" : "Load"}
-          </Button>
-        </div>
+        <Button size="sm" className="h-10 text-xs px-4 shrink-0 w-full sm:w-auto" onClick={handleLoad} disabled={isLoading}>
+          {isLoading ? "..." : loaded ? "Reload" : "Load"}
+        </Button>
       </div>
 
       {/* Playback controls */}
@@ -259,24 +257,24 @@ export function DetectionTimelapse({ missionId, onDetection, onClose }: Detectio
           </div>
 
           {/* Controls + speed + counter */}
-          <div className="flex items-center gap-3">
+          <div className="flex flex-wrap items-center gap-2">
             {/* Transport */}
             <div className="flex items-center gap-1">
               <Button
-                variant="ghost" size="sm" className="h-8 w-8 p-0"
+                variant="ghost" size="sm" className="h-10 w-10 sm:h-8 sm:w-8 p-0"
                 onClick={() => setCurrentIdx(0)}
               >
                 <SkipBack className="h-4 w-4" />
               </Button>
               <Button
                 variant={playing ? "secondary" : "default"}
-                size="sm" className="h-9 w-9 p-0"
+                size="sm" className="h-11 w-11 sm:h-9 sm:w-9 p-0"
                 onClick={() => setPlaying(!playing)}
               >
                 {playing ? <Pause className="h-4 w-4" /> : <Play className="h-4 w-4" />}
               </Button>
               <Button
-                variant="ghost" size="sm" className="h-8 w-8 p-0"
+                variant="ghost" size="sm" className="h-10 w-10 sm:h-8 sm:w-8 p-0"
                 onClick={() => setCurrentIdx(events.length - 1)}
               >
                 <SkipForward className="h-4 w-4" />
@@ -289,7 +287,7 @@ export function DetectionTimelapse({ missionId, onDetection, onClose }: Detectio
                 <button
                   key={s}
                   onClick={() => setSpeed(s)}
-                  className={`px-2 py-1 rounded-md text-[10px] font-mono font-bold transition-colors ${
+                  className={`min-h-[36px] min-w-[36px] sm:min-h-0 sm:min-w-0 px-2 py-1 rounded-md text-[10px] font-mono font-bold transition-colors ${
                     speed === s
                       ? "bg-primary text-primary-foreground"
                       : "text-muted-foreground hover:bg-muted"
@@ -310,7 +308,7 @@ export function DetectionTimelapse({ missionId, onDetection, onClose }: Detectio
           {currentEvent && (() => {
             const det = parseEventToDetection(currentEvent)
             return det ? (
-              <div className="rounded-md bg-muted/40 px-3 py-2 flex items-center gap-3">
+              <div className="rounded-md bg-muted/40 px-3 py-2 flex flex-wrap items-center gap-2">
                 <div className="h-2.5 w-2.5 rounded-full bg-warning shrink-0" />
                 <span className="text-xs font-mono text-foreground font-medium">
                   {det.zone_label || currentEvent.zone_label} [{det.side}]
@@ -318,7 +316,7 @@ export function DetectionTimelapse({ missionId, onDetection, onClose }: Detectio
                 <span className="text-xs font-mono font-bold text-warning">
                   {det.distance}cm {det.direction}
                 </span>
-                <span className="text-[10px] text-muted-foreground ml-auto font-mono">
+                <span className="text-[10px] text-muted-foreground ml-auto font-mono shrink-0">
                   {det.device_name}
                 </span>
               </div>

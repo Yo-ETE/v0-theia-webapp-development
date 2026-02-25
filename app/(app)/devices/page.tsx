@@ -288,51 +288,48 @@ export default function DevicesPage() {
       <main className="flex-1 overflow-auto p-4">
         <div className="flex flex-col gap-4">
           {/* Stats + Enroll button */}
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-4">
-              <div className="flex items-center gap-2">
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <div className="flex flex-wrap items-center gap-3">
+              <div className="flex items-center gap-1.5">
                 <Radio className="h-4 w-4 text-primary" />
                 <span className="text-sm font-medium text-foreground">{totalCount}</span>
                 <span className="text-xs text-muted-foreground">Total</span>
               </div>
-              <div className="flex items-center gap-2">
+              <div className="flex items-center gap-1.5">
                 <span className="h-2 w-2 rounded-full bg-success" />
                 <span className="text-sm font-medium text-success">{onlineCount}</span>
                 <span className="text-xs text-muted-foreground">Online</span>
               </div>
-              <div className="flex items-center gap-2">
+              <div className="flex items-center gap-1.5">
                 <span className="h-2 w-2 rounded-full bg-destructive" />
                 <span className="text-sm font-medium text-destructive">{offlineCount}</span>
                 <span className="text-xs text-muted-foreground">Offline</span>
               </div>
               {disabledCount > 0 && (
-                <div className="flex items-center gap-2">
+                <div className="flex items-center gap-1.5">
                   <span className="h-2 w-2 rounded-full bg-muted-foreground/40" />
                   <span className="text-sm font-medium text-muted-foreground">{disabledCount}</span>
                   <span className="text-xs text-muted-foreground">Disabled</span>
                 </div>
               )}
             </div>
-            <div className="flex items-center gap-2">
-              <Button
-                size="sm"
-                variant="outline"
-                onClick={() => {
-                  setFlashOpen(true)
-                  setWizardStep(1)
-                  setFlashLogs([])
-                  setFlashDone(null)
-                  setDetectedPort(null)
-                  baselineRef.current = new Set()
-                  setFlashForm({ tx_id: "", sensor_type: "ld2450", port: "", sketch_name: "__default__", custom_sketch: null })
-                }}
-                className="gap-1.5"
-              >
-                <Cpu className="h-3.5 w-3.5" />
-                Nouveau capteur
-              </Button>
-
-            </div>
+            <Button
+              size="sm"
+              variant="outline"
+              onClick={() => {
+                setFlashOpen(true)
+                setWizardStep(1)
+                setFlashLogs([])
+                setFlashDone(null)
+                setDetectedPort(null)
+                baselineRef.current = new Set()
+                setFlashForm({ tx_id: "", sensor_type: "ld2450", port: "", sketch_name: "__default__", custom_sketch: null })
+              }}
+              className="gap-1.5 shrink-0"
+            >
+              <Cpu className="h-3.5 w-3.5" />
+              Nouveau capteur
+            </Button>
           </div>
 
           <Card className="border-border/50 bg-card">
