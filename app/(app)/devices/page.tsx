@@ -30,13 +30,17 @@ export default function DevicesPage() {
   const [enrollForm, setEnrollForm] = useState({ name: "", dev_eui: "", type: "microwave_tx", serial_port: "" })
   const [enrolling, setEnrolling] = useState(false)
 
-  // Flash / Provisioning state
+  // Flash / Provisioning wizard state
   const [flashOpen, setFlashOpen] = useState(false)
+  const [wizardStep, setWizardStep] = useState(1) // 1=name, 2=plug USB, 3=type, 4=flash
   const [flashForm, setFlashForm] = useState({ tx_id: "", sensor_type: "ld2450", port: "", sketch_name: "__default__" })
   const [flashLogs, setFlashLogs] = useState<string[]>([])
   const [flashing, setFlashing] = useState(false)
   const [flashDone, setFlashDone] = useState<"ok" | "fail" | null>(null)
-  const [ports, setPorts] = useState<{port: string; real: string; summary?: string; in_use_by?: string; label?: string}[]>([])
+  type PortInfo = {port: string; real: string; summary?: string; label?: string}
+  const [ports, setPorts] = useState<PortInfo[]>([])
+  const [baselinePorts, setBaselinePorts] = useState<Set<string>>(new Set())
+  const [detectedPort, setDetectedPort] = useState<PortInfo | null>(null)
   const [systemPorts, setSystemPorts] = useState<{symlink: string; real: string; role: string}[]>([])
   const [sketches, setSketches] = useState<{name: string; sensor_type: string; is_template: boolean}[]>([])
   const [txIdError, setTxIdError] = useState("")
@@ -44,25 +48,59 @@ export default function DevicesPage() {
 
   const backendBase = typeof window !== "undefined" ? `http://${window.location.hostname}:8000` : ""
 
-  // Load ports and sketches when flash dialog opens
+  // Fetch ports helper
+  const fetchPorts = useCallback(async () => {
+    try {
+      const res = await fetch(`${backendBase}/api/firmware/ports`)
+      if (res.ok) {
+        const data = await res.json()
+        const portList: PortInfo[] = data.ports ?? data
+        setPorts(portList)
+        setSystemPorts(data.system ?? [])
+        return portList
+      }
+    } catch { /* ignore */ }
+    return null
+  }, [backendBase])
+
+  // Step 2: snapshot baseline ports when entering USB step, then poll for new ones
   useEffect(() => {
-    if (!flashOpen) return
+    if (!flashOpen || wizardStep !== 2) return
+    let cancelled = false
+
+    // Take baseline snapshot
+    fetchPorts().then(portList => {
+      if (cancelled || !portList) return
+      setBaselinePorts(new Set(portList.map(p => p.real)))
+      setDetectedPort(null)
+    })
+
+    // Poll every 2s for new ports
+    const interval = setInterval(async () => {
+      const portList = await fetchPorts()
+      if (cancelled || !portList) return
+      // Find new port not in baseline
+      const newPort = portList.find(p => !baselinePorts.has(p.real))
+      if (newPort) {
+        setDetectedPort(newPort)
+        setFlashForm(f => ({ ...f, port: newPort.port }))
+      }
+    }, 2000)
+
+    return () => { cancelled = true; clearInterval(interval) }
+  }, [flashOpen, wizardStep, fetchPorts, baselinePorts])
+
+  // Load sketches when wizard reaches step 3
+  useEffect(() => {
+    if (!flashOpen || wizardStep !== 3) return
     const load = async () => {
       try {
-        const [portsRes, sketchesRes] = await Promise.all([
-          fetch(`${backendBase}/api/firmware/ports`),
-          fetch(`${backendBase}/api/firmware/sketches`),
-        ])
-        if (portsRes.ok) {
-          const data = await portsRes.json()
-          setPorts(data.ports ?? data)
-          setSystemPorts(data.system ?? [])
-        }
-        if (sketchesRes.ok) setSketches(await sketchesRes.json())
+        const res = await fetch(`${backendBase}/api/firmware/sketches`)
+        if (res.ok) setSketches(await res.json())
       } catch { /* ignore */ }
     }
     load()
-  }, [flashOpen, backendBase])
+  }, [flashOpen, wizardStep, backendBase])
 
   // Auto-scroll flash logs
   useEffect(() => {
@@ -73,7 +111,7 @@ export default function DevicesPage() {
   useEffect(() => {
     if (!flashForm.tx_id.trim()) { setTxIdError(""); return }
     const existing = devices?.find(d => d.dev_eui === flashForm.tx_id.trim())
-    setTxIdError(existing ? `${flashForm.tx_id} deja cree` : "")
+    setTxIdError(existing ? `${flashForm.tx_id} deja utilise` : "")
   }, [flashForm.tx_id, devices])
 
   const handleFlash = useCallback(async () => {
@@ -213,8 +251,11 @@ export default function DevicesPage() {
                 variant="outline"
                 onClick={() => {
                   setFlashOpen(true)
+                  setWizardStep(1)
                   setFlashLogs([])
                   setFlashDone(null)
+                  setDetectedPort(null)
+                  setBaselinePorts(new Set())
                   setFlashForm({ tx_id: "", sensor_type: "ld2450", port: "", sketch_name: "__default__" })
                 }}
                 className="gap-1.5"
@@ -446,92 +487,155 @@ export default function DevicesPage() {
       <Dialog open={flashOpen} onOpenChange={(o) => { if (!flashing) setFlashOpen(o) }}>
         <DialogContent className="sm:max-w-lg">
           <DialogHeader>
-            <DialogTitle className="text-sm flex items-center gap-2">
-              <Upload className="h-4 w-4 text-primary" />
+            <DialogTitle className="flex items-center gap-2">
+              <Cpu className="h-4 w-4" />
               Nouveau capteur
             </DialogTitle>
-            <DialogDescription className="text-xs text-muted-foreground">
-              Configure et flash un sketch Arduino sur un ESP32 connecte en USB.
+            <DialogDescription className="text-xs">
+              {wizardStep === 1 && "Etape 1/4 -- Identifiez le nouveau capteur"}
+              {wizardStep === 2 && "Etape 2/4 -- Branchez le capteur ESP32 en USB"}
+              {wizardStep === 3 && "Etape 3/4 -- Type de capteur et firmware"}
+              {wizardStep === 4 && "Etape 4/4 -- Compilation et flash"}
             </DialogDescription>
           </DialogHeader>
 
-          {/* Form */}
-          <div className="flex flex-col gap-3 py-2">
-            <div className="grid grid-cols-2 gap-3">
+          {/* Progress bar */}
+          <div className="flex gap-1">
+            {[1, 2, 3, 4].map(s => (
+              <div key={s} className={cn(
+                "h-1 flex-1 rounded-full transition-colors",
+                s <= wizardStep ? "bg-primary" : "bg-muted"
+              )} />
+            ))}
+          </div>
+
+          {/* Step 1: TX ID */}
+          {wizardStep === 1 && (
+            <div className="flex flex-col gap-4 py-2">
               <div className="flex flex-col gap-1.5">
-                <Label className="text-xs">TX ID</Label>
+                <Label className="text-xs font-medium">Identifiant TX</Label>
                 <Input
-                  placeholder="TX03"
                   value={flashForm.tx_id}
-                  onChange={(e) => setFlashForm(f => ({ ...f, tx_id: e.target.value }))}
-                  className={cn("bg-input/50 border-border font-mono text-sm h-8", txIdError && "border-destructive")}
-                  disabled={flashing}
+                  onChange={(e) => setFlashForm(f => ({ ...f, tx_id: e.target.value.toUpperCase() }))}
+                  placeholder="TX03"
+                  className="h-10 text-sm bg-input/50 border-border font-mono"
+                  autoFocus
                 />
-                {txIdError && (
-                  <p className="text-[10px] text-destructive">{txIdError}</p>
-                )}
-              </div>
-              <div className="flex flex-col gap-1.5">
-                <Label className="text-xs">Type de capteur</Label>
-                <Select
-                  value={flashForm.sensor_type}
-                  onValueChange={(v) => setFlashForm(f => ({ ...f, sensor_type: v }))}
-                  disabled={flashing}
-                >
-                  <SelectTrigger className="h-8 text-xs bg-input/50 border-border">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="ld2450">LD2450</SelectItem>
-                    <SelectItem value="c4001">C4001</SelectItem>
-                  </SelectContent>
-                </Select>
+                {txIdError && <p className="text-[10px] text-destructive">{txIdError}</p>}
+                <p className="text-[10px] text-muted-foreground">
+                  Identifiant unique du capteur (ex: TX03, TX04...). Sera ecrit dans le firmware.
+                </p>
               </div>
             </div>
+          )}
 
-            <div className="grid grid-cols-2 gap-3">
-              <div className="flex flex-col gap-1.5">
-                <Label className="text-xs">Port USB</Label>
-                <Select
-                  value={flashForm.port}
-                  onValueChange={(v) => setFlashForm(f => ({ ...f, port: v }))}
-                  disabled={flashing}
-                >
-                  <SelectTrigger className="h-8 text-xs bg-input/50 border-border font-mono">
-                    <SelectValue placeholder="Selectionnez un port" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {ports.length === 0 ? (
-                      <SelectItem value="_none" disabled>
-                        Aucun port libre detecte
-                      </SelectItem>
-                    ) : (
-                      ports.map((p) => (
+          {/* Step 2: USB detection */}
+          {wizardStep === 2 && (
+            <div className="flex flex-col gap-4 py-2">
+              <div className="flex flex-col items-center gap-3 py-4">
+                {!detectedPort ? (
+                  <>
+                    <div className="h-16 w-16 rounded-full border-2 border-dashed border-primary/40 flex items-center justify-center animate-pulse">
+                      <Cpu className="h-7 w-7 text-primary/60" />
+                    </div>
+                    <p className="text-sm font-medium text-foreground">Branchez le capteur ESP32 en USB</p>
+                    <p className="text-[10px] text-muted-foreground text-center max-w-[280px]">
+                      {"Connectez l'ESP32 au Raspberry Pi via un cable USB. Le port sera detecte automatiquement."}
+                    </p>
+                    <div className="flex items-center gap-1.5 mt-1">
+                      <span className="h-1.5 w-1.5 rounded-full bg-primary animate-pulse" />
+                      <span className="text-[10px] text-muted-foreground">Recherche en cours...</span>
+                    </div>
+                  </>
+                ) : (
+                  <>
+                    <div className="h-16 w-16 rounded-full border-2 border-success bg-success/10 flex items-center justify-center">
+                      <Cpu className="h-7 w-7 text-success" />
+                    </div>
+                    <p className="text-sm font-medium text-success">Capteur detecte</p>
+                    <div className="rounded-md border border-success/30 bg-success/5 px-4 py-2.5 w-full">
+                      <div className="flex items-center justify-between">
+                        <span className="font-mono text-xs text-foreground">{detectedPort.port}</span>
+                        <Badge variant="outline" className="text-[9px] border-success/40 text-success">nouveau</Badge>
+                      </div>
+                      {detectedPort.summary && (
+                        <p className="text-[9px] text-muted-foreground mt-1">{detectedPort.summary}</p>
+                      )}
+                    </div>
+                  </>
+                )}
+              </div>
+              {/* Manual fallback */}
+              {!detectedPort && ports.length > 0 && (
+                <div className="border-t border-border/50 pt-3">
+                  <p className="text-[10px] text-muted-foreground mb-2">Ou selectionner un port manuellement :</p>
+                  <Select
+                    value={flashForm.port}
+                    onValueChange={(v) => {
+                      const found = ports.find(p => p.port === v)
+                      if (found) { setDetectedPort(found); setFlashForm(f => ({ ...f, port: v })) }
+                    }}
+                  >
+                    <SelectTrigger className="h-8 text-xs bg-input/50 border-border font-mono">
+                      <SelectValue placeholder="Selectionnez un port" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {ports.map((p) => (
                         <SelectItem key={p.port} value={p.port} className="text-xs">
                           <div className="flex flex-col">
                             <span className="font-mono">{p.port}</span>
-                            <span className="text-[9px] text-muted-foreground">
-                              {p.summary || p.real}
-                              {p.label ? ` (${p.label})` : ""}
-                            </span>
+                            <span className="text-[9px] text-muted-foreground">{p.summary || p.real}</span>
                           </div>
                         </SelectItem>
-                      ))
-                    )}
-                  </SelectContent>
-                </Select>
-                {systemPorts.length > 0 && (
-                  <p className="text-[9px] text-muted-foreground">
-                    Ports systeme exclus : {systemPorts.map(s => `${s.symlink} (${s.role})`).join(", ")}
-                  </p>
-                )}
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+              )}
+              {systemPorts.length > 0 && (
+                <p className="text-[9px] text-muted-foreground">
+                  Ports systeme exclus : {systemPorts.map(s => `${s.symlink} (${s.role})`).join(", ")}
+                </p>
+              )}
+            </div>
+          )}
+
+          {/* Step 3: Sensor type + Sketch */}
+          {wizardStep === 3 && (
+            <div className="flex flex-col gap-4 py-2">
+              <div className="rounded-md border border-border/50 bg-muted/30 px-3 py-2 flex items-center gap-3">
+                <Cpu className="h-4 w-4 text-primary shrink-0" />
+                <span className="font-mono text-xs text-foreground">{flashForm.tx_id}</span>
+                <span className="text-[9px] text-muted-foreground">{flashForm.port}</span>
               </div>
               <div className="flex flex-col gap-1.5">
-                <Label className="text-xs">Sketch</Label>
+                <Label className="text-xs font-medium">Type de capteur</Label>
+                <div className="grid grid-cols-2 gap-2">
+                  {([
+                    { val: "ld2450", name: "LD2450", desc: "Radar mmWave HLK-LD2450. Multi-cible, distance + angle." },
+                    { val: "c4001", name: "C4001", desc: "Radar DFRobot SEN0609. Mono-cible, presence + distance." },
+                  ] as const).map(opt => (
+                    <button
+                      key={opt.val}
+                      onClick={() => setFlashForm(f => ({ ...f, sensor_type: opt.val }))}
+                      className={cn(
+                        "rounded-md border p-3 text-left transition-colors",
+                        flashForm.sensor_type === opt.val
+                          ? "border-primary bg-primary/5"
+                          : "border-border/50 hover:border-border"
+                      )}
+                    >
+                      <span className="text-xs font-medium text-foreground">{opt.name}</span>
+                      <p className="text-[9px] text-muted-foreground mt-0.5">{opt.desc}</p>
+                    </button>
+                  ))}
+                </div>
+              </div>
+              <div className="flex flex-col gap-1.5">
+                <Label className="text-xs">Sketch firmware</Label>
                 <Select
                   value={flashForm.sketch_name}
                   onValueChange={(v) => setFlashForm(f => ({ ...f, sketch_name: v }))}
-                  disabled={flashing}
                 >
                   <SelectTrigger className="h-8 text-xs bg-input/50 border-border">
                     <SelectValue placeholder="Template par defaut" />
@@ -547,59 +651,79 @@ export default function DevicesPage() {
                 </Select>
               </div>
             </div>
+          )}
 
-            {/* Console output */}
-            {(flashLogs.length > 0 || flashing) && (
-              <div className="mt-2">
-                <div className="flex items-center gap-1.5 mb-1.5">
-                  <Terminal className="h-3 w-3 text-muted-foreground" />
-                  <span className="text-[10px] uppercase tracking-widest text-muted-foreground">Console</span>
-                  {flashing && (
-                    <span className="ml-auto text-[10px] text-primary animate-pulse">Compilation en cours...</span>
-                  )}
-                </div>
-                <div className="rounded-md border border-border bg-background p-2 max-h-48 overflow-y-auto font-mono text-[10px] leading-4 text-muted-foreground">
-                  {flashLogs.map((line, i) => (
-                    <div
-                      key={i}
-                      className={cn(
+          {/* Step 4: Compile & Flash */}
+          {wizardStep === 4 && (
+            <div className="flex flex-col gap-3 py-2">
+              <div className="rounded-md border border-border/50 bg-muted/30 px-3 py-2 flex items-center gap-3 text-xs">
+                <Cpu className="h-4 w-4 text-primary shrink-0" />
+                <span className="font-mono text-foreground">{flashForm.tx_id}</span>
+                <span className="text-muted-foreground">{flashForm.sensor_type.toUpperCase()}</span>
+                <span className="font-mono text-muted-foreground ml-auto">{flashForm.port}</span>
+              </div>
+
+              {(flashLogs.length > 0 || flashing) && (
+                <div>
+                  <div className="flex items-center gap-1.5 mb-1.5">
+                    <Terminal className="h-3 w-3 text-muted-foreground" />
+                    <span className="text-[10px] uppercase tracking-widest text-muted-foreground">Console</span>
+                    {flashing && <span className="ml-auto text-[10px] text-primary animate-pulse">En cours...</span>}
+                  </div>
+                  <div className="rounded-md border border-border bg-background p-2 max-h-48 overflow-y-auto font-mono text-[10px] leading-4 text-muted-foreground">
+                    {flashLogs.map((line, i) => (
+                      <div key={i} className={cn(
                         line.startsWith("[ERROR]") && "text-destructive",
                         line.startsWith("[OK]") && "text-success",
                         line.startsWith("[WARN]") && "text-warning",
-                      )}
-                    >
-                      {line}
-                    </div>
-                  ))}
-                  <div ref={logEndRef} />
+                        line.startsWith("[STEP]") && "text-primary font-semibold",
+                      )}>{line}</div>
+                    ))}
+                    <div ref={logEndRef} />
+                  </div>
                 </div>
-              </div>
-            )}
+              )}
 
-            {/* Status banner */}
-            {flashDone === "ok" && (
-              <div className="rounded-md border border-success/30 bg-success/10 px-3 py-2 text-xs text-success">
-                Flash termine avec succes. Le device a ete enregistre automatiquement.
-              </div>
-            )}
-            {flashDone === "fail" && (
-              <div className="rounded-md border border-destructive/30 bg-destructive/10 px-3 py-2 text-xs text-destructive">
-                Echec du flash. Verifiez la console ci-dessus pour plus de details.
-              </div>
-            )}
-          </div>
+              {flashDone === "ok" && (
+                <div className="rounded-md border border-success/30 bg-success/10 px-3 py-2 text-xs text-success">
+                  Flash termine avec succes. Le device {flashForm.tx_id} a ete enregistre.
+                </div>
+              )}
+              {flashDone === "fail" && (
+                <div className="rounded-md border border-destructive/30 bg-destructive/10 px-3 py-2 text-xs text-destructive">
+                  Echec du flash. Verifiez la console ci-dessus.
+                </div>
+              )}
 
-          <DialogFooter>
+              {!flashing && !flashDone && flashLogs.length === 0 && (
+                <p className="text-xs text-muted-foreground text-center py-4">
+                  Pret a compiler et flasher le firmware sur {flashForm.tx_id} via {flashForm.port}.
+                </p>
+              )}
+            </div>
+          )}
+
+          <DialogFooter className="flex items-center gap-2">
             <Button variant="ghost" size="sm" onClick={() => setFlashOpen(false)} disabled={flashing}>
               {flashDone ? "Fermer" : "Annuler"}
             </Button>
-            {!flashDone && (
-              <Button
-                size="sm"
-                onClick={handleFlash}
-                disabled={!flashForm.tx_id.trim() || !flashForm.port || !!txIdError || flashing}
-                className="gap-1.5"
-              >
+            <div className="flex-1" />
+            {wizardStep > 1 && !flashing && !flashDone && (
+              <Button variant="outline" size="sm" onClick={() => setWizardStep(s => s - 1)}>Retour</Button>
+            )}
+            {wizardStep === 1 && (
+              <Button size="sm" onClick={() => setWizardStep(2)} disabled={!flashForm.tx_id.trim() || !!txIdError}>
+                Suivant
+              </Button>
+            )}
+            {wizardStep === 2 && (
+              <Button size="sm" onClick={() => setWizardStep(3)} disabled={!flashForm.port}>Suivant</Button>
+            )}
+            {wizardStep === 3 && (
+              <Button size="sm" onClick={() => { setWizardStep(4); setFlashLogs([]); setFlashDone(null) }}>Suivant</Button>
+            )}
+            {wizardStep === 4 && !flashDone && (
+              <Button size="sm" onClick={handleFlash} disabled={flashing} className="gap-1.5">
                 <Upload className="h-3.5 w-3.5" />
                 {flashing ? "Flash en cours..." : "Compiler & Flash"}
               </Button>
