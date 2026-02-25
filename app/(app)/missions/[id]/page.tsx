@@ -686,9 +686,12 @@ export default function MissionDetailPage() {
   const floorMode: "floor" | "section" = (env === "garage") ? "section" : "floor"
   const missionFloors = mission?.floors ?? []
 
-  // Build sensor placements for map
+  // Filter muted device IDs
+  const mutedIds = new Set(missionDevices.filter(d => d.muted).map(d => d.id))
+
+  // Build sensor placements for map (exclude muted)
   const sensorPlacements = missionDevices
-    .filter((d) => d.zone_id && d.side)
+    .filter((d) => d.zone_id && d.side && !mutedIds.has(d.id))
     .map((d) => ({
       device_id: d.id,
       device_name: d.name,
@@ -700,10 +703,12 @@ export default function MissionDetailPage() {
     }))
 
   // Map detections: ONLY from SSE (real-time). Never from DB -- DB events are history.
-  // Filter out muted devices from zone-level aggregation
-  const mutedIds = new Set(missionDevices.filter(d => d.muted).map(d => d.id))
+  // Filter out muted devices from zone-level AND device-level aggregation
   const filteredLiveByZone = Object.fromEntries(
     Object.entries(liveByZone).filter(([, det]) => !mutedIds.has(det.device_id))
+  )
+  const filteredLiveByDevice = Object.fromEntries(
+    Object.entries(liveByDevice).filter(([devId]) => !mutedIds.has(devId))
   )
   const effectiveLiveByZone: Record<string, LiveDetection> = timelapseMode
   ? { ...replayDetections }
@@ -900,7 +905,7 @@ export default function MissionDetailPage() {
                   zones={zones}
                   events={eventList}
                   liveDetections={effectiveLiveByZone}
-                  liveByDevice={liveByDevice}
+                  liveByDevice={filteredLiveByDevice}
                   sensorPlacements={sensorPlacements}
                   heatmapMode={heatmapMode}
                   estimatePosition={estimatePosition}
@@ -1033,7 +1038,7 @@ export default function MissionDetailPage() {
                       zones={zones}
                       events={eventList}
   liveDetections={effectiveLiveByZone}
-  liveByDevice={timelapseMode ? {} : liveByDevice}
+                  liveByDevice={timelapseMode ? {} : filteredLiveByDevice}
   sensorPlacements={sensorPlacements}
   heatmapMode={heatmapMode}
   estimatePosition={estimatePosition}
@@ -1289,6 +1294,22 @@ export default function MissionDetailPage() {
                           title={isMuted ? "Reactiver les detections" : "Mettre en sourdine"}
                         >
                           {isMuted ? <BellOff className="h-3.5 w-3.5" /> : <Bell className="h-3.5 w-3.5" />}
+                        </button>
+                        {/* Move to different facade */}
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation()
+                            setSensorPlaceMode({
+                              zoneId: d.zone_id!,
+                              side: d.side!,
+                              deviceId: d.id,
+                              deviceName: d.name,
+                            })
+                          }}
+                          className="text-primary/60 hover:text-primary active:text-primary transition-colors shrink-0 p-1 min-h-[32px] min-w-[32px] flex items-center justify-center cursor-pointer"
+                          title="Deplacer sur une autre facade"
+                        >
+                          <MapPin className="h-3.5 w-3.5" />
                         </button>
                         {/* Unassign */}
                         <button

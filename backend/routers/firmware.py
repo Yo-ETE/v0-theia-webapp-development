@@ -209,37 +209,43 @@ async def flash_device(req: FlashRequest):
     """Compile and flash a sketch to an ESP32. Returns SSE stream of progress."""
     db = await get_db()
 
-    # ── SAFETY: block flashing to system ports (RX, GPS) ──
-    reserved_real_paths: set[str] = set()
-    for symlink in glob.glob("/dev/theia-*"):
-        reserved_real_paths.add(os.path.realpath(symlink))
+    # ── SAFETY: block flashing to system ports (RX, GPS, TX already enrolled) ──
+    reserved: dict[str, str] = {}  # real_path -> label
 
-    # Also block enrolled device ports
+    # 1) All /dev/theia-* symlinks (rx, gps, tx, etc.)
+    for symlink in glob.glob("/dev/theia-*"):
+        real = os.path.realpath(symlink)
+        role = symlink.replace("/dev/theia-", "").upper()
+        reserved[symlink] = f"{role} systeme ({symlink})"
+        reserved[real] = f"{role} systeme ({symlink})"
+
+    # 2) All enrolled (enabled) device serial ports
     try:
         cursor = await db.execute(
-            "SELECT serial_port FROM devices WHERE enabled=1 AND serial_port IS NOT NULL"
+            "SELECT serial_port, name, dev_eui FROM devices WHERE enabled=1 AND serial_port IS NOT NULL AND serial_port != ''"
         )
         rows = await cursor.fetchall()
         for row in rows:
-            sp = dict(row)["serial_port"]
-            reserved_real_paths.add(os.path.realpath(sp))
+            d = dict(row)
+            sp = d["serial_port"]
+            label = f"device {d.get('dev_eui') or d.get('name', '?')}"
+            if sp and os.path.exists(sp):
+                reserved[sp] = label
+                reserved[os.path.realpath(sp)] = label
     except Exception:
         pass
 
+    # Check target port against all reserved paths
     target_real = os.path.realpath(req.port)
-    if target_real in reserved_real_paths:
-        # Figure out what it is for a helpful message
-        for symlink in glob.glob("/dev/theia-*"):
-            if os.path.realpath(symlink) == target_real:
-                role = symlink.replace("/dev/theia-", "").upper()
-                raise HTTPException(
-                    status_code=400,
-                    detail=f"Port {req.port} est le {role} systeme ({symlink}). Impossible de flasher dessus."
-                )
+    block_reason = reserved.get(req.port) or reserved.get(target_real)
+    if block_reason:
+        print(f"[THEIA] FLASH BLOCKED: {req.port} -> {target_real} is {block_reason}")
         raise HTTPException(
             status_code=400,
-            detail=f"Port {req.port} est deja utilise par un device enregistre."
+            detail=f"Port {req.port} ({target_real}) est {block_reason}. Impossible de flasher dessus."
         )
+
+    print(f"[THEIA] Flash target: {req.port} -> {target_real} (not reserved, {len(reserved)} reserved paths checked)")
 
     # Check TX_ID uniqueness
     cursor = await db.execute("SELECT id FROM devices WHERE dev_eui=?", (req.tx_id,))
@@ -344,6 +350,17 @@ async def flash_device(req: FlashRequest):
             return
 
         yield f"data: [STEP] Compilation reussie ({used_fqbn}). Upload vers {req.port}...\n\n"
+
+        # ── PRE-UPLOAD SAFETY: re-check port hasn't shifted to a system device ──
+        current_real = os.path.realpath(req.port)
+        for symlink in glob.glob("/dev/theia-*"):
+            if os.path.realpath(symlink) == current_real:
+                role = symlink.replace("/dev/theia-", "").upper()
+                yield f"data: [ERROR] SECURITE: {req.port} pointe maintenant vers {role} ({symlink}). Flash annule.\n\n"
+                yield "data: [DONE] FAIL\n\n"
+                shutil.rmtree(tmp_dir, ignore_errors=True)
+                return
+        yield f"data: [INFO] Port verifie: {req.port} -> {current_real}\n\n"
 
         # Upload
         upload_cmd = [cli, "upload", "--fqbn", used_fqbn, "-p", req.port, tmp_sketch_dir]

@@ -7,7 +7,6 @@ import {
   Crosshair,
   Radio,
   ScrollText,
-  Wifi,
   Settings,
 } from "lucide-react"
 import {
@@ -22,7 +21,7 @@ import {
   SidebarHeader,
   SidebarFooter,
 } from "@/components/ui/sidebar"
-import { Badge } from "@/components/ui/badge"
+
 import { NotificationBell } from "@/components/notification-bell"
 
 const navItems = [
@@ -93,17 +92,10 @@ export function AppSidebar() {
         </SidebarGroup>
       </SidebarContent>
 
-      <SidebarFooter className="border-t border-sidebar-border p-4">
-        <div className="flex items-center gap-2">
-          <Wifi className="h-3.5 w-3.5 text-success" />
-          <span className="text-xs text-muted-foreground">Preview Mode</span>
-          <Badge
-            variant="outline"
-            className="ml-auto border-success/30 bg-success/10 text-success text-[10px] px-1.5 py-0"
-          >
-            ONLINE
-          </Badge>
-        </div>
+      <SidebarFooter className="border-t border-sidebar-border p-3">
+        <p className="text-[9px] text-muted-foreground/50 text-center tracking-wider">
+          THEIA Hub Control v1.0
+        </p>
       </SidebarFooter>
     </Sidebar>
   )
