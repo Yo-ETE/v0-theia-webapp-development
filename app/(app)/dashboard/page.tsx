@@ -232,6 +232,16 @@ export default function DashboardPage() {
             </h2>
             <Card className="border-border/50 bg-card">
               <CardContent className="px-4 py-4">
+                {/* If network data is not yet populated (backend slow), show skeleton */}
+                {!status.network ? (
+                  <div className="flex items-center gap-3">
+                    <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-muted animate-pulse" />
+                    <div className="flex-1 space-y-2">
+                      <div className="h-4 w-24 rounded bg-muted animate-pulse" />
+                      <div className="h-3 w-16 rounded bg-muted animate-pulse" />
+                    </div>
+                  </div>
+                ) : (
                 <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:gap-8">
                   {/* Status global */}
                   <div className="flex items-center gap-3">
@@ -342,7 +352,7 @@ export default function DashboardPage() {
                   )}
 
                   {/* IPs */}
-                  <div className="ml-auto flex flex-col gap-1">
+                  <div className="sm:ml-auto flex flex-col gap-1">
                     <div className="flex items-center gap-2">
                       <span className="text-[10px] text-muted-foreground">Hostname</span>
                       <span className="font-mono text-xs text-foreground">{network.hostname}</span>
@@ -353,6 +363,7 @@ export default function DashboardPage() {
                     </div>
                   </div>
                 </div>
+                )}
               </CardContent>
             </Card>
           </section>

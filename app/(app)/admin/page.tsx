@@ -502,17 +502,17 @@ export default function AdminPage() {
           {/* ── Connection Status ── */}
           <Card className="border-border/50 bg-card">
             <CardHeader>
-              <div className="flex items-center justify-between">
-                <div className="flex items-center gap-3">
-                  <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-primary/10">
+              <div className="flex items-center justify-between gap-2">
+                <div className="flex items-center gap-3 min-w-0">
+                  <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-primary/10">
                     <Globe className="h-5 w-5 text-primary" />
                   </div>
-                  <div>
+                  <div className="min-w-0">
                     <CardTitle className="text-base">Etat connexion</CardTitle>
-                    <CardDescription>Wi-Fi et Ethernet</CardDescription>
+                    <CardDescription className="truncate">Wi-Fi et Ethernet</CardDescription>
                   </div>
                 </div>
-                <Button variant="outline" size="sm" onClick={fetchConnectionStatus} className="bg-transparent">
+                <Button variant="outline" size="sm" onClick={fetchConnectionStatus} className="bg-transparent shrink-0">
                   <RefreshCw className="h-4 w-4" />
                 </Button>
               </div>
@@ -592,9 +592,9 @@ export default function AdminPage() {
           {/* ── Tailscale VPN ── */}
           <Card className="border-border/50 bg-card">
             <CardHeader>
-              <div className="flex items-center justify-between">
-                <div className="flex items-center gap-3">
-                  <div className={cn("flex h-10 w-10 items-center justify-center rounded-lg",
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <div className="flex items-center gap-3 min-w-0">
+                  <div className={cn("flex h-10 w-10 shrink-0 items-center justify-center rounded-lg",
                     tsStatus?.running && tsStatus.online ? "bg-success/10" : "bg-muted"
                   )}>
                     {tsStatus?.running && tsStatus.online
@@ -603,17 +603,17 @@ export default function AdminPage() {
                         ? <ShieldOff className="h-5 w-5 text-muted-foreground" />
                         : <Shield className="h-5 w-5 text-muted-foreground" />}
                   </div>
-                  <div>
-                    <CardTitle className="text-base">Tailscale VPN</CardTitle>
-                    <CardDescription>
+                  <div className="min-w-0">
+                    <CardTitle className="text-base truncate">Tailscale VPN</CardTitle>
+                    <CardDescription className="truncate">
                       {!tsStatus?.installed ? "Non installe"
                         : tsStatus.running && tsStatus.online ? "Connecte au reseau"
-                        : tsStatus.running ? "En cours de connexion..."
+                        : tsStatus.running ? "Connexion..."
                         : "Deconnecte"}
                     </CardDescription>
                   </div>
                 </div>
-                <Button variant="outline" size="sm" onClick={fetchTailscale} disabled={tsLoading} className="bg-transparent">
+                <Button variant="outline" size="sm" onClick={fetchTailscale} disabled={tsLoading} className="bg-transparent shrink-0">
                   <RefreshCw className={cn("h-4 w-4", tsLoading && "animate-spin")} />
                 </Button>
               </div>
@@ -713,11 +713,11 @@ export default function AdminPage() {
                                     {peer.online && <span className="h-1.5 w-1.5 rounded-full bg-success shrink-0" />}
                                     {peer.isExitNode && <Badge variant="outline" className="text-[9px] px-1 py-0 border-success/50 text-success">EXIT</Badge>}
                                   </div>
-                                  <div className="flex items-center gap-2 text-[10px] text-muted-foreground">
+                                  <div className="flex flex-wrap items-center gap-x-2 gap-y-0 text-[10px] text-muted-foreground">
                                     <span className="font-mono">{peer.ip}</span>
                                     <span>{peer.os}</span>
                                     {peer.online && (peer.rxBytes > 0 || peer.txBytes > 0) && (
-                                      <span>rx:{formatBytes(peer.rxBytes)} tx:{formatBytes(peer.txBytes)}</span>
+                                      <span className="shrink-0">rx:{formatBytes(peer.rxBytes)} tx:{formatBytes(peer.txBytes)}</span>
                                     )}
                                   </div>
                                 </div>
@@ -769,17 +769,17 @@ export default function AdminPage() {
           {/* ── WiFi Scanner ── */}
           <Card className="border-border/50 bg-card lg:col-span-2">
             <CardHeader>
-              <div className="flex items-center justify-between">
-                <div className="flex items-center gap-3">
-                  <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-primary/10">
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <div className="flex items-center gap-3 min-w-0">
+                  <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-primary/10">
                     <Wifi className="h-5 w-5 text-primary" />
                   </div>
-                  <div>
-                    <CardTitle className="text-base">Reseaux disponibles</CardTitle>
-                    <CardDescription>Selectionnez un reseau Wi-Fi</CardDescription>
+                  <div className="min-w-0">
+                    <CardTitle className="text-base">Reseaux WiFi</CardTitle>
+                    <CardDescription className="truncate">Selectionnez un reseau</CardDescription>
                   </div>
                 </div>
-                <Button variant="outline" size="sm" onClick={handleScan} disabled={isScanning} className="bg-transparent gap-2">
+                <Button variant="outline" size="sm" onClick={handleScan} disabled={isScanning} className="bg-transparent gap-2 shrink-0">
                   <RefreshCw className={cn("h-4 w-4", isScanning && "animate-spin")} />
                   Scanner
                 </Button>
@@ -1026,12 +1026,12 @@ export default function AdminPage() {
                     </div>
                   )}
 
-                  <div className="flex gap-2">
-                    <Button onClick={handleUpdate} disabled={isUpdating} className="flex-1 gap-2">
-                      {isUpdating ? <Loader2 className="h-4 w-4 animate-spin" /> : <Download className="h-4 w-4" />}
-                      {isUpdating ? "Mise a jour en cours..." : selectedCommit ? `Deployer ${selectedCommit.slice(0, 7)}` : "Mettre a jour (dernier commit)"}
+                  <div className="flex flex-col gap-2 sm:flex-row">
+                    <Button onClick={handleUpdate} disabled={isUpdating} className="flex-1 gap-2 text-xs">
+                      {isUpdating ? <Loader2 className="h-4 w-4 animate-spin shrink-0" /> : <Download className="h-4 w-4 shrink-0" />}
+                      <span className="truncate">{isUpdating ? "Mise a jour..." : selectedCommit ? `Deployer ${selectedCommit.slice(0, 7)}` : "Mettre a jour"}</span>
                     </Button>
-                    <Button variant="outline" onClick={handleRestartServices} disabled={isRestarting} className="gap-2 bg-transparent">
+                    <Button variant="outline" onClick={handleRestartServices} disabled={isRestarting} className="gap-2 bg-transparent text-xs shrink-0">
                       {isRestarting ? <Loader2 className="h-4 w-4 animate-spin" /> : <RotateCcw className="h-4 w-4" />}
                       Redemarrer
                     </Button>
@@ -1232,19 +1232,19 @@ export default function AdminPage() {
           {/* ── Licence ── */}
           <Card className="border-border/50 bg-card lg:col-span-2">
             <CardHeader>
-              <div className="flex items-center justify-between">
-                <div className="flex items-center gap-3">
-                  <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-primary/10">
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <div className="flex items-center gap-3 min-w-0">
+                  <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-primary/10">
                     <Scale className="h-5 w-5 text-primary" />
                   </div>
-                  <div>
+                  <div className="min-w-0">
                     <CardTitle className="text-base">Licence</CardTitle>
-                    <CardDescription>{"Propriete intellectuelle et conditions d'utilisation"}</CardDescription>
+                    <CardDescription className="truncate">{"Propriete intellectuelle"}</CardDescription>
                   </div>
                 </div>
-                <Button variant="outline" size="sm" onClick={() => setShowLicence(!showLicence)} className="bg-transparent gap-2">
+                <Button variant="outline" size="sm" onClick={() => setShowLicence(!showLicence)} className="bg-transparent gap-2 shrink-0">
                   <ChevronRight className={cn("h-4 w-4 transition-transform", showLicence && "rotate-90")} />
-                  {showLicence ? "Masquer" : "Voir la licence"}
+                  {showLicence ? "Masquer" : "Voir"}
                 </Button>
               </div>
             </CardHeader>

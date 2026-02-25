@@ -29,6 +29,9 @@ const fetcher = async (url: string) => {
 export function useStatus() {
   return useSWR<import("@/lib/types").SystemStatus>("/api/status", fetcher, {
     refreshInterval: 5000,
+    keepPreviousData: true,
+    dedupingInterval: 3000,
+    errorRetryCount: 3,
   })
 }
 
