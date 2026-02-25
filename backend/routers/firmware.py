@@ -9,7 +9,7 @@ import shutil
 import tempfile
 import uuid
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, UploadFile, File, Form
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 
@@ -166,28 +166,24 @@ async def list_sketches():
     return sketches
 
 
-class UploadSketchRequest(BaseModel):
-    filename: str
-    content: str  # base64 encoded
-
-
 @router.post("/upload-sketch")
-async def upload_sketch(req: UploadSketchRequest):
-    """Upload a custom .ino sketch (base64 encoded content)."""
-    import base64
-    if not req.filename.endswith(".ino"):
-        raise HTTPException(status_code=400, detail="Le fichier doit etre un .ino")
+async def upload_sketch(
+    file: UploadFile = File(...),
+    sensor_type: str = Form("unknown"),
+):
+    """Upload a custom .ino sketch file."""
+    if not file.filename or not file.filename.endswith((".ino", ".cpp", ".c")):
+        raise HTTPException(status_code=400, detail="Le fichier doit etre un .ino, .cpp, ou .c")
 
-    sketch_name = req.filename.replace(".ino", "")
+    # Normalize: always save as .ino
+    base_name = file.filename.rsplit(".", 1)[0]
+    sketch_name = f"custom_{base_name}"
     sketch_dir = os.path.join(FIRMWARE_DIR, sketch_name)
     os.makedirs(sketch_dir, exist_ok=True)
 
-    try:
-        content = base64.b64decode(req.content)
-    except Exception:
-        raise HTTPException(status_code=400, detail="Contenu base64 invalide")
-
-    filepath = os.path.join(sketch_dir, req.filename)
+    content = await file.read()
+    ino_filename = f"{sketch_name}.ino"
+    filepath = os.path.join(sketch_dir, ino_filename)
     with open(filepath, "wb") as f:
         f.write(content)
 
@@ -206,6 +202,38 @@ class FlashRequest(BaseModel):
 async def flash_device(req: FlashRequest):
     """Compile and flash a sketch to an ESP32. Returns SSE stream of progress."""
     db = await get_db()
+
+    # ── SAFETY: block flashing to system ports (RX, GPS) ──
+    reserved_real_paths: set[str] = set()
+    for symlink in glob.glob("/dev/theia-*"):
+        reserved_real_paths.add(os.path.realpath(symlink))
+
+    # Also block enrolled device ports
+    try:
+        cursor = await db.execute(
+            "SELECT serial_port FROM devices WHERE enabled=1 AND serial_port IS NOT NULL"
+        )
+        rows = await cursor.fetchall()
+        for row in rows:
+            sp = dict(row)["serial_port"]
+            reserved_real_paths.add(os.path.realpath(sp))
+    except Exception:
+        pass
+
+    target_real = os.path.realpath(req.port)
+    if target_real in reserved_real_paths:
+        # Figure out what it is for a helpful message
+        for symlink in glob.glob("/dev/theia-*"):
+            if os.path.realpath(symlink) == target_real:
+                role = symlink.replace("/dev/theia-", "").upper()
+                raise HTTPException(
+                    status_code=400,
+                    detail=f"Port {req.port} est le {role} systeme ({symlink}). Impossible de flasher dessus."
+                )
+        raise HTTPException(
+            status_code=400,
+            detail=f"Port {req.port} est deja utilise par un device enregistre."
+        )
 
     # Check TX_ID uniqueness
     cursor = await db.execute("SELECT id FROM devices WHERE dev_eui=?", (req.tx_id,))

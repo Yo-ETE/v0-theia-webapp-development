@@ -1,7 +1,7 @@
 "use client"
 
 import { useState, useCallback, useEffect, useRef } from "react"
-import { Radio, Battery, Signal, Plus, Trash2, Cpu, Upload, Terminal } from "lucide-react"
+import { Radio, Battery, Signal, Plus, Trash2, Cpu, Upload, Terminal, X } from "lucide-react"
 import { TopHeader } from "@/components/top-header"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
@@ -33,73 +33,63 @@ export default function DevicesPage() {
   // Flash / Provisioning wizard state
   const [flashOpen, setFlashOpen] = useState(false)
   const [wizardStep, setWizardStep] = useState(1) // 1=name, 2=plug USB, 3=type, 4=flash
-  const [flashForm, setFlashForm] = useState({ tx_id: "", sensor_type: "ld2450", port: "", sketch_name: "__default__" })
+  const [flashForm, setFlashForm] = useState({ tx_id: "", sensor_type: "ld2450", port: "", sketch_name: "__default__", custom_sketch: null as File | null })
   const [flashLogs, setFlashLogs] = useState<string[]>([])
   const [flashing, setFlashing] = useState(false)
   const [flashDone, setFlashDone] = useState<"ok" | "fail" | null>(null)
   type PortInfo = {port: string; real: string; summary?: string; label?: string}
   const [ports, setPorts] = useState<PortInfo[]>([])
-  const [baselinePorts, setBaselinePorts] = useState<Set<string>>(new Set())
   const [detectedPort, setDetectedPort] = useState<PortInfo | null>(null)
   const [systemPorts, setSystemPorts] = useState<{symlink: string; real: string; role: string}[]>([])
-  const [sketches, setSketches] = useState<{name: string; sensor_type: string; is_template: boolean}[]>([])
   const [txIdError, setTxIdError] = useState("")
   const logEndRef = useRef<HTMLDivElement>(null)
+  const baselineRef = useRef<Set<string>>(new Set())
+  const fileInputRef = useRef<HTMLInputElement>(null)
 
   const backendBase = typeof window !== "undefined" ? `http://${window.location.hostname}:8000` : ""
 
-  // Fetch ports helper
-  const fetchPorts = useCallback(async () => {
-    try {
-      const res = await fetch(`${backendBase}/api/firmware/ports`)
-      if (res.ok) {
+  // Step 2: snapshot baseline then poll for new ports
+  useEffect(() => {
+    if (!flashOpen || wizardStep !== 2) return
+    let cancelled = false
+    let baselineReady = false
+
+    // Take baseline snapshot immediately
+    const init = async () => {
+      try {
+        const res = await fetch(`${backendBase}/api/firmware/ports`)
+        if (!res.ok || cancelled) return
         const data = await res.json()
         const portList: PortInfo[] = data.ports ?? data
         setPorts(portList)
         setSystemPorts(data.system ?? [])
-        return portList
-      }
-    } catch { /* ignore */ }
-    return null
-  }, [backendBase])
-
-  // Step 2: snapshot baseline ports when entering USB step, then poll for new ones
-  useEffect(() => {
-    if (!flashOpen || wizardStep !== 2) return
-    let cancelled = false
-
-    // Take baseline snapshot
-    fetchPorts().then(portList => {
-      if (cancelled || !portList) return
-      setBaselinePorts(new Set(portList.map(p => p.real)))
-      setDetectedPort(null)
-    })
-
-    // Poll every 2s for new ports
-    const interval = setInterval(async () => {
-      const portList = await fetchPorts()
-      if (cancelled || !portList) return
-      // Find new port not in baseline
-      const newPort = portList.find(p => !baselinePorts.has(p.real))
-      if (newPort) {
-        setDetectedPort(newPort)
-        setFlashForm(f => ({ ...f, port: newPort.port }))
-      }
-    }, 2000)
-
-    return () => { cancelled = true; clearInterval(interval) }
-  }, [flashOpen, wizardStep, fetchPorts, baselinePorts])
-
-  // Load sketches when wizard reaches step 3
-  useEffect(() => {
-    if (!flashOpen || wizardStep !== 3) return
-    const load = async () => {
-      try {
-        const res = await fetch(`${backendBase}/api/firmware/sketches`)
-        if (res.ok) setSketches(await res.json())
+        baselineRef.current = new Set(portList.map(p => p.real))
+        baselineReady = true
+        setDetectedPort(null)
       } catch { /* ignore */ }
     }
-    load()
+    init()
+
+    // Poll every 1.5s for new ports
+    const interval = setInterval(async () => {
+      if (!baselineReady || cancelled) return
+      try {
+        const res = await fetch(`${backendBase}/api/firmware/ports`)
+        if (!res.ok || cancelled) return
+        const data = await res.json()
+        const portList: PortInfo[] = data.ports ?? data
+        setPorts(portList)
+
+        // Find a port whose real path wasn't in the baseline
+        const newPort = portList.find(p => !baselineRef.current.has(p.real))
+        if (newPort) {
+          setDetectedPort(newPort)
+          setFlashForm(f => ({ ...f, port: newPort.port }))
+        }
+      } catch { /* ignore */ }
+    }, 1500)
+
+    return () => { cancelled = true; clearInterval(interval) }
   }, [flashOpen, wizardStep, backendBase])
 
   // Auto-scroll flash logs
@@ -121,6 +111,36 @@ export default function DevicesPage() {
     setFlashLogs([])
 
     try {
+      // If custom sketch file, upload it first
+      let customSketchName: string | null = null
+      if (flashForm.custom_sketch) {
+        const uploadData = new FormData()
+        uploadData.append("file", flashForm.custom_sketch)
+        uploadData.append("sensor_type", flashForm.sensor_type)
+        try {
+          const upRes = await fetch(`${backendBase}/api/firmware/upload-sketch`, {
+            method: "POST",
+            body: uploadData,
+          })
+          if (upRes.ok) {
+            const upJson = await upRes.json()
+            customSketchName = upJson.name
+            setFlashLogs(prev => [...prev, `[OK] Sketch importe: ${upJson.name}`])
+          } else {
+            const err = await upRes.json().catch(() => ({ detail: "Erreur upload" }))
+            setFlashLogs(prev => [...prev, `[ERROR] Upload sketch: ${err.detail}`])
+            setFlashDone("fail")
+            setFlashing(false)
+            return
+          }
+        } catch (e) {
+          setFlashLogs(prev => [...prev, `[ERROR] Upload: ${e instanceof Error ? e.message : String(e)}`])
+          setFlashDone("fail")
+          setFlashing(false)
+          return
+        }
+      }
+
       const res = await fetch(`${backendBase}/api/firmware/flash`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -128,7 +148,7 @@ export default function DevicesPage() {
           port: flashForm.port,
           tx_id: flashForm.tx_id.trim(),
           sensor_type: flashForm.sensor_type,
-          sketch_name: flashForm.sketch_name === "__default__" ? null : (flashForm.sketch_name || null),
+          sketch_name: customSketchName || (flashForm.sketch_name === "__default__" ? null : flashForm.sketch_name),
         }),
       })
 
@@ -255,8 +275,8 @@ export default function DevicesPage() {
                   setFlashLogs([])
                   setFlashDone(null)
                   setDetectedPort(null)
-                  setBaselinePorts(new Set())
-                  setFlashForm({ tx_id: "", sensor_type: "ld2450", port: "", sketch_name: "__default__" })
+                  baselineRef.current = new Set()
+                  setFlashForm({ tx_id: "", sensor_type: "ld2450", port: "", sketch_name: "__default__", custom_sketch: null })
                 }}
                 className="gap-1.5"
               >
@@ -600,55 +620,79 @@ export default function DevicesPage() {
             </div>
           )}
 
-          {/* Step 3: Sensor type + Sketch */}
+          {/* Step 3: Sensor type */}
           {wizardStep === 3 && (
             <div className="flex flex-col gap-4 py-2">
               <div className="rounded-md border border-border/50 bg-muted/30 px-3 py-2 flex items-center gap-3">
                 <Cpu className="h-4 w-4 text-primary shrink-0" />
                 <span className="font-mono text-xs text-foreground">{flashForm.tx_id}</span>
-                <span className="text-[9px] text-muted-foreground">{flashForm.port}</span>
+                <span className="font-mono text-[9px] text-muted-foreground">{flashForm.port}</span>
               </div>
               <div className="flex flex-col gap-1.5">
                 <Label className="text-xs font-medium">Type de capteur</Label>
                 <div className="grid grid-cols-2 gap-2">
                   {([
-                    { val: "ld2450", name: "LD2450", desc: "Radar mmWave HLK-LD2450. Multi-cible, distance + angle." },
-                    { val: "c4001", name: "C4001", desc: "Radar DFRobot SEN0609. Mono-cible, presence + distance." },
+                    { val: "ld2450", name: "LD2450", desc: "Radar mmWave HLK-LD2450. Multi-cible, distance + angle.", sketch: "TX_LD2450" },
+                    { val: "c4001", name: "C4001", desc: "Radar DFRobot SEN0609. Mono-cible, presence + distance.", sketch: "TX_C4001" },
                   ] as const).map(opt => (
                     <button
                       key={opt.val}
-                      onClick={() => setFlashForm(f => ({ ...f, sensor_type: opt.val }))}
+                      onClick={() => setFlashForm(f => ({ ...f, sensor_type: opt.val, sketch_name: "__default__", custom_sketch: null }))}
                       className={cn(
                         "rounded-md border p-3 text-left transition-colors",
-                        flashForm.sensor_type === opt.val
+                        flashForm.sensor_type === opt.val && !flashForm.custom_sketch
                           ? "border-primary bg-primary/5"
                           : "border-border/50 hover:border-border"
                       )}
                     >
                       <span className="text-xs font-medium text-foreground">{opt.name}</span>
                       <p className="text-[9px] text-muted-foreground mt-0.5">{opt.desc}</p>
+                      <p className="text-[8px] text-muted-foreground/60 mt-1 font-mono">Sketch: {opt.sketch}</p>
                     </button>
                   ))}
                 </div>
               </div>
-              <div className="flex flex-col gap-1.5">
-                <Label className="text-xs">Sketch firmware</Label>
-                <Select
-                  value={flashForm.sketch_name}
-                  onValueChange={(v) => setFlashForm(f => ({ ...f, sketch_name: v }))}
-                >
-                  <SelectTrigger className="h-8 text-xs bg-input/50 border-border">
-                    <SelectValue placeholder="Template par defaut" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="__default__" className="text-xs">Template par defaut</SelectItem>
-                    {sketches.map(s => (
-                      <SelectItem key={s.name} value={s.name} className="text-xs">
-                        {s.name} ({s.sensor_type}){s.is_template ? " [template]" : ""}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
+              {/* Import custom sketch */}
+              <div className="border-t border-border/50 pt-3">
+                <input
+                  ref={fileInputRef}
+                  type="file"
+                  accept=".ino,.cpp,.c"
+                  className="hidden"
+                  onChange={(e) => {
+                    const file = e.target.files?.[0]
+                    if (file) {
+                      setFlashForm(f => ({ ...f, custom_sketch: file, sketch_name: file.name }))
+                    }
+                  }}
+                />
+                {flashForm.custom_sketch ? (
+                  <div className="flex items-center gap-2 rounded-md border border-primary/30 bg-primary/5 px-3 py-2">
+                    <Upload className="h-3.5 w-3.5 text-primary shrink-0" />
+                    <div className="flex-1 min-w-0">
+                      <p className="text-xs font-medium text-foreground truncate">{flashForm.custom_sketch.name}</p>
+                      <p className="text-[9px] text-muted-foreground">Sketch personnalise</p>
+                    </div>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      className="h-6 w-6 p-0"
+                      onClick={() => setFlashForm(f => ({ ...f, custom_sketch: null, sketch_name: "__default__" }))}
+                    >
+                      <X className="h-3 w-3" />
+                    </Button>
+                  </div>
+                ) : (
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="w-full text-xs gap-1.5"
+                    onClick={() => fileInputRef.current?.click()}
+                  >
+                    <Upload className="h-3 w-3" />
+                    Importer un sketch .ino
+                  </Button>
+                )}
               </div>
             </div>
           )}
