@@ -15,10 +15,15 @@ export async function proxyToBackend(
   init?: RequestInit,
 ): Promise<Response> {
   const url = `${getBackendUrl()}${path}`
+  // Don't set Content-Type for FormData (let fetch set the multipart boundary)
+  const isFormData = typeof FormData !== "undefined" && init?.body instanceof FormData
+  const headers: Record<string, string> = isFormData
+    ? {}
+    : { "Content-Type": "application/json" }
   return fetch(url, {
     ...init,
     headers: {
-      "Content-Type": "application/json",
+      ...headers,
       ...init?.headers,
     },
   })

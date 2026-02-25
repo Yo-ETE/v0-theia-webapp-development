@@ -8,7 +8,7 @@ import {
   Pencil, Play, Pause, CheckCircle, Trash2, Building2, Home,
   Activity, Eye, EyeOff, Zap, Timer, Download, Signal, Battery, Wifi, Unlink,
   Flame, Crosshair, ArrowDownLeft, ArrowUpRight, Bell, BellOff,
-  Maximize2, Minimize2,
+  Maximize2, Minimize2, FileImage,
 } from "lucide-react"
 import { TopHeader } from "@/components/top-header"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
@@ -88,6 +88,11 @@ function getSideDistanceM(polygon: [number, number][], side: string, sensorPos: 
     const groupKey = segmentToGroup[i] ?? String.fromCharCode(65 + i)
     if (groupKey === side) {
       const j = (i + 1) % polygon.length
+      const isPixel = polygon.some(([a, b]: [number, number]) => Math.abs(a) > 200 || Math.abs(b) > 200)
+      if (isPixel) {
+        const pct = Math.round(sensorPos * 100)
+        return `${pct}%`
+      }
       const edgeLen = haversineM(polygon[i][0], polygon[i][1], polygon[j][0], polygon[j][1])
       const dist = edgeLen * sensorPos
       return dist < 1 ? `${Math.round(dist * 100)}cm` : `${dist.toFixed(1)}m`
@@ -287,16 +292,26 @@ export default function MissionDetailPage() {
     // For a CW polygon, outward normal is +90 from edge direction.
     // For a CCW polygon, outward normal is -90 from edge direction.
 
+    // Detect if coordinates are pixel-based (>200) or lat/lon (-90..90)
+    const isPixelCoords = polygon.some(([a, b]) => Math.abs(a) > 200 || Math.abs(b) > 200)
+
     // First compute edge bearings
     const edgeBearings: number[] = []
     for (let i = 0; i < polygon.length; i++) {
-      const [lat1, lon1] = polygon[i]
-      const [lat2, lon2] = polygon[(i + 1) % polygon.length]
-      const dLon = (lon2 - lon1) * Math.PI / 180
-      const y = Math.sin(dLon) * Math.cos(lat2 * Math.PI / 180)
-      const x = Math.cos(lat1 * Math.PI / 180) * Math.sin(lat2 * Math.PI / 180) -
-                Math.sin(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) * Math.cos(dLon)
-      let deg = Math.atan2(y, x) * 180 / Math.PI
+      const [y1, x1] = polygon[i]
+      const [y2, x2] = polygon[(i + 1) % polygon.length]
+      let deg: number
+      if (isPixelCoords) {
+        // Simple atan2 for pixel coordinates
+        deg = Math.atan2(x2 - x1, y2 - y1) * 180 / Math.PI
+      } else {
+        // Haversine bearing for lat/lon
+        const dLon = (x2 - x1) * Math.PI / 180
+        const yy = Math.sin(dLon) * Math.cos(y2 * Math.PI / 180)
+        const xx = Math.cos(y1 * Math.PI / 180) * Math.sin(y2 * Math.PI / 180) -
+                  Math.sin(y1 * Math.PI / 180) * Math.cos(y2 * Math.PI / 180) * Math.cos(dLon)
+        deg = Math.atan2(yy, xx) * 180 / Math.PI
+      }
       deg = ((deg % 360) + 360) % 360
       edgeBearings.push(deg)
     }
@@ -696,6 +711,8 @@ export default function MissionDetailPage() {
   // ── Floor mode (etages / garage) ──
   const env = mission?.environment ?? "habitation"
   const isFloorMode = env === "vertical" || env === "etages" || env === "garage"
+  const isPlanMode = env === "plan"
+  const planImageUrl = mission?.plan_image || null
   const floorMode: "floor" | "section" = (env === "garage") ? "section" : "floor"
   const missionFloors = mission?.floors ?? []
 
@@ -807,8 +824,8 @@ export default function MissionDetailPage() {
                 {statusCfg.label}
               </Badge>
               <span className="flex items-center gap-1 text-xs text-muted-foreground">
-                {env === "etages" || env === "vertical" ? <Building2 className="h-3 w-3" /> : env === "garage" ? <Building2 className="h-3 w-3" /> : <Home className="h-3 w-3" />}
-                {env === "habitation" || env === "horizontal" ? "Habitation" : env === "garage" ? "Garage / Souterrain" : env === "etages" || env === "vertical" ? "Etages" : env}
+                {env === "plan" ? <FileImage className="h-3 w-3" /> : env === "etages" || env === "vertical" ? <Building2 className="h-3 w-3" /> : env === "garage" ? <Building2 className="h-3 w-3" /> : <Home className="h-3 w-3" />}
+                {env === "plan" ? "Sur Plan" : env === "habitation" || env === "horizontal" ? "Habitation" : env === "garage" ? "Garage / Souterrain" : env === "etages" || env === "vertical" ? "Etages" : env}
               </span>
               <span className="flex items-center gap-1 text-xs text-muted-foreground">
                 <MapPin className="h-3 w-3" />{mission.location || "No location"}
@@ -835,7 +852,7 @@ export default function MissionDetailPage() {
                 </span>
               )}
               <div className="flex items-center gap-1.5 ml-auto">
-                {mission.status === "draft" && (isFloorMode ? missionFloors.length > 0 : zones.length > 0) && (
+                {mission.status === "draft" && (isFloorMode ? missionFloors.length > 0 : (isPlanMode ? !!planImageUrl : zones.length > 0)) && (
                   <Button size="sm" className="h-7 text-[10px] gap-1" onClick={() => changeStatus("active")} disabled={statusUpdating}>
                     <Play className="h-3 w-3" />Activate
                   </Button>
@@ -1039,6 +1056,76 @@ export default function MissionDetailPage() {
                     </CardContent>
                   </Card>
                 </div>
+              ) : isPlanMode ? (
+                /* ── Plan mode: PlanEditor ── */
+                <div className="flex flex-col gap-3">
+                  {/* Sensor placement banner */}
+                  {sensorPlaceMode && (
+                    <div className="flex items-center justify-between gap-2 rounded-lg border border-cyan-500/50 bg-cyan-500/10 px-3 py-2">
+                      <p className="text-xs text-cyan-300">
+                        Cliquer sur une facade pour placer <span className="font-semibold">{sensorPlaceMode.deviceName}</span>
+                      </p>
+                      <Button variant="ghost" size="sm" className="h-7 px-2 text-[10px] text-cyan-400" onClick={() => setSensorPlaceMode(null)}>Annuler</Button>
+                    </div>
+                  )}
+                  {!planImageUrl ? (
+                    /* No plan image yet -- show upload prompt */
+                    <div className="flex flex-col items-center justify-center gap-3 rounded-lg border-2 border-dashed border-border/50 p-8 bg-muted/10 min-h-[300px]">
+                      <FileImage className="h-10 w-10 text-muted-foreground" />
+                      <p className="text-sm text-muted-foreground text-center">Aucun plan importe</p>
+                      <label className="cursor-pointer">
+                        <input
+                          type="file"
+                          accept="image/jpeg,image/png,image/webp"
+                          className="hidden"
+                          onChange={async (e) => {
+                            const file = e.target.files?.[0]
+                            if (!file) return
+                            const fd = new FormData()
+                            fd.append("file", file)
+                            try {
+                              const res = await fetch(`/api/missions/${id}/plan-image`, { method: "POST", body: fd })
+                              if (res.ok) mutate()
+                            } catch (err) {
+                              console.error("Upload error:", err)
+                            }
+                          }}
+                        />
+                        <span className="inline-flex items-center gap-1.5 rounded-md bg-primary px-4 py-2 text-xs font-medium text-primary-foreground hover:bg-primary/90 transition-colors">
+                          <FileImage className="h-3.5 w-3.5" />
+                          Importer un plan
+                        </span>
+                      </label>
+                    </div>
+                  ) : (
+                  <PlanEditor
+                    imageUrl={planImageUrl!}
+                    imageWidth={mission?.plan_width ?? undefined}
+                    imageHeight={mission?.plan_height ?? undefined}
+                    zones={zones}
+                    sensorPlacements={sensorPlacements}
+                    liveByDevice={filteredLiveByDevice}
+                    drawingMode={drawingMode}
+                    sensorPlaceMode={sensorPlaceMode}
+                    onZoneCreated={handlePolygonDrawn}
+                    onSensorPlace={(zoneId, side, t) => {
+                      handleSensorPlace(zoneId, side, t)
+                    }}
+                    onZonePolygonUpdate={updateZonePolygon}
+                    showFov={showFov}
+                    className="rounded-lg overflow-hidden border border-border/50"
+                  />
+                  )}
+                  {/* Timelapse panel for plan mode */}
+                  {timelapseMode && (
+                    <div className="space-y-2">
+                      <DetectionTimelapse
+                        missionId={id}
+                        onDetection={handleReplayDetection}
+                      />
+                    </div>
+                  )}
+                </div>
               ) : (
                 /* ── Horizontal: Map ── */
             <>
@@ -1134,8 +1221,8 @@ export default function MissionDetailPage() {
             </div>
 
             <div className="flex flex-col gap-3">
-              {/* Zones panel -- only for horizontal/map missions */}
-              {!isFloorMode && (
+              {/* Zones panel -- for horizontal/map and plan missions */}
+              {(!isFloorMode) && (
               <Card className="border-border/50 bg-card">
                 <CardHeader className="pb-2">
                   <div className="flex items-center justify-between">

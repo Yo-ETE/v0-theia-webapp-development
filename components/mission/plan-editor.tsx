@@ -37,15 +37,20 @@ interface SensorPlaceMode {
 }
 
 interface PlanEditorProps {
-  planImage: string
-  planWidth?: number | null
-  planHeight?: number | null
+  /** Accepts both "planImage" and "imageUrl" for convenience */
+  planImage?: string
+  imageUrl?: string
+  imageWidth?: number
+  imageHeight?: number
   zones?: Zone[]
   sensorPlacements?: SensorPlacement[]
   liveByDevice?: Record<string, LiveDetection>
   className?: string
   drawingMode?: boolean
+  /** Called with raw polygon coordinates when a zone is drawn */
   onPolygonDrawn?: (polygon: [number, number][]) => void
+  /** Alias: same as onPolygonDrawn, called with (polygon) */
+  onZoneCreated?: (polygon: [number, number][]) => void
   onZoneClick?: (zoneId: string) => void
   sensorPlaceMode?: SensorPlaceMode | null
   onSensorPlace?: (zoneId: string, side: string, position: number) => void
@@ -82,12 +87,16 @@ function sideLetterToIdx(side: string): number {
 
 export function PlanEditor({
   planImage,
+  imageUrl,
+  imageWidth: propW,
+  imageHeight: propH,
   zones = [],
   sensorPlacements = [],
   liveByDevice = {},
   className,
   drawingMode = false,
   onPolygonDrawn,
+  onZoneCreated,
   onZoneClick,
   sensorPlaceMode,
   onSensorPlace,
@@ -95,6 +104,8 @@ export function PlanEditor({
   editingPolygon,
   onZonePolygonUpdate,
 }: PlanEditorProps) {
+  const resolvedImage = planImage || imageUrl || ""
+  const handlePolygonDone = onPolygonDrawn ?? onZoneCreated
   const containerRef = useRef<HTMLDivElement>(null)
   const [imgSize, setImgSize] = useState({ w: 0, h: 0 })
   const [drawPoints, setDrawPoints] = useState<[number, number][]>([])
@@ -111,8 +122,8 @@ export function PlanEditor({
     const img = new Image()
     img.crossOrigin = "anonymous"
     img.onload = () => setImgSize({ w: img.naturalWidth, h: img.naturalHeight })
-    img.src = planImage
-  }, [planImage])
+    img.src = resolvedImage
+  }, [resolvedImage])
 
   // Observe container width
   useEffect(() => {
@@ -146,21 +157,21 @@ export function PlanEditor({
 
   // Drawing mode click handler
   const handleClick = useCallback((e: React.MouseEvent | React.TouchEvent) => {
-    if (!drawingMode || !onPolygonDrawn) return
+    if (!drawingMode || !handlePolygonDone) return
     e.preventDefault()
     const clientX = "touches" in e ? e.changedTouches[0].clientX : e.clientX
     const clientY = "touches" in e ? e.changedTouches[0].clientY : e.clientY
     const pt = toImgCoords(clientX, clientY)
     setDrawPoints(prev => [...prev, pt])
-  }, [drawingMode, onPolygonDrawn, toImgCoords])
-
+  }, [drawingMode, handlePolygonDone, toImgCoords])
+  
   // Double click / double tap to finish drawing
   const handleDoubleClick = useCallback((e: React.MouseEvent) => {
-    if (!drawingMode || !onPolygonDrawn || drawPoints.length < 3) return
+    if (!drawingMode || !handlePolygonDone || drawPoints.length < 3) return
     e.preventDefault()
-    onPolygonDrawn(drawPoints)
+    handlePolygonDone(drawPoints)
     setDrawPoints([])
-  }, [drawingMode, onPolygonDrawn, drawPoints])
+  }, [drawingMode, handlePolygonDone, drawPoints])
 
   // Sensor placement click -- find closest edge
   const handlePlaceClick = useCallback((e: React.MouseEvent | React.TouchEvent) => {
@@ -302,7 +313,7 @@ export function PlanEditor({
     >
       {/* Background image */}
       <img
-        src={planImage}
+        src={resolvedImage}
         alt="Plan"
         className="absolute inset-0 w-full h-full object-contain pointer-events-none"
         draggable={false}
