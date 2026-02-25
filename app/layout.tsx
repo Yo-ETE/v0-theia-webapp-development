@@ -46,6 +46,29 @@ export default function RootLayout({
   return (
     <html lang="fr" className="dark">
       <body className="font-sans antialiased">
+        <script dangerouslySetInnerHTML={{ __html: `
+          // Auto-reload on ChunkLoadError (stale cache after Pi rebuild)
+          // Uses sessionStorage to prevent infinite reload loops
+          window.addEventListener('error', function(e) {
+            if (e.message && (e.message.includes('ChunkLoadError') || e.message.includes('Failed to load chunk') || e.message.includes('Loading chunk'))) {
+              var key = 'chunk_reload_' + Date.now().toString().slice(0, -4);
+              if (!sessionStorage.getItem(key)) {
+                sessionStorage.setItem(key, '1');
+                window.location.reload();
+              }
+            }
+          });
+          window.addEventListener('unhandledrejection', function(e) {
+            var msg = e.reason && (e.reason.message || String(e.reason));
+            if (msg && (msg.includes('ChunkLoadError') || msg.includes('Failed to load chunk') || msg.includes('Loading chunk'))) {
+              var key = 'chunk_reload_' + Date.now().toString().slice(0, -4);
+              if (!sessionStorage.getItem(key)) {
+                sessionStorage.setItem(key, '1');
+                window.location.reload();
+              }
+            }
+          });
+        `}} />
         {children}
         <Analytics />
       </body>
