@@ -439,6 +439,159 @@ export default function DevicesPage() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      {/* Flash / Provision Dialog */}
+      <Dialog open={flashOpen} onOpenChange={(o) => { if (!flashing) setFlashOpen(o) }}>
+        <DialogContent className="sm:max-w-lg">
+          <DialogHeader>
+            <DialogTitle className="text-sm flex items-center gap-2">
+              <Upload className="h-4 w-4 text-primary" />
+              Nouveau capteur
+            </DialogTitle>
+            <DialogDescription className="text-xs text-muted-foreground">
+              Configure et flash un sketch Arduino sur un ESP32 connecte en USB.
+            </DialogDescription>
+          </DialogHeader>
+
+          {/* Form */}
+          <div className="flex flex-col gap-3 py-2">
+            <div className="grid grid-cols-2 gap-3">
+              <div className="flex flex-col gap-1.5">
+                <Label className="text-xs">TX ID</Label>
+                <Input
+                  placeholder="TX03"
+                  value={flashForm.tx_id}
+                  onChange={(e) => setFlashForm(f => ({ ...f, tx_id: e.target.value }))}
+                  className={cn("bg-input/50 border-border font-mono text-sm h-8", txIdError && "border-destructive")}
+                  disabled={flashing}
+                />
+                {txIdError && (
+                  <p className="text-[10px] text-destructive">{txIdError}</p>
+                )}
+              </div>
+              <div className="flex flex-col gap-1.5">
+                <Label className="text-xs">Type de capteur</Label>
+                <Select
+                  value={flashForm.sensor_type}
+                  onValueChange={(v) => setFlashForm(f => ({ ...f, sensor_type: v }))}
+                  disabled={flashing}
+                >
+                  <SelectTrigger className="h-8 text-xs bg-input/50 border-border">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="ld2450">LD2450</SelectItem>
+                    <SelectItem value="c4001">C4001</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
+
+            <div className="grid grid-cols-2 gap-3">
+              <div className="flex flex-col gap-1.5">
+                <Label className="text-xs">Port USB</Label>
+                <Select
+                  value={flashForm.port}
+                  onValueChange={(v) => setFlashForm(f => ({ ...f, port: v }))}
+                  disabled={flashing}
+                >
+                  <SelectTrigger className="h-8 text-xs bg-input/50 border-border font-mono">
+                    <SelectValue placeholder="Selectionnez un port" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {ports.length === 0 ? (
+                      <SelectItem value="_none" disabled>Aucun port detecte</SelectItem>
+                    ) : (
+                      ports.map(p => (
+                        <SelectItem key={p.port} value={p.port} className="text-xs font-mono">
+                          {p.port} {p.real !== p.port ? `(${p.real})` : ""}
+                        </SelectItem>
+                      ))
+                    )}
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="flex flex-col gap-1.5">
+                <Label className="text-xs">Sketch</Label>
+                <Select
+                  value={flashForm.sketch_name}
+                  onValueChange={(v) => setFlashForm(f => ({ ...f, sketch_name: v }))}
+                  disabled={flashing}
+                >
+                  <SelectTrigger className="h-8 text-xs bg-input/50 border-border">
+                    <SelectValue placeholder="Template par defaut" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="" className="text-xs">Template par defaut</SelectItem>
+                    {sketches.map(s => (
+                      <SelectItem key={s.name} value={s.name} className="text-xs">
+                        {s.name} ({s.sensor_type}){s.is_template ? " [template]" : ""}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
+
+            {/* Console output */}
+            {(flashLogs.length > 0 || flashing) && (
+              <div className="mt-2">
+                <div className="flex items-center gap-1.5 mb-1.5">
+                  <Terminal className="h-3 w-3 text-muted-foreground" />
+                  <span className="text-[10px] uppercase tracking-widest text-muted-foreground">Console</span>
+                  {flashing && (
+                    <span className="ml-auto text-[10px] text-primary animate-pulse">Compilation en cours...</span>
+                  )}
+                </div>
+                <div className="rounded-md border border-border bg-background p-2 max-h-48 overflow-y-auto font-mono text-[10px] leading-4 text-muted-foreground">
+                  {flashLogs.map((line, i) => (
+                    <div
+                      key={i}
+                      className={cn(
+                        line.startsWith("[ERROR]") && "text-destructive",
+                        line.startsWith("[OK]") && "text-success",
+                        line.startsWith("[WARN]") && "text-warning",
+                      )}
+                    >
+                      {line}
+                    </div>
+                  ))}
+                  <div ref={logEndRef} />
+                </div>
+              </div>
+            )}
+
+            {/* Status banner */}
+            {flashDone === "ok" && (
+              <div className="rounded-md border border-success/30 bg-success/10 px-3 py-2 text-xs text-success">
+                Flash termine avec succes. Le device a ete enregistre automatiquement.
+              </div>
+            )}
+            {flashDone === "fail" && (
+              <div className="rounded-md border border-destructive/30 bg-destructive/10 px-3 py-2 text-xs text-destructive">
+                Echec du flash. Verifiez la console ci-dessus pour plus de details.
+              </div>
+            )}
+          </div>
+
+          <DialogFooter>
+            <Button variant="ghost" size="sm" onClick={() => setFlashOpen(false)} disabled={flashing}>
+              {flashDone ? "Fermer" : "Annuler"}
+            </Button>
+            {!flashDone && (
+              <Button
+                size="sm"
+                onClick={handleFlash}
+                disabled={!flashForm.tx_id.trim() || !flashForm.port || !!txIdError || flashing}
+                className="gap-1.5"
+              >
+                <Upload className="h-3.5 w-3.5" />
+                {flashing ? "Flash en cours..." : "Compiler & Flash"}
+              </Button>
+            )}
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </>
   )
 }
