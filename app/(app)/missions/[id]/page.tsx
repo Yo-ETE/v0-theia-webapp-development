@@ -7,7 +7,7 @@ import {
   ArrowLeft, Radio, MapPin, Clock, Users, BarChart3, Plus,
   Pencil, Play, Pause, CheckCircle, Trash2, Building2, Home,
   Activity, Eye, EyeOff, Zap, Timer, Download, Signal, Battery, Wifi, Unlink,
-  Flame, Crosshair, ArrowDownLeft, ArrowUpRight,
+  Flame, Crosshair, ArrowDownLeft, ArrowUpRight, Bell, BellOff,
 } from "lucide-react"
 import { TopHeader } from "@/components/top-header"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
@@ -65,6 +65,32 @@ interface LiveDetection {
   rssi: number | null
   sensor_type?: string
   timestamp: string
+}
+
+/** Haversine distance between two lat/lon points in meters */
+function haversineM(lat1: number, lon1: number, lat2: number, lon2: number): number {
+  const R = 6371000
+  const dLat = (lat2 - lat1) * Math.PI / 180
+  const dLon = (lon2 - lon1) * Math.PI / 180
+  const a = Math.sin(dLat / 2) ** 2 + Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) * Math.sin(dLon / 2) ** 2
+  return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a))
+}
+
+/** Compute distance in meters along a polygon edge for a device side + sensor_position */
+function getSideDistanceM(polygon: [number, number][], side: string, sensorPos: number, groupSides: (p: [number, number][]) => { segmentToGroup: Record<number, string> }): string {
+  if (!polygon || polygon.length < 3 || !side) return ""
+  const { segmentToGroup } = groupSides(polygon)
+  // Find the first polygon edge matching this side letter
+  for (let i = 0; i < polygon.length; i++) {
+    const groupKey = segmentToGroup[i] ?? String.fromCharCode(65 + i)
+    if (groupKey === side) {
+      const j = (i + 1) % polygon.length
+      const edgeLen = haversineM(polygon[i][0], polygon[i][1], polygon[j][0], polygon[j][1])
+      const dist = edgeLen * sensorPos
+      return dist < 1 ? `${Math.round(dist * 100)}cm` : `${dist.toFixed(1)}m`
+    }
+  }
+  return ""
 }
 
 export default function MissionDetailPage() {
@@ -1025,31 +1051,53 @@ export default function MissionDetailPage() {
                     // Prefer device-level detection (multi-TX per zone), fall back to zone-level
                     const detRaw = liveByDevice[d.id] ?? effectiveLiveByZone[d.zone_id ?? ""]
                     const det = (detRaw?.presence && detRaw?.distance > 0) ? detRaw : null
+                    const isMuted = !!(d.muted)
+                    // Live RSSI/battery from SSE, fallback to DB values
+                    const liveData = liveByDevice[d.id]
+                    const rssiVal = liveData?.rssi ?? d.rssi
+                    const battVal = liveData?.vbatt_tx ?? d.battery
+                    // Compute distance along wall
+                    const zone = mission?.zones?.find(z => z.id === d.zone_id)
+                    const wallDist = zone && d.side ? getSideDistanceM(zone.polygon, d.side, d.sensor_position ?? 0.5, groupSidesByBearing) : ""
+                    // Status color
+                    const statusColor = d.status === "online" ? "text-success" : d.status === "idle" ? "text-warning" : "text-muted-foreground"
                     return (
-                      <div key={d.id} className="flex items-center gap-2 text-xs group">
-                        <Radio className={cn("h-3 w-3 shrink-0", det ? "text-warning" : "text-primary")} />
+                      <div key={d.id} className={cn("flex items-center gap-2 text-xs rounded-md px-1 py-0.5 transition-opacity", isMuted && "opacity-40")}>
+                        {/* Status dot */}
+                        <div className={cn("h-2 w-2 rounded-full shrink-0", d.status === "online" ? "bg-emerald-500" : d.status === "idle" ? "bg-amber-500" : "bg-muted-foreground/30")} title={d.status ?? "unknown"} />
                         <div className="flex-1 min-w-0">
                           <div className="flex items-center gap-1.5">
-                            <span className="font-mono text-foreground">{d.name}</span>
+                            <span className={cn("font-mono text-foreground", isMuted && "line-through")}>{d.name}</span>
                             <span className="text-[8px] font-medium px-1.5 py-0.5 rounded bg-muted text-muted-foreground">
                               {{ microwave_tx: "LD2450", tx_microwave: "LD2450", c4001: "C4001", gravity_mw: "MW V2" }[d.type ?? ""] ?? "TX"}
                             </span>
-                          </div>
-                          <span className="text-[10px] text-muted-foreground truncate">
-                            {d.zone_label || "---"}
-                            {d.side && <span className="text-primary ml-0.5">[{d.side}]</span>}
-                            {d.sensor_position != null && d.sensor_position !== 0.5 && (
-                              <span className="text-muted-foreground/50 ml-0.5">@{Math.round((d.sensor_position ?? 0.5) * 100)}%</span>
+                            {det && (
+                              <span className={cn("text-[9px] font-mono font-semibold", det.presence ? "text-warning" : "text-success")}>
+                                {det.presence ? `${det.distance}cm` : "RAS"}
+                              </span>
                             )}
-                          </span>
+                          </div>
+                          <div className="flex items-center gap-2 text-[10px] text-muted-foreground">
+                            <span>
+                              {d.zone_label || "---"}
+                              {d.side && <span className="text-primary ml-0.5">[{d.side}]</span>}
+                              {wallDist && <span className="ml-0.5">{wallDist}</span>}
+                            </span>
+                            {/* RSSI */}
+                            {rssiVal != null && rssiVal !== 0 && (
+                              <span className={cn("font-mono", (rssiVal as number) >= -70 ? "text-emerald-500" : (rssiVal as number) >= -85 ? "text-amber-500" : "text-red-500")}>
+                                {Math.round(rssiVal as number)}dBm
+                              </span>
+                            )}
+                            {/* Battery */}
+                            {battVal != null && (battVal as number) > 0 && (
+                              <span className="font-mono">
+                                {(battVal as number).toFixed(2)}V
+                              </span>
+                            )}
+                          </div>
                         </div>
-                        {det && (
-                          <span className={cn("text-[9px] font-mono font-semibold shrink-0",
-                            det.presence ? "text-warning" : "text-success")}>
-                            {det.presence ? `${det.distance}cm` : "RAS"}
-                          </span>
-                        )}
-                        {/* Orientation toggle: inward (toward polygon) / outward (away) */}
+                        {/* Orientation toggle */}
                         <button
                           onClick={async (e) => {
                             e.stopPropagation()
@@ -1059,12 +1107,12 @@ export default function MissionDetailPage() {
                             mutate()
                           }}
                           className={cn(
-                            "shrink-0 p-1.5 min-h-[36px] min-w-[36px] flex items-center justify-center rounded transition-colors cursor-pointer",
+                            "shrink-0 p-1 min-h-[32px] min-w-[32px] flex items-center justify-center rounded transition-colors cursor-pointer",
                             (d.orientation ?? "inward") === "inward"
                               ? "text-primary hover:bg-primary/10"
                               : "text-orange-400 hover:bg-orange-400/10"
                           )}
-                          title={`Detection: ${(d.orientation ?? "inward") === "inward" ? "interieur" : "exterieur"} - cliquer pour inverser`}
+                          title={`Detection: ${(d.orientation ?? "inward") === "inward" ? "interieur" : "exterieur"}`}
                         >
                           {(d.orientation ?? "inward") === "inward" ? (
                             <ArrowDownLeft className="h-3.5 w-3.5" />
@@ -1072,15 +1120,32 @@ export default function MissionDetailPage() {
                             <ArrowUpRight className="h-3.5 w-3.5" />
                           )}
                         </button>
+                        {/* Mute toggle */}
+                        <button
+                          onClick={async (e) => {
+                            e.stopPropagation()
+                            await updateDevice(d.id, { muted: !isMuted })
+                            mutateDevices()
+                            mutate()
+                          }}
+                          className={cn(
+                            "shrink-0 p-1 min-h-[32px] min-w-[32px] flex items-center justify-center rounded transition-colors cursor-pointer",
+                            isMuted ? "text-amber-500 hover:bg-amber-500/10" : "text-muted-foreground/40 hover:bg-muted"
+                          )}
+                          title={isMuted ? "Reactiver les detections" : "Mettre en sourdine"}
+                        >
+                          {isMuted ? <BellOff className="h-3.5 w-3.5" /> : <Bell className="h-3.5 w-3.5" />}
+                        </button>
+                        {/* Unassign */}
                         <button
                           onClick={(e) => {
                             e.stopPropagation()
                             unassignDevice(d.id)
                           }}
-                          className="text-destructive/60 hover:text-destructive active:text-destructive transition-colors shrink-0 p-2.5 min-h-[44px] min-w-[44px] flex items-center justify-center cursor-pointer"
+                          className="text-destructive/60 hover:text-destructive active:text-destructive transition-colors shrink-0 p-1 min-h-[32px] min-w-[32px] flex items-center justify-center cursor-pointer"
                           title="Retirer de la mission"
                         >
-                          <Trash2 className="h-4 w-4" />
+                          <Trash2 className="h-3.5 w-3.5" />
                         </button>
                       </div>
                     )

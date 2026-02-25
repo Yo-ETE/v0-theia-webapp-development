@@ -101,7 +101,7 @@ export interface Floor {
 
 // ─── Devices (TX) ────────────────────────────────────────────────
 
-export type DeviceStatus = "online" | "offline" | "unknown"
+export type DeviceStatus = "online" | "idle" | "offline" | "unknown"
 
 export interface Device {
   id: string
@@ -117,6 +117,7 @@ export interface Device {
   side?: string | null
   sensor_position?: number | null  // 0..1 along the assigned side
   orientation?: "inward" | "outward"  // detection direction relative to polygon
+  muted?: boolean  // device still broadcasts SSE but skips DB event storage
   floor?: number | null
   rssi: number | null
   snr: number | null

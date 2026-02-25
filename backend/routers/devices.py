@@ -2,9 +2,37 @@
 THEIA - Devices CRUD router (with PATCH support for zone/side/floor assignment)
 """
 import uuid
+from datetime import datetime, timezone, timedelta
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 from backend.database import get_db
+
+
+def _compute_status(device: dict) -> dict:
+    """Compute online/offline/unknown status from last_seen timestamp."""
+    d = dict(device)
+    last_seen = d.get("last_seen")
+    if not last_seen:
+        d["status"] = "unknown"
+        return d
+    try:
+        if last_seen.endswith("Z"):
+            last_seen = last_seen[:-1] + "+00:00"
+        if "+" not in last_seen and "T" in last_seen:
+            ls_dt = datetime.fromisoformat(last_seen).replace(tzinfo=timezone.utc)
+        else:
+            ls_dt = datetime.fromisoformat(last_seen)
+        now = datetime.now(timezone.utc)
+        delta = now - ls_dt
+        if delta < timedelta(seconds=60):
+            d["status"] = "online"
+        elif delta < timedelta(minutes=5):
+            d["status"] = "idle"
+        else:
+            d["status"] = "offline"
+    except Exception:
+        d["status"] = "unknown"
+    return d
 
 router = APIRouter(prefix="/devices", tags=["devices"])
 
@@ -32,6 +60,7 @@ class DeviceUpdate(BaseModel):
     orientation: str | None = None  # "inward" or "outward"
     floor: int | None = None
     position: str | None = None
+    muted: bool | None = None
     enabled: bool | None = None
 
 
@@ -49,7 +78,7 @@ async def list_devices(mission_id: str | None = None, include_disabled: bool = F
             f"SELECT * FROM devices WHERE 1=1{enabled_filter} ORDER BY name"
         )
     rows = await cursor.fetchall()
-    return [dict(r) for r in rows]
+    return [_compute_status(dict(r)) for r in rows]
 
 
 @router.get("/{device_id}")
@@ -59,7 +88,7 @@ async def get_device(device_id: str):
     row = await cursor.fetchone()
     if not row:
         raise HTTPException(status_code=404, detail="Device not found")
-    return dict(row)
+    return _compute_status(dict(row))
 
 
 @router.post("", status_code=201)
@@ -98,6 +127,8 @@ async def patch_device(device_id: str, body: DeviceUpdate):
 
     if "enabled" in updates:
         updates["enabled"] = 1 if updates["enabled"] else 0
+    if "muted" in updates:
+        updates["muted"] = 1 if updates["muted"] else 0
 
     # Columns with FOREIGN KEY constraints MUST be set to None (SQL NULL), not ""
     # Otherwise SQLite rejects "" as an invalid FK reference
@@ -124,7 +155,7 @@ async def patch_device(device_id: str, body: DeviceUpdate):
     await db.commit()
 
     cursor = await db.execute("SELECT * FROM devices WHERE id=?", (device_id,))
-    return dict(await cursor.fetchone())
+    return _compute_status(dict(await cursor.fetchone()))
 
 
 @router.put("/{device_id}")

@@ -39,6 +39,11 @@ export const deviceStatusConfig: Record<
     className: "border-success/30 bg-success/10 text-success",
     dot: "bg-success",
   },
+  idle: {
+    label: "IDLE",
+    className: "border-warning/30 bg-warning/10 text-warning",
+    dot: "bg-warning",
+  },
   offline: {
     label: "OFFLINE",
     className: "border-destructive/30 bg-destructive/10 text-destructive",

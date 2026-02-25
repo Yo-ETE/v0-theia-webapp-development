@@ -199,25 +199,25 @@ export default function DevicesPage() {
                             ) : "---"}
                           </TableCell>
                           <TableCell>
-                            {device.rssi != null ? (
+                            {device.rssi != null && device.rssi !== 0 ? (
                               <span className={cn(
                                 "font-mono text-[11px]",
                                 device.rssi >= -70 ? "text-success" : device.rssi >= -85 ? "text-warning" : "text-destructive"
                               )}>
-                                {device.rssi}
+                                {Math.round(device.rssi)}dBm
                               </span>
                             ) : (
                               <span className="text-[11px] text-muted-foreground">---</span>
                             )}
                           </TableCell>
                           <TableCell>
-                            {device.battery != null ? (
+                            {device.battery != null && Number(device.battery) > 0 ? (
                               <div className="flex items-center gap-1">
                                 <Battery className={cn(
                                   "h-3 w-3",
-                                  device.battery > 50 ? "text-success" : device.battery > 20 ? "text-warning" : "text-destructive"
+                                  Number(device.battery) > 4.0 ? "text-success" : Number(device.battery) > 3.5 ? "text-warning" : "text-destructive"
                                 )} />
-                                <span className="font-mono text-[11px]">{device.battery}%</span>
+                                <span className="font-mono text-[11px]">{Number(device.battery).toFixed(2)}V</span>
                               </div>
                             ) : (
                               <span className="text-[11px] text-muted-foreground">---</span>

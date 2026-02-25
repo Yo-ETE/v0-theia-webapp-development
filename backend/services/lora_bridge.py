@@ -184,7 +184,7 @@ class PortReader:
 
         if tx_id:
             cursor = await db.execute(
-                "SELECT id, mission_id, zone, zone_id, zone_label, side, name, type "
+                "SELECT id, mission_id, zone, zone_id, zone_label, side, name, type, muted "
                 "FROM devices WHERE dev_eui=? AND enabled=1",
                 (tx_id,),
             )
@@ -225,14 +225,14 @@ class PortReader:
                 )
                 await db.commit()
                 cursor = await db.execute(
-                    "SELECT id, mission_id, zone, zone_id, zone_label, side, name, type FROM devices WHERE id=?",
+                    "SELECT id, mission_id, zone, zone_id, zone_label, side, name, type, muted FROM devices WHERE id=?",
                     (did,),
                 )
                 row = await cursor.fetchone()
 
         if not row:
             cursor = await db.execute(
-                "SELECT id, mission_id, zone, zone_id, zone_label, side, name, type "
+                "SELECT id, mission_id, zone, zone_id, zone_label, side, name, type, muted "
                 "FROM devices WHERE serial_port=? AND enabled=1",
                 (self.port,),
             )
@@ -312,9 +312,13 @@ class PortReader:
         elif not presence:
             self._presence_count[phantom_key] = 0
 
+        # Check muted flag: muted devices still broadcast SSE but skip DB event storage
+        is_muted = bool(row.get("muted", 0) if row else False)
+
         # Store detection in DB (rate-limited: 1 per 2s per device)
         # Only record when mission status is "active" (Pause stops recording)
-        if mission_id and mission_active and presence and d > 15:
+        # Muted devices skip event creation entirely
+        if mission_id and mission_active and presence and d > 15 and not is_muted:
             device_key = device_id or self.port
             now_ts = time.time()
             last_insert_ts = self._last_insert_ts.get(device_key, 0)
