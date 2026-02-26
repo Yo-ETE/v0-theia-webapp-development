@@ -112,6 +112,10 @@ export function FloorManager({
 
   // Compute live detection state per floor (with direction/angle tracking)
   const liveByFloor = useMemo(() => {
+    if (liveDetections.length > 0) {
+      console.log("[v0] liveByFloor: liveDetections count=", liveDetections.length, "deviceFloorMap size=", deviceFloorMap.size, "floors=", floors.map(f => ({level: f.level, devices: f.devices})), "devices=", devices.map(d => ({id: d.id, floor: d.floor})))
+      console.log("[v0] liveByFloor: first det=", JSON.stringify(liveDetections[0]))
+    }
     const map: Record<number, {
       count: number
       latest: LiveDetection | null
@@ -131,7 +135,10 @@ export function FloorManager({
       if (floorLevel == null && det.floor != null) {
         floorLevel = Number(det.floor)
       }
-      if (floorLevel == null) continue
+      if (floorLevel == null) {
+        console.log("[v0] liveByFloor: SKIPPED det, no floor found. did=", did, "dname=", dname, "det.floor=", det.floor, "deviceFloorMap.has=", deviceFloorMap.has(did))
+        continue
+      }
       const pos = angleToPosition(det.angle != null ? Number(det.angle) : undefined)
       const prev = map[floorLevel]
       if (!prev) {
@@ -418,7 +425,7 @@ export function FloorManager({
           {/* Visual representation */}
           <div className="relative rounded-lg border border-border/50 bg-secondary/10 p-4 overflow-x-auto">
             {mode === "floor" ? (
-              /* ── Vertical: building visualization ── */
+              /* ─��� Vertical: building visualization ── */
               <div className="flex flex-col items-center gap-0">
                 {/* Roof */}
                 <div className="w-48 h-2 bg-muted-foreground/20 rounded-t-lg" />

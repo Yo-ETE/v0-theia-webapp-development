@@ -156,6 +156,7 @@ export default function MissionDetailPage() {
 
     // Floor mode: pass through by device_id (FloorManager resolves device->floor)
     if (floorMode) {
+      console.log("[v0] handleReplayDetection FLOOR mode: dets keys=", Object.keys(dets), "first=", JSON.stringify(Object.values(dets)[0]))
       setReplayDetections(dets)
       return
     }
@@ -1096,6 +1097,7 @@ export default function MissionDetailPage() {
                     className="h-[160px]"
                   />
 
+                  {timelapseMode && console.log("[v0] FloorManager timelapse: replayDetections keys=", Object.keys(replayDetections), "mapped liveDetections count=", Object.values(replayDetections).length, "missionFloors=", missionFloors.map(f => ({level: f.level, devices: f.devices})), "missionDevices=", missionDevices.map(d => ({id: d.id, floor: d.floor})))}
                   <Card className="border-border/50 bg-card">
                     <CardContent className="p-4">
                       <FloorManager
