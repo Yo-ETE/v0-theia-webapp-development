@@ -1679,6 +1679,7 @@ export default function MissionDetailPage() {
                 <div className="flex items-center justify-between">
                   <CardTitle className="text-sm">Events ({eventList.length})</CardTitle>
                   <div className="flex items-center gap-2">
+                  {!isFloorMode && (
                   <Button
                     variant={heatmapMode ? "default" : "outline"} size="sm"
                     disabled={eventList.length === 0}
@@ -1686,6 +1687,7 @@ export default function MissionDetailPage() {
                   >
                     <Flame className="mr-1.5 h-3.5 w-3.5" />Heatmap
                   </Button>
+                  )}
                   <Button
                     variant="destructive" size="sm"
                     disabled={eventList.length === 0}

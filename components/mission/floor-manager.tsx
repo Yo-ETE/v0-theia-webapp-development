@@ -92,6 +92,24 @@ export function FloorManager({
   const [assignDialog, setAssignDialog] = useState<number | null>(null)
   const [selectedDevice, setSelectedDevice] = useState("")
 
+  // Build device_id -> floor level map from two sources:
+  // 1. Currently assigned devices (devices prop)
+  // 2. Mission floor config (floors[].devices[]) -- persists even after unassignment
+  const deviceFloorMap = useMemo(() => {
+    const map = new Map<string, number>()
+    // From floors config (fallback for unassigned devices)
+    for (const f of floors) {
+      for (const did of f.devices) {
+        map.set(did, f.level)
+      }
+    }
+    // From live devices (override with current assignment)
+    for (const d of devices) {
+      if (d.floor != null) map.set(d.id, d.floor)
+    }
+    return map
+  }, [floors, devices])
+
   // Compute live detection state per floor (with direction/angle tracking)
   const liveByFloor = useMemo(() => {
     const map: Record<number, {
@@ -100,12 +118,20 @@ export function FloorManager({
       detections: { det: LiveDetection; position: "G" | "C" | "D" }[]
     }> = {}
     for (const det of liveDetections) {
-      const dev = devices.find(d => d.id === det.device_id || d.name === det.device_name)
-      if (!dev || dev.floor == null) continue
+      // Resolve device to floor: try deviceFloorMap (covers both assigned + historical)
+      const did = det.device_id || ""
+      const dname = det.device_name || ""
+      let floorLevel = deviceFloorMap.get(did)
+      if (floorLevel == null && dname) {
+        // Try by name match in devices
+        const dev = devices.find(d => d.name === dname)
+        if (dev?.floor != null) floorLevel = dev.floor
+      }
+      if (floorLevel == null) continue
       const pos = angleToPosition(det.angle != null ? Number(det.angle) : undefined)
-      const prev = map[dev.floor]
+      const prev = map[floorLevel]
       if (!prev) {
-        map[dev.floor] = {
+        map[floorLevel] = {
           count: det.presence ? 1 : 0,
           latest: det,
           detections: det.presence ? [{ det, position: pos }] : [],
@@ -119,19 +145,19 @@ export function FloorManager({
       }
     }
     return map
-  }, [liveDetections, devices])
+  }, [liveDetections, deviceFloorMap, devices])
 
-  // Recent events per floor
+  // Recent events per floor (uses deviceFloorMap for unassigned devices too)
   const eventsByFloor = useMemo(() => {
     const map: Record<number, DetectionEvent[]> = {}
     for (const evt of events) {
-      const dev = devices.find(d => d.id === evt.device_id)
-      if (!dev || dev.floor == null) continue
-      if (!map[dev.floor]) map[dev.floor] = []
-      map[dev.floor].push(evt)
+      const floorLevel = deviceFloorMap.get(evt.device_id ?? "")
+      if (floorLevel == null) continue
+      if (!map[floorLevel]) map[floorLevel] = []
+      map[floorLevel].push(evt)
     }
     return map
-  }, [events, devices])
+  }, [events, deviceFloorMap])
 
   // Available (unassigned) devices -- any device not already assigned to a floor in this mission
   const assignedDeviceIds = useMemo(() => {

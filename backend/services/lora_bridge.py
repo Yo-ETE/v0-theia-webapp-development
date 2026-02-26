@@ -352,10 +352,12 @@ class PortReader:
         device_name = row["name"] if row else (tx_id or self.port)
         sensor_position = None
         device_orientation = None
+        device_floor = None
         if row:
             try:
                 sensor_position = row["sensor_position"]
                 device_orientation = row["orientation"]
+                device_floor = row["floor"]
             except (KeyError, IndexError):
                 pass
 
