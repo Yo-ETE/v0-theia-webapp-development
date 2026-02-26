@@ -94,6 +94,7 @@ export default function DevicesPage() {
         const data = await res.json()
         const portList: PortInfo[] = data.ports ?? data
         const allRaw: string[] = data.all_raw ?? []
+        const skipped: Array<{port: string, real: string, reason: string}> = data.skipped ?? []
         const currentRawCount = allRaw.length
 
         setPorts(portList)
@@ -107,13 +108,31 @@ export default function DevicesPage() {
           newPort = portList[portList.length - 1] // take the last free port
         }
 
+        // Method 3: if a new raw port appeared that wasn't in the baseline
+        // (even if raw count is same due to re-enumeration, or increased but filtered)
+        // it means new hardware was plugged in. Offer it even if it's "reserved".
+        if (!newPort) {
+          const newRaw = allRaw.find(r => !baselineRef.current.has(r))
+          if (newRaw) {
+            // This port is reserved but it's genuinely new hardware
+            const skippedInfo = skipped.find(s => s.real === newRaw || s.port === newRaw)
+            const syntheticPort: PortInfo = {
+              port: newRaw, real: newRaw,
+              label: skippedInfo ? `Reserve: ${skippedInfo.reason}` : "",
+              summary: `Nouveau (${newRaw.replace("/dev/", "")})`
+            }
+            newPort = syntheticPort
+          }
+        }
+
         if (newPort) {
           setDetectedPort(newPort)
-          setFlashForm(f => ({ ...f, port: newPort.port }))
+          setFlashForm(f => ({ ...f, port: newPort!.port }))
           setUsbDebug(`Detecte: ${newPort.port} (${newPort.real})`)
           clearInterval(interval)
         } else {
-          setUsbDebug(`Recherche... ${currentRawCount} ports raw, ${portList.length} libres`)
+          const skippedPorts = skipped.map(s => `${s.port.replace("/dev/","")}(${s.reason})`).join(", ")
+          setUsbDebug(`Recherche... ${currentRawCount} raw, ${portList.length} libres${skippedPorts ? ` | Filtres: ${skippedPorts}` : ""}`)
         }
       } catch (err) {
         setUsbDebug(`Erreur poll: ${err instanceof Error ? err.message : String(err)}`)
@@ -691,7 +710,7 @@ export default function DevicesPage() {
                         onBlur={(e) => {
                           const val = e.target.value.trim()
                           if (val) {
-                            setDetectedPort({ port: val, real: val, label: "", vid: "", pid: "", manufacturer: "", description: "", summary: "Port manuel" })
+                            setDetectedPort({ port: val, real: val, label: "", summary: "Port manuel" })
                             setFlashForm(f => ({ ...f, port: val }))
                           }
                         }}
@@ -699,7 +718,7 @@ export default function DevicesPage() {
                           if (e.key === "Enter") {
                             const val = (e.target as HTMLInputElement).value.trim()
                             if (val) {
-                              setDetectedPort({ port: val, real: val, label: "", vid: "", pid: "", manufacturer: "", description: "", summary: "Port manuel" })
+                              setDetectedPort({ port: val, real: val, label: "", summary: "Port manuel" })
                               setFlashForm(f => ({ ...f, port: val }))
                             }
                           }

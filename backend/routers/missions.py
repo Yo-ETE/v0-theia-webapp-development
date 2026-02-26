@@ -203,22 +203,26 @@ async def delete_mission(mission_id: str):
     return {"ok": True}
 
 
-# ── Plan Image Upload ────────────────────────────────────────
+# ── Plan Image Upload ───────────────────────��────────────────
 import os
 from fastapi import UploadFile, File
 
-PLANS_DIR = os.path.join(os.path.dirname(os.path.dirname(__file__)), "data", "plans")
+# Use the same data directory as the database (default: /opt/theia/data)
+_DATA_DIR = os.getenv("THEIA_DATA_DIR", "/opt/theia/data")
+PLANS_DIR = os.path.join(_DATA_DIR, "plans")
 
 
 @router.post("/{mission_id}/plan-image")
 async def upload_plan_image(mission_id: str, file: UploadFile = File(...)):
     """Upload a floor plan image for a plan-type mission."""
+    print(f"[THEIA] Plan image upload: mission={mission_id}, filename={file.filename}, content_type={file.content_type}")
     db = await get_db()
     cursor = await db.execute("SELECT id FROM missions WHERE id=?", (mission_id,))
     if not await cursor.fetchone():
         raise HTTPException(status_code=404, detail="Mission not found")
 
     os.makedirs(PLANS_DIR, exist_ok=True)
+    print(f"[THEIA] PLANS_DIR={PLANS_DIR}")
 
     # Determine extension from content type
     ext = "jpg"
@@ -232,8 +236,12 @@ async def upload_plan_image(mission_id: str, file: UploadFile = File(...)):
 
     # Write file
     content = await file.read()
+    print(f"[THEIA] Plan image read {len(content)} bytes -> {filepath}")
+    if len(content) == 0:
+        raise HTTPException(status_code=400, detail="Empty file uploaded")
     with open(filepath, "wb") as f:
         f.write(content)
+    print(f"[THEIA] Plan image saved: {filepath} ({len(content)} bytes)")
 
     # Try to get image dimensions
     plan_width, plan_height = None, None
@@ -242,8 +250,8 @@ async def upload_plan_image(mission_id: str, file: UploadFile = File(...)):
         img = Image.open(filepath)
         plan_width, plan_height = img.size
         img.close()
-    except Exception:
-        pass
+    except Exception as e:
+        print(f"[THEIA] PIL not available or failed: {e}")
 
     # Update mission
     plan_url = f"/api/missions/{mission_id}/plan-image/file"
@@ -252,6 +260,7 @@ async def upload_plan_image(mission_id: str, file: UploadFile = File(...)):
         (plan_url, plan_width, plan_height, datetime.now(timezone.utc).isoformat(), mission_id),
     )
     await db.commit()
+    print(f"[THEIA] Plan image DB updated: plan_url={plan_url}, w={plan_width}, h={plan_height}")
 
     return {"url": plan_url, "width": plan_width, "height": plan_height}
 
@@ -264,5 +273,7 @@ async def get_plan_image(mission_id: str):
         filepath = os.path.join(PLANS_DIR, f"{mission_id}.{ext}")
         if os.path.exists(filepath):
             media = {"jpg": "image/jpeg", "png": "image/png", "webp": "image/webp"}[ext]
+            print(f"[THEIA] Serving plan image: {filepath}")
             return FileResponse(filepath, media_type=media)
+    print(f"[THEIA] Plan image NOT FOUND for {mission_id} in {PLANS_DIR}")
     raise HTTPException(status_code=404, detail="Plan image not found")
