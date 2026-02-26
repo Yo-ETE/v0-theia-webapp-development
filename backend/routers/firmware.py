@@ -54,6 +54,11 @@ async def list_ports():
         real = os.path.realpath(symlink)
         reserved_real_paths.add(real)
         system_symlinks[symlink] = real
+        # Fingerprint RX device USB serial for cross-reference safety
+        if "rx" in symlink.lower() and os.path.exists(real):
+            serial = _get_usb_serial(real)
+            if serial:
+                _rx_usb_serials.add(serial)
 
     # ── Step 2: also reserve ports used by enrolled devices ──
     db = await get_db()
@@ -81,6 +86,10 @@ async def list_ports():
 
             # Skip if this real path is a known system device or enrolled device
             if real in all_reserved or p in all_reserved:
+                continue
+
+            # Skip if USB serial matches a known RX device
+            if _check_usb_serial_is_rx(p):
                 continue
 
             info: dict = {
@@ -196,15 +205,47 @@ async def upload_sketch(
     return {"ok": True, "name": sketch_name, "path": sketch_dir}
 
 
+def _get_usb_serial(port_path: str) -> str | None:
+    """Get the USB serial number for a port (used to fingerprint devices)."""
+    import subprocess
+    try:
+        real = os.path.realpath(port_path)
+        result = subprocess.run(
+            ["udevadm", "info", "-a", real],
+            capture_output=True, text=True, timeout=3
+        )
+        for line in result.stdout.splitlines():
+            line = line.strip()
+            if 'ATTRS{serial}' in line and '"' in line:
+                serial = line.split('"')[1]
+                if serial and serial != "0":
+                    return serial
+    except Exception:
+        pass
+    return None
+
+
+# Cache of known RX USB serial numbers (populated at first flash)
+_rx_usb_serials: set[str] = set()
+
+
 async def _build_reserved_map(db) -> dict[str, str]:
-    """Build a map of reserved port paths -> reason label."""
+    """Build a map of reserved port paths -> reason label.
+    Also fingerprints system devices by USB serial number."""
+    global _rx_usb_serials
     reserved: dict[str, str] = {}
-    # 1) System symlinks
+    # 1) System symlinks -- resolve fresh each time
     for symlink in glob.glob("/dev/theia-*"):
         real = os.path.realpath(symlink)
         role = symlink.replace("/dev/theia-", "").upper()
         reserved[symlink] = f"{role} systeme ({symlink})"
         reserved[real] = f"{role} systeme ({symlink})"
+        # Also fingerprint the USB serial of system devices (especially RX)
+        if "rx" in symlink.lower() and os.path.exists(real):
+            serial = _get_usb_serial(real)
+            if serial:
+                _rx_usb_serials.add(serial)
+                print(f"[THEIA] RX fingerprint: {symlink} -> {real} serial={serial}")
     # 2) Enrolled device ports
     try:
         cursor = await db.execute(
@@ -222,6 +263,14 @@ async def _build_reserved_map(db) -> dict[str, str]:
     return reserved
 
 
+def _check_usb_serial_is_rx(port_path: str) -> str | None:
+    """Check if a port's USB serial matches a known RX device. Returns reason if blocked."""
+    serial = _get_usb_serial(port_path)
+    if serial and serial in _rx_usb_serials:
+        return f"USB serial {serial} correspond au recepteur RX"
+    return None
+
+
 @router.get("/verify-port")
 async def verify_port(port: str):
     """Verify a port is safe to flash -- not a system/enrolled device."""
@@ -236,6 +285,11 @@ async def verify_port(port: str):
     block = reserved.get(port) or reserved.get(real)
     if block:
         return {"safe": False, "reason": block, "port": port, "real": real}
+
+    # Also check USB serial fingerprint
+    rx_match = _check_usb_serial_is_rx(port)
+    if rx_match:
+        return {"safe": False, "reason": rx_match, "port": port, "real": real}
 
     # Get device info via udevadm
     info: dict[str, str] = {}
@@ -286,6 +340,15 @@ async def flash_device(req: FlashRequest):
         raise HTTPException(
             status_code=400,
             detail=f"Port {req.port} ({target_real}) est {block_reason}. Impossible de flasher dessus."
+        )
+
+    # Extra safety: check USB serial fingerprint matches a known RX device
+    rx_match = _check_usb_serial_is_rx(req.port)
+    if rx_match:
+        print(f"[THEIA] FLASH BLOCKED by USB serial: {req.port} -> {rx_match}")
+        raise HTTPException(
+            status_code=400,
+            detail=f"SECURITE: {req.port} est identifie comme le RX ({rx_match}). Flash bloque."
         )
 
     print(f"[THEIA] Flash target: {req.port} -> {target_real} (not reserved, {len(reserved)} reserved paths checked)")
@@ -394,7 +457,7 @@ async def flash_device(req: FlashRequest):
 
         yield f"data: [STEP] Compilation reussie ({used_fqbn}). Upload vers {req.port}...\n\n"
 
-        # ── PRE-UPLOAD SAFETY: FULL re-check (symlinks + enrolled devices) ──
+        # ── PRE-UPLOAD SAFETY: FULL re-check (symlinks + enrolled devices + USB serial) ──
         # USB re-enumeration may have swapped port assignments since detection
         pre_reserved = await _build_reserved_map(db)
         current_real = os.path.realpath(req.port)
@@ -404,7 +467,14 @@ async def flash_device(req: FlashRequest):
             yield "data: [DONE] FAIL\n\n"
             shutil.rmtree(tmp_dir, ignore_errors=True)
             return
-        yield f"data: [INFO] Port verifie: {req.port} -> {current_real} (OK)\n\n"
+        # Also re-check USB serial fingerprint
+        pre_rx = _check_usb_serial_is_rx(req.port)
+        if pre_rx:
+            yield f"data: [ERROR] SECURITE: {req.port} identifie comme RX ({pre_rx}). Flash annule.\n\n"
+            yield "data: [DONE] FAIL\n\n"
+            shutil.rmtree(tmp_dir, ignore_errors=True)
+            return
+        yield f"data: [INFO] Port verifie: {req.port} -> {current_real} (OK, USB serial check OK)\n\n"
 
         # Upload
         upload_cmd = [cli, "upload", "--fqbn", used_fqbn, "-p", req.port, tmp_sketch_dir]

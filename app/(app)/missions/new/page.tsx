@@ -131,15 +131,20 @@ export default function NewMissionPage() {
     setSaving(true)
     try {
       const mission = await createMission(form)
-      // If plan type, upload the plan image
+      // If plan type, upload the plan image BEFORE redirecting
       if (form.environment === "plan" && planFile && mission.id) {
         const fd = new FormData()
         fd.append("file", planFile)
         try {
           const uploadRes = await fetch(`/api/missions/${mission.id}/plan-image`, { method: "POST", body: fd })
-          if (!uploadRes.ok) console.error("Plan image upload failed")
+          if (!uploadRes.ok) {
+            const errTxt = await uploadRes.text().catch(() => "")
+            console.error("[v0] Plan image upload failed:", uploadRes.status, errTxt)
+          } else {
+            console.log("[v0] Plan image uploaded successfully")
+          }
         } catch (err) {
-          console.error("Plan image upload error:", err)
+          console.error("[v0] Plan image upload error:", err)
         }
       }
       router.push(`/missions/${mission.id}`)

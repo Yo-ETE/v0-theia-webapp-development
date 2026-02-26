@@ -16,10 +16,14 @@ export async function proxyToBackend(
 ): Promise<Response> {
   const url = `${getBackendUrl()}${path}`
   // Don't set Content-Type for FormData (let fetch set the multipart boundary)
+  // Don't set Content-Type for GET requests (no body)
+  const method = (init?.method || "GET").toUpperCase()
   const isFormData = typeof FormData !== "undefined" && init?.body instanceof FormData
   const headers: Record<string, string> = isFormData
     ? {}
-    : { "Content-Type": "application/json" }
+    : method === "GET" || method === "HEAD" || !init?.body
+      ? {}
+      : { "Content-Type": "application/json" }
   return fetch(url, {
     ...init,
     headers: {

@@ -6,13 +6,21 @@ export async function POST(
   { params }: { params: Promise<{ id: string }> },
 ) {
   const { id } = await params
-  const formData = await request.formData()
+  
+  // Read the raw body and re-forward it to the backend
+  // We can't use formData() and re-send because Node fetch may lose boundaries
+  const contentType = request.headers.get("content-type") || ""
+  console.log("[v0] Plan image upload proxy: id=", id, "content-type=", contentType)
 
   try {
+    // Forward raw body with original content-type to preserve multipart boundary
+    const rawBody = await request.arrayBuffer()
     const res = await proxyToBackend(`/api/missions/${id}/plan-image`, {
       method: "POST",
-      body: formData,
-      // Don't set Content-Type -- let fetch set multipart boundary automatically
+      body: rawBody,
+      headers: {
+        "Content-Type": contentType,
+      },
     })
     if (!res.ok) {
       const text = await res.text().catch(() => "")
@@ -32,8 +40,12 @@ export async function GET(
   const { id } = await params
 
   try {
-    const res = await proxyToBackend(`/api/missions/${id}/plan-image/file`)
+    // Backend endpoint is at /api/missions/{id}/plan-image/file
+    const res = await proxyToBackend(`/api/missions/${id}/plan-image/file`, {
+      method: "GET",
+    })
     if (!res.ok) {
+      console.error("[THEIA] Plan image GET failed:", res.status)
       return NextResponse.json({ error: "Not found" }, { status: 404 })
     }
     const blob = await res.blob()

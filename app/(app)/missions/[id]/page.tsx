@@ -712,7 +712,9 @@ export default function MissionDetailPage() {
   const env = mission?.environment ?? "habitation"
   const isFloorMode = env === "vertical" || env === "etages" || env === "garage"
   const isPlanMode = env === "plan"
-  const planImageUrl = mission?.plan_image || null
+  // plan_image from backend is "/api/missions/{id}/plan-image/file" or null
+  // We always use our Next.js proxy GET route if the mission has a plan_image set
+  const planImageUrl = mission?.plan_image ? `/api/missions/${id}/plan-image` : null
   const floorMode: "floor" | "section" = (env === "garage") ? "section" : "floor"
   const missionFloors = mission?.floors ?? []
 

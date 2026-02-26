@@ -117,11 +117,29 @@ export function PlanEditor({
   const scale = containerW > 0 && imgSize.w > 0 ? containerW / imgSize.w : 1
   const displayH = imgSize.h * scale
 
+  const [imgError, setImgError] = useState(false)
+  const [imgLoading, setImgLoading] = useState(true)
+
   // Load image dimensions
   useEffect(() => {
-    const img = new Image()
+    if (!resolvedImage) {
+      setImgLoading(false)
+      setImgError(true)
+      return
+    }
+    setImgLoading(true)
+    setImgError(false)
+    const img = new window.Image()
     img.crossOrigin = "anonymous"
-    img.onload = () => setImgSize({ w: img.naturalWidth, h: img.naturalHeight })
+    img.onload = () => {
+      setImgSize({ w: img.naturalWidth, h: img.naturalHeight })
+      setImgLoading(false)
+    }
+    img.onerror = () => {
+      console.error("[v0] PlanEditor: failed to load image:", resolvedImage)
+      setImgError(true)
+      setImgLoading(false)
+    }
     img.src = resolvedImage
   }, [resolvedImage])
 
@@ -304,6 +322,29 @@ export function PlanEditor({
   const activeZones = editingZoneId && editPoly
     ? zones.map(z => z.id === editingZoneId ? { ...z, polygon: editPoly } : z)
     : zones
+
+  // Loading / error states
+  if (imgLoading || (!resolvedImage && !imgError)) {
+    return (
+      <div ref={containerRef} className={cn("flex items-center justify-center rounded-lg bg-muted/10 min-h-[300px]", className)}>
+        <div className="flex flex-col items-center gap-2 text-muted-foreground">
+          <div className="h-6 w-6 animate-spin rounded-full border-2 border-muted-foreground border-t-transparent" />
+          <p className="text-xs">Chargement du plan...</p>
+        </div>
+      </div>
+    )
+  }
+
+  if (imgError) {
+    return (
+      <div ref={containerRef} className={cn("flex items-center justify-center rounded-lg bg-muted/10 min-h-[300px] border-2 border-dashed border-border/50", className)}>
+        <div className="flex flex-col items-center gap-2 text-muted-foreground">
+          <p className="text-sm font-medium">Image du plan introuvable</p>
+          <p className="text-xs">Importez un plan via le bouton ci-dessous</p>
+        </div>
+      </div>
+    )
+  }
 
   return (
     <div
