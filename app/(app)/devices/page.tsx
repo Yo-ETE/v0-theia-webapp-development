@@ -129,20 +129,20 @@ export default function DevicesPage() {
         if (newPort) {
           setDetectedPort(newPort)
           setFlashForm(f => ({ ...f, port: newPort!.port, port_serial: newPort!.usb_serial || "" }))
-          const macInfo = newPort.esp32_mac ? ` MAC=${newPort.esp32_mac}` : ""
-          const macWarn = newPort.mac_warning ? ` [${newPort.mac_warning}]` : ""
-          setUsbDebug(`Detecte: ${newPort.port} (${newPort.real})${macInfo}${macWarn}`)
+          setUsbDebug(`Detecte: ${newPort.port} (${newPort.real})`)
           clearInterval(interval)
         } else {
-          const macExcluded = (data.mac_excluded || []).map((m: { port: string; mac: string }) => `${m.port.replace("/dev/","")}(RX:${m.mac.slice(-8)})`).join(", ")
           const skippedPorts = skipped.map((s: { port: string; reason: string }) => `${s.port.replace("/dev/","")}(${s.reason})`).join(", ")
-          const filteredInfo = [skippedPorts, macExcluded].filter(Boolean).join(", ")
-          setUsbDebug(`Recherche... ${currentRawCount} raw, ${portList.length} libres${filteredInfo ? ` | Filtres: ${filteredInfo}` : ""}`)
+          const bridgePorts = (data.bridge_ports || []).map((p: string) => p.replace("/dev/","")).join(", ")
+          const debugParts = [`${currentRawCount} raw, ${portList.length} libres`]
+          if (skippedPorts) debugParts.push(`Filtres: ${skippedPorts}`)
+          if (bridgePorts) debugParts.push(`RX bridge: ${bridgePorts}`)
+          setUsbDebug(`Recherche... ${debugParts.join(" | ")}`)
         }
       } catch (err) {
         setUsbDebug(`Erreur poll: ${err instanceof Error ? err.message : String(err)}`)
       }
-    }, 5000)  // 5s to allow time for MAC verification per port
+    }, 2000)  // 2s poll -- no heavy esptool calls, just bridge port check
 
     return () => { cancelled = true; clearInterval(interval) }
   }, [flashOpen, wizardStep, backendBase])

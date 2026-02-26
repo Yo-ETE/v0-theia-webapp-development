@@ -132,49 +132,49 @@ async def get_rx_mac_endpoint():
     return {"mac": mac, "stored": mac is not None}
 
 
-# ── MAC cache: avoid disrupting LoRa reader by re-reading same ports ──
-_mac_cache: dict[str, str | None] = {}  # realpath -> MAC (or None if read failed)
-_mac_cache_ts: dict[str, float] = {}    # realpath -> timestamp of last read
-MAC_CACHE_TTL = 300  # 5 minutes: re-read only after this long
-
-
-_last_port_count: int = 0  # track USB port count to detect plug/unplug events
+def _get_bridge_ports() -> set[str]:
+    """Get the set of real paths currently held open by the LoRa bridge.
+    Any port in this set is the RX -- do NOT flash it."""
+    try:
+        from backend.services.lora_bridge import lora_bridge
+        bridge_reals: set[str] = set()
+        for port_path in lora_bridge._readers.keys():
+            bridge_reals.add(os.path.realpath(port_path))
+            bridge_reals.add(port_path)
+        return bridge_reals
+    except Exception:
+        return set()
 
 
 @router.get("/ports")
 async def list_ports():
-    """List available USB serial ports, excluding system ports (GPS, RX).
+    """List available USB serial ports for flashing new TX devices.
 
-    Logic:
-    1. Resolve GPS symlink to exclude (NOT RX -- symlinks are unreliable after re-enum).
-    2. Exclude enrolled device ports.
-    3. Scan /dev/ttyUSB* and /dev/ttyACM*, exclude GPS and enrolled.
-    4. Use cached ESP32 MAC to definitively exclude the RX (no symlink dependency).
-       Cache is invalidated when port count changes (device plugged/unplugged).
+    Exclusion strategy (in order of reliability):
+    1. GPS symlink (/dev/theia-gps) -- always reliable for GPS.
+    2. LoRa bridge active ports -- the bridge holds the RX port open,
+       so any port in its _readers dict IS the RX regardless of ttyUSB numbering.
+       This is the ONLY reliable way to identify the RX after USB re-enumeration
+       (symlinks and MAC addresses are unreliable for identical ESP32 boards).
+    3. Enrolled device ports from DB.
     """
     import subprocess
-    import time as _time
-    global _last_port_count
 
-    # Detect port count change -> invalidate MAC cache
-    current_count = len(glob.glob("/dev/ttyUSB*")) + len(glob.glob("/dev/ttyACM*"))
-    if current_count != _last_port_count:
-        print(f"[THEIA] USB port count changed: {_last_port_count} -> {current_count}, clearing MAC cache")
-        _mac_cache.clear()
-        _mac_cache_ts.clear()
-        _last_port_count = current_count
-
-    # ── Step 1: only exclude GPS symlink (NOT theia-rx, it's unreliable) ──
+    # ── Step 1: GPS symlink exclusion ──
     gps_reserved: set[str] = set()
     system_symlinks: dict[str, str] = {}
     for symlink in sorted(glob.glob("/dev/theia-*")):
         real = os.path.realpath(symlink)
         system_symlinks[symlink] = real
-        # Only GPS is excluded by symlink -- RX exclusion is done by MAC
         if "gps" in symlink:
             gps_reserved.add(real)
 
-    # ── Step 2: also reserve ports used by enrolled devices ──
+    # ── Step 2: LoRa bridge active ports = RX (definitive) ──
+    bridge_ports = _get_bridge_ports()
+    if bridge_ports:
+        print(f"[THEIA] list_ports: bridge holds ports: {bridge_ports}")
+
+    # ── Step 3: enrolled device ports from DB ──
     db = await get_db()
     enrolled_ports: set[str] = set()
     try:
@@ -190,17 +190,22 @@ async def list_ports():
     except Exception:
         pass
 
-    all_reserved = gps_reserved | enrolled_ports
+    all_reserved = gps_reserved | bridge_ports | enrolled_ports
 
-    # ── Step 3: scan raw ttyUSB/ttyACM ports, filter out GPS + enrolled ──
-    candidates = []
+    # ── Step 4: scan raw ttyUSB/ttyACM ports, filter out reserved ──
+    ports = []
     skipped: list[dict] = []
     for pattern in ["/dev/ttyUSB*", "/dev/ttyACM*"]:
         for p in sorted(glob.glob(pattern)):
             real = os.path.realpath(p)
 
             if real in all_reserved or p in all_reserved:
-                reason = "gps" if real in gps_reserved else "enrolled"
+                if real in gps_reserved:
+                    reason = "gps"
+                elif real in bridge_ports or p in bridge_ports:
+                    reason = "rx-bridge"
+                else:
+                    reason = "enrolled"
                 skipped.append({"port": p, "real": real, "reason": reason})
                 continue
 
@@ -247,53 +252,7 @@ async def list_ports():
                 parts.append(f"{info['vid']}:{info['pid']}")
             info["summary"] = " - ".join(parts) if parts else os.path.basename(p)
 
-            candidates.append(info)
-
-    # ── Step 4: MAC-based RX exclusion (cached to avoid disrupting LoRa reader) ──
-    rx_mac = _get_rx_mac()
-    mac_excluded: list[dict] = []
-    ports = []
-    now = _time.time()
-
-    # Clean stale cache entries (ports that no longer exist)
-    current_reals = {info["real"] for info in candidates}
-    for cached_real in list(_mac_cache.keys()):
-        if cached_real not in current_reals:
-            del _mac_cache[cached_real]
-            _mac_cache_ts.pop(cached_real, None)
-
-    for info in candidates:
-        real = info["real"]
-        cached_mac = _mac_cache.get(real)
-        cache_age = now - _mac_cache_ts.get(real, 0)
-
-        if real in _mac_cache and cache_age < MAC_CACHE_TTL:
-            # Use cached result
-            info["esp32_mac"] = cached_mac
-            if cached_mac and rx_mac and cached_mac == rx_mac:
-                mac_excluded.append({"port": info["port"], "mac": cached_mac, "reason": "MAC matches RX (cached)"})
-                continue
-        elif rx_mac:
-            # Need to read MAC -- only do this for uncached/expired ports
-            try:
-                port_mac = await _read_esp32_mac(info["port"])
-                _mac_cache[real] = port_mac
-                _mac_cache_ts[real] = now
-                info["esp32_mac"] = port_mac
-                if port_mac and port_mac == rx_mac:
-                    mac_excluded.append({"port": info["port"], "mac": port_mac, "reason": "MAC matches RX"})
-                    print(f"[THEIA] list_ports: EXCLUDED {info['port']} (MAC {port_mac} = RX)")
-                    continue
-                elif port_mac:
-                    print(f"[THEIA] list_ports: {info['port']} MAC={port_mac} (not RX, OK)")
-                else:
-                    info["mac_warning"] = "Impossible de lire le MAC (port occupe?)"
-                    print(f"[THEIA] list_ports: {info['port']} MAC read failed (port busy?)")
-            except Exception as e:
-                info["mac_warning"] = f"Erreur MAC: {e}"
-                print(f"[THEIA] list_ports: MAC check error on {info['port']}: {e}")
-
-        ports.append(info)
+            ports.append(info)
 
     # ── Step 5: baseline snapshot ──
     all_raw_reals: list[str] = []
@@ -303,16 +262,15 @@ async def list_ports():
 
     return {
         "ports": ports,
-        "rx_mac": rx_mac,
         "system": [
             {"symlink": k, "real": v, "role": k.replace("/dev/theia-", "")}
             for k, v in system_symlinks.items()
         ],
+        "bridge_ports": sorted(bridge_ports),
         "system_reals": sorted(gps_reserved),
         "enrolled_count": len(enrolled_ports) // 2,
         "all_raw": all_raw_reals,
         "skipped": skipped,
-        "mac_excluded": mac_excluded,
     }
 
 
@@ -469,17 +427,10 @@ async def verify_port(port: str):
     if block:
         return {"safe": False, "reason": block, "port": port, "real": real}
 
-    # Also check USB serial fingerprint
-    rx_match = _check_usb_serial_is_rx(port)
-    if rx_match:
-        return {"safe": False, "reason": rx_match, "port": port, "real": real}
-
-    # Definitive check: ESP32 MAC vs stored RX MAC
-    rx_mac = _get_rx_mac()
-    if rx_mac:
-        port_mac = await _read_esp32_mac(port)
-        if port_mac and port_mac == rx_mac:
-            return {"safe": False, "reason": f"MAC ESP32 ({port_mac}) correspond au RX", "port": port, "real": real}
+    # Definitive check: is this port held open by the LoRa bridge?
+    bridge_ports = _get_bridge_ports()
+    if real in bridge_ports or port in bridge_ports:
+        return {"safe": False, "reason": "Port utilise par le recepteur LoRa (bridge actif)", "port": port, "real": real}
 
     # Get device info via udevadm
     info: dict[str, str] = {}
@@ -680,65 +631,23 @@ async def flash_device(req: FlashRequest):
             yield "data: [DONE] FAIL\n\n"
             shutil.rmtree(tmp_dir, ignore_errors=True)
             return
-        # Also re-check USB serial fingerprint
-        pre_rx = _check_usb_serial_is_rx(req.port)
-        if pre_rx:
-            yield f"data: [ERROR] SECURITE: {req.port} identifie comme RX ({pre_rx}). Flash annule.\n\n"
-            yield "data: [DONE] FAIL\n\n"
-            shutil.rmtree(tmp_dir, ignore_errors=True)
-            return
-        # Log USB device identity for debugging
-        target_serial = _get_usb_serial(req.port)
-        rx_real = os.path.realpath("/dev/theia-rx") if os.path.exists("/dev/theia-rx") else "N/A"
-        rx_serial = _get_usb_serial("/dev/theia-rx") if os.path.exists("/dev/theia-rx") else "N/A"
-        yield f"data: [INFO] Port verifie: {req.port} -> {current_real} (serial={target_serial})\n\n"
-        yield f"data: [INFO] RX: /dev/theia-rx -> {rx_real} (serial={rx_serial})\n\n"
-        print(f"[THEIA] Pre-flash: target={req.port}({current_real}) serial={target_serial}, RX={rx_real} serial={rx_serial}")
+        # ── DEFINITIVE SAFETY: check if target port is held by LoRa bridge ──
+        # The bridge holds the RX serial port open. If the target port's realpath
+        # matches any port the bridge is reading, it IS the RX.
+        bridge_ports = _get_bridge_ports()
+        yield f"data: [INFO] Port cible: {req.port} -> {current_real}\n\n"
+        yield f"data: [INFO] Ports bridge (RX): {sorted(bridge_ports) if bridge_ports else 'aucun'}\n\n"
+        print(f"[THEIA] Pre-flash: target={req.port}({current_real}), bridge_ports={bridge_ports}")
 
-        # SAFETY: verify USB identity hasn't changed since detection (port re-enumeration guard)
-        if req.port_serial and target_serial and req.port_serial != target_serial:
-            msg = f"SECURITE: Le port {req.port} a change d'identite USB depuis la detection! " \
-                  f"Attendu: {req.port_serial}, Actuel: {target_serial}. " \
-                  f"Les ports USB ont ete re-enumeres. Flash annule."
-            print(f"[THEIA] FLASH BLOCKED (identity drift): {msg}")
+        if current_real in bridge_ports or req.port in bridge_ports:
+            msg = f"SECURITE: {req.port} ({current_real}) est actuellement utilise par le recepteur LoRa. Flash ANNULE."
+            print(f"[THEIA] FLASH BLOCKED (port held by bridge): {msg}")
             yield f"data: [ERROR] {msg}\n\n"
             yield "data: [DONE] FAIL\n\n"
             shutil.rmtree(tmp_dir, ignore_errors=True)
             return
-
-        # SAFETY: confirm target serial is NOT the RX serial
-        if target_serial and rx_serial and target_serial != "N/A" and rx_serial != "N/A" and target_serial == rx_serial:
-            msg = f"SECURITE: Le port {req.port} a le meme identifiant USB que le RX ({target_serial}). Flash annule."
-            print(f"[THEIA] FLASH BLOCKED (same serial as RX): {msg}")
-            yield f"data: [ERROR] {msg}\n\n"
-            yield "data: [DONE] FAIL\n\n"
-            shutil.rmtree(tmp_dir, ignore_errors=True)
-            return
-
-        # ── DEFINITIVE SAFETY: ESP32 MAC address check ──
-        # This reads the actual chip identity via esptool, NOT the USB bus path.
-        # It's the only 100% reliable way to distinguish two identical ESP32 boards.
-        rx_mac = _get_rx_mac()
-        if rx_mac:
-            yield f"data: [INFO] Verification MAC ESP32 sur {req.port}...\n\n"
-            target_mac = await _read_esp32_mac(req.port)
-            if target_mac:
-                yield f"data: [INFO] MAC cible: {target_mac}, MAC RX connu: {rx_mac}\n\n"
-                print(f"[THEIA] MAC check: target={target_mac}, RX={rx_mac}")
-                if target_mac == rx_mac:
-                    msg = f"SECURITE CRITIQUE: Le device sur {req.port} a le meme MAC que le RX ({rx_mac}). " \
-                          f"C'est le recepteur LoRa! Flash ANNULE."
-                    print(f"[THEIA] FLASH BLOCKED (MAC = RX): {msg}")
-                    yield f"data: [ERROR] {msg}\n\n"
-                    yield "data: [DONE] FAIL\n\n"
-                    shutil.rmtree(tmp_dir, ignore_errors=True)
-                    return
-                else:
-                    yield f"data: [INFO] MAC OK: {target_mac} != RX ({rx_mac})\n\n"
-            else:
-                yield f"data: [WARN] Impossible de lire le MAC ESP32 sur {req.port}. Continuer avec prudence.\n\n"
         else:
-            yield f"data: [WARN] MAC du RX non enregistre. Utilisez Administration > Capturer MAC RX.\n\n"
+            yield f"data: [INFO] Port {req.port} libre (pas utilise par le bridge RX)\n\n"
 
         # Upload
         upload_cmd = [cli, "upload", "--fqbn", used_fqbn, "-p", req.port, tmp_sketch_dir]

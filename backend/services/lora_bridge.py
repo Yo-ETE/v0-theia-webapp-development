@@ -13,7 +13,6 @@ Port detection:
 - Fallback: scans /dev/ttyUSB* + /dev/ttyACM*, excludes GPS_DEVICE.
 """
 import asyncio
-import shutil
 import glob
 import json
 import math
@@ -744,43 +743,8 @@ class LoRaBridge:
                 if udev_ok:
                     real = os.path.realpath(self.THEIA_RX_SYMLINK)
                     print(f"[THEIA] Port scan: /dev/theia-rx -> {real}")
-                    # Auto-capture RX ESP32 MAC at startup for flash safety
-                    try:
-                        rx_mac_file = os.path.join(os.getenv("THEIA_DATA_DIR", "/opt/theia/data"), "rx_mac.txt")
-                        has_mac = os.path.isfile(rx_mac_file) and len(open(rx_mac_file).read().strip()) == 17
-                        if not has_mac:
-                            print("[THEIA] RX MAC not stored yet, capturing via esptool...")
-                            esptool = shutil.which("esptool") or shutil.which("esptool.py")
-                            if not esptool:
-                                for p in glob.glob(os.path.expanduser("~/.arduino15/packages/esp32/tools/esptool_py/*/esptool")):
-                                    if os.path.isfile(p):
-                                        esptool = p
-                                        break
-                            if esptool:
-                                import subprocess as _sp
-                                result = _sp.run([esptool, "--port", real, "--no-stub", "read_mac"],
-                                                 capture_output=True, text=True, timeout=10)
-                                mac = None
-                                for line in result.stdout.splitlines():
-                                    if "MAC:" in line.upper():
-                                        parts_l = line.split("MAC:")
-                                        if len(parts_l) > 1:
-                                            m = parts_l[1].strip().lower()
-                                            if len(m) == 17 and m.count(":") == 5:
-                                                mac = m
-                                if mac:
-                                    os.makedirs(os.path.dirname(rx_mac_file), exist_ok=True)
-                                    with open(rx_mac_file, "w") as f:
-                                        f.write(mac)
-                                    print(f"[THEIA] RX MAC auto-captured: {mac}")
-                                else:
-                                    print(f"[THEIA] Could not read RX MAC. stdout={result.stdout[:200]}")
-                            else:
-                                print("[THEIA] esptool not found, cannot auto-capture RX MAC")
-                        else:
-                            print(f"[THEIA] RX MAC already stored: {open(rx_mac_file).read().strip()}")
-                    except Exception as e:
-                        print(f"[THEIA] RX MAC auto-capture error: {e}")
+                    # RX identification is now done via bridge port tracking (not MAC)
+                    # Bridge _readers dict contains the actual RX port after connection
                 else:
                     by_id = [os.path.basename(p) for p in glob.glob("/dev/serial/by-id/*")]
                     print(f"[THEIA] Port scan: /dev/theia-rx NOT found, by-id={by_id}, selected={ports}")
