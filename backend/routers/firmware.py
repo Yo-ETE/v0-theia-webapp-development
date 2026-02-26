@@ -132,26 +132,47 @@ async def get_rx_mac_endpoint():
     return {"mac": mac, "stored": mac is not None}
 
 
+# ── MAC cache: avoid disrupting LoRa reader by re-reading same ports ──
+_mac_cache: dict[str, str | None] = {}  # realpath -> MAC (or None if read failed)
+_mac_cache_ts: dict[str, float] = {}    # realpath -> timestamp of last read
+MAC_CACHE_TTL = 300  # 5 minutes: re-read only after this long
+
+
+_last_port_count: int = 0  # track USB port count to detect plug/unplug events
+
+
 @router.get("/ports")
 async def list_ports():
     """List available USB serial ports, excluding system ports (GPS, RX).
 
     Logic:
-    1. Resolve all /dev/theia-* symlinks to build a set of "reserved" real paths.
-    2. Scan /dev/ttyUSB* and /dev/ttyACM* raw ports.
-    3. Exclude any raw port whose realpath matches a reserved system symlink.
-    4. Exclude any raw port already used by an enrolled device in the DB.
-    5. Show the remaining "free" ports with USB device identification.
+    1. Resolve GPS symlink to exclude (NOT RX -- symlinks are unreliable after re-enum).
+    2. Exclude enrolled device ports.
+    3. Scan /dev/ttyUSB* and /dev/ttyACM*, exclude GPS and enrolled.
+    4. Use cached ESP32 MAC to definitively exclude the RX (no symlink dependency).
+       Cache is invalidated when port count changes (device plugged/unplugged).
     """
     import subprocess
+    import time as _time
+    global _last_port_count
 
-    # ── Step 1: build reserved real-path set from /dev/theia-* symlinks ──
-    reserved_real_paths: set[str] = set()
-    system_symlinks: dict[str, str] = {}  # symlink -> real
+    # Detect port count change -> invalidate MAC cache
+    current_count = len(glob.glob("/dev/ttyUSB*")) + len(glob.glob("/dev/ttyACM*"))
+    if current_count != _last_port_count:
+        print(f"[THEIA] USB port count changed: {_last_port_count} -> {current_count}, clearing MAC cache")
+        _mac_cache.clear()
+        _mac_cache_ts.clear()
+        _last_port_count = current_count
+
+    # ── Step 1: only exclude GPS symlink (NOT theia-rx, it's unreliable) ──
+    gps_reserved: set[str] = set()
+    system_symlinks: dict[str, str] = {}
     for symlink in sorted(glob.glob("/dev/theia-*")):
         real = os.path.realpath(symlink)
-        reserved_real_paths.add(real)
         system_symlinks[symlink] = real
+        # Only GPS is excluded by symlink -- RX exclusion is done by MAC
+        if "gps" in symlink:
+            gps_reserved.add(real)
 
     # ── Step 2: also reserve ports used by enrolled devices ──
     db = await get_db()
@@ -169,18 +190,17 @@ async def list_ports():
     except Exception:
         pass
 
-    all_reserved = reserved_real_paths | enrolled_ports
+    all_reserved = gps_reserved | enrolled_ports
 
-    # ── Step 3: scan raw ttyUSB/ttyACM ports, filter out reserved ──
-    ports = []
-    skipped: list[dict] = []  # for debug
+    # ── Step 3: scan raw ttyUSB/ttyACM ports, filter out GPS + enrolled ──
+    candidates = []
+    skipped: list[dict] = []
     for pattern in ["/dev/ttyUSB*", "/dev/ttyACM*"]:
         for p in sorted(glob.glob(pattern)):
             real = os.path.realpath(p)
 
-            # Skip if this real path is a known system device or enrolled device
             if real in all_reserved or p in all_reserved:
-                reason = "system" if real in reserved_real_paths else "enrolled"
+                reason = "gps" if real in gps_reserved else "enrolled"
                 skipped.append({"port": p, "real": real, "reason": reason})
                 continue
 
@@ -190,7 +210,6 @@ async def list_ports():
                 "manufacturer": "", "description": "",
             }
 
-            # USB device info via udevadm
             try:
                 result = subprocess.run(
                     ["udevadm", "info", "-a", real],
@@ -209,7 +228,6 @@ async def list_ports():
             except Exception:
                 pass
 
-            # Human-readable link from /dev/serial/by-id/
             try:
                 for link in glob.glob("/dev/serial/by-id/*"):
                     if os.path.realpath(link) == real:
@@ -218,10 +236,8 @@ async def list_ports():
             except Exception:
                 pass
 
-            # Add USB serial identity for safety tracking
             info["usb_serial"] = _get_usb_serial(real)
 
-            # Build summary
             parts = []
             if info["description"]:
                 parts.append(info["description"])
@@ -231,16 +247,38 @@ async def list_ports():
                 parts.append(f"{info['vid']}:{info['pid']}")
             info["summary"] = " - ".join(parts) if parts else os.path.basename(p)
 
-            ports.append(info)
+            candidates.append(info)
 
-    # ── Step 4: MAC-based exclusion (definitive, survives USB re-enumeration) ──
+    # ── Step 4: MAC-based RX exclusion (cached to avoid disrupting LoRa reader) ──
     rx_mac = _get_rx_mac()
     mac_excluded: list[dict] = []
-    if rx_mac and ports:
-        safe_ports = []
-        for info in ports:
+    ports = []
+    now = _time.time()
+
+    # Clean stale cache entries (ports that no longer exist)
+    current_reals = {info["real"] for info in candidates}
+    for cached_real in list(_mac_cache.keys()):
+        if cached_real not in current_reals:
+            del _mac_cache[cached_real]
+            _mac_cache_ts.pop(cached_real, None)
+
+    for info in candidates:
+        real = info["real"]
+        cached_mac = _mac_cache.get(real)
+        cache_age = now - _mac_cache_ts.get(real, 0)
+
+        if real in _mac_cache and cache_age < MAC_CACHE_TTL:
+            # Use cached result
+            info["esp32_mac"] = cached_mac
+            if cached_mac and rx_mac and cached_mac == rx_mac:
+                mac_excluded.append({"port": info["port"], "mac": cached_mac, "reason": "MAC matches RX (cached)"})
+                continue
+        elif rx_mac:
+            # Need to read MAC -- only do this for uncached/expired ports
             try:
                 port_mac = await _read_esp32_mac(info["port"])
+                _mac_cache[real] = port_mac
+                _mac_cache_ts[real] = now
                 info["esp32_mac"] = port_mac
                 if port_mac and port_mac == rx_mac:
                     mac_excluded.append({"port": info["port"], "mac": port_mac, "reason": "MAC matches RX"})
@@ -249,17 +287,15 @@ async def list_ports():
                 elif port_mac:
                     print(f"[THEIA] list_ports: {info['port']} MAC={port_mac} (not RX, OK)")
                 else:
-                    # esptool failed - port might be busy (LoRa bridge using it = likely RX)
-                    # Mark as warning but still include (user can decide)
                     info["mac_warning"] = "Impossible de lire le MAC (port occupe?)"
                     print(f"[THEIA] list_ports: {info['port']} MAC read failed (port busy?)")
             except Exception as e:
                 info["mac_warning"] = f"Erreur MAC: {e}"
                 print(f"[THEIA] list_ports: MAC check error on {info['port']}: {e}")
-            safe_ports.append(info)
-        ports = safe_ports
 
-    # ── Step 5: build the full list of raw USB real paths (for baseline snapshot) ──
+        ports.append(info)
+
+    # ── Step 5: baseline snapshot ──
     all_raw_reals: list[str] = []
     for pattern in ["/dev/ttyUSB*", "/dev/ttyACM*"]:
         for p in sorted(glob.glob(pattern)):
@@ -272,11 +308,11 @@ async def list_ports():
             {"symlink": k, "real": v, "role": k.replace("/dev/theia-", "")}
             for k, v in system_symlinks.items()
         ],
-        "system_reals": sorted(reserved_real_paths),  # real paths of ALL system devices
-        "enrolled_count": len(enrolled_ports) // 2,  # each device has port + real
-        "all_raw": all_raw_reals,  # complete snapshot of all plugged USB serial devices
-        "skipped": skipped,  # debug: which ports were filtered out and why
-        "mac_excluded": mac_excluded,  # ports excluded by MAC check
+        "system_reals": sorted(gps_reserved),
+        "enrolled_count": len(enrolled_ports) // 2,
+        "all_raw": all_raw_reals,
+        "skipped": skipped,
+        "mac_excluded": mac_excluded,
     }
 
 
@@ -368,21 +404,25 @@ _rx_usb_serials: set[str] = set()
 
 async def _build_reserved_map(db) -> dict[str, str]:
     """Build a map of reserved port paths -> reason label.
-    Also fingerprints system devices by USB serial number."""
+    NOTE: Only GPS is reserved by symlink. RX is excluded by ESP32 MAC check
+    (symlinks are unreliable after USB re-enumeration)."""
     global _rx_usb_serials
     reserved: dict[str, str] = {}
-    # 1) System symlinks -- resolve fresh each time (ALWAYS re-resolve)
+    # 1) System symlinks -- only GPS (NOT RX, symlinks unreliable after re-enum)
     for symlink in glob.glob("/dev/theia-*"):
         real = os.path.realpath(symlink)
         role = symlink.replace("/dev/theia-", "").upper()
-        reserved[symlink] = f"{role} systeme ({symlink})"
-        reserved[real] = f"{role} systeme ({symlink})"
-        # Fingerprint RX with SPECIFIC USB serials only (>= 6 chars, not generic)
-        if "rx" in symlink.lower() and os.path.exists(real):
-            serial = _get_usb_serial(real)
-            if serial:
-                _rx_usb_serials.add(serial)
-                print(f"[THEIA] RX fingerprint: {symlink} -> {real} serial={serial}")
+        # Only reserve non-RX symlinks (GPS, etc.)
+        if "rx" not in symlink.lower():
+            reserved[symlink] = f"{role} systeme ({symlink})"
+            reserved[real] = f"{role} systeme ({symlink})"
+        else:
+            # Still fingerprint RX for USB serial check (secondary safety)
+            if os.path.exists(real):
+                serial = _get_usb_serial(real)
+                if serial:
+                    _rx_usb_serials.add(serial)
+                    print(f"[THEIA] RX fingerprint: {symlink} -> {real} serial={serial}")
     # Save system keys so enrolled devices NEVER overwrite them
     system_keys = set(reserved.keys())
     # 2) Enrolled device ports (lower priority -- never overwrite system)
@@ -433,6 +473,13 @@ async def verify_port(port: str):
     rx_match = _check_usb_serial_is_rx(port)
     if rx_match:
         return {"safe": False, "reason": rx_match, "port": port, "real": real}
+
+    # Definitive check: ESP32 MAC vs stored RX MAC
+    rx_mac = _get_rx_mac()
+    if rx_mac:
+        port_mac = await _read_esp32_mac(port)
+        if port_mac and port_mac == rx_mac:
+            return {"safe": False, "reason": f"MAC ESP32 ({port_mac}) correspond au RX", "port": port, "real": real}
 
     # Get device info via udevadm
     info: dict[str, str] = {}
@@ -618,8 +665,8 @@ async def flash_device(req: FlashRequest):
         # ── PRE-UPLOAD SAFETY: FULL re-check ──
         # USB re-enumeration may have swapped port assignments since detection
         current_real = os.path.realpath(req.port)
-        # Direct symlink check first (most reliable)
-        for symlink in ["/dev/theia-rx", "/dev/theia-gps"]:
+        # Direct symlink check -- GPS only (RX symlink is unreliable after re-enum)
+        for symlink in ["/dev/theia-gps"]:
             if os.path.exists(symlink) and os.path.realpath(symlink) == current_real:
                 role = symlink.replace("/dev/theia-", "").upper()
                 yield f"data: [ERROR] SECURITE: {req.port} ({current_real}) est le {role} systeme. Flash annule.\n\n"
