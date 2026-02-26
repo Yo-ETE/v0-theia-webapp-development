@@ -500,7 +500,13 @@ async def flash_device(req: FlashRequest):
             yield "data: [DONE] FAIL\n\n"
             shutil.rmtree(tmp_dir, ignore_errors=True)
             return
-        yield f"data: [INFO] Port verifie: {req.port} -> {current_real} (OK, USB serial check OK)\n\n"
+        # Log USB device identity for debugging
+        target_serial = _get_usb_serial(req.port)
+        rx_real = os.path.realpath("/dev/theia-rx") if os.path.exists("/dev/theia-rx") else "N/A"
+        rx_serial = _get_usb_serial("/dev/theia-rx") if os.path.exists("/dev/theia-rx") else "N/A"
+        yield f"data: [INFO] Port verifie: {req.port} -> {current_real} (serial={target_serial})\n\n"
+        yield f"data: [INFO] RX: /dev/theia-rx -> {rx_real} (serial={rx_serial})\n\n"
+        print(f"[THEIA] Pre-flash: target={req.port}({current_real}) serial={target_serial}, RX={rx_real} serial={rx_serial}")
 
         # Upload
         upload_cmd = [cli, "upload", "--fqbn", used_fqbn, "-p", req.port, tmp_sketch_dir]

@@ -131,10 +131,10 @@ export default function NewMissionPage() {
     setSaving(true)
     try {
       const mission = await createMission(form)
-      // If plan type, upload the plan image DIRECTLY to backend (avoid Next.js proxy multipart issues)
+      // If plan type, upload the plan image DIRECTLY to backend BEFORE redirecting
       if (form.environment === "plan" && planFile && mission.id) {
         try {
-          const backendBase = typeof window !== "undefined" ? `http://${window.location.hostname}:8000` : ""
+          const backendBase = `http://${window.location.hostname}:8000`
           const uploadRes = await fetch(`${backendBase}/api/missions/${mission.id}/plan-image`, {
             method: "POST",
             headers: {
@@ -147,11 +147,15 @@ export default function NewMissionPage() {
             const errTxt = await uploadRes.text().catch(() => "")
             console.error("[v0] Plan image upload failed:", uploadRes.status, errTxt)
           }
+          // Small delay to ensure file is flushed to disk on the Pi
+          await new Promise(r => setTimeout(r, 500))
         } catch (err) {
           console.error("[v0] Plan image upload error:", err)
         }
       }
-      router.push(`/missions/${mission.id}`)
+      // Add timestamp param so the detail page PlanEditor doesn't use a cached 404
+      const ts = form.environment === "plan" ? `?t=${Date.now()}` : ""
+      router.push(`/missions/${mission.id}${ts}`)
     } catch (err) {
       console.error("Failed to create mission:", err)
     } finally {

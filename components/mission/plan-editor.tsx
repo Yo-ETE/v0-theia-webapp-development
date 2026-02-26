@@ -119,28 +119,56 @@ export function PlanEditor({
 
   const [imgError, setImgError] = useState(false)
   const [imgLoading, setImgLoading] = useState(true)
+  const retryCountRef = useRef(0)
+  const maxRetries = 6
 
-  // Load image dimensions
+  // Load image dimensions -- with automatic retry on failure
   useEffect(() => {
     if (!resolvedImage) {
       setImgLoading(false)
       setImgError(true)
       return
     }
-    setImgLoading(true)
-    setImgError(false)
-    const img = new window.Image()
-    img.crossOrigin = "anonymous"
-    img.onload = () => {
-      setImgSize({ w: img.naturalWidth, h: img.naturalHeight })
-      setImgLoading(false)
+    retryCountRef.current = 0
+    let cancelled = false
+    let retryTimer: ReturnType<typeof setTimeout> | null = null
+
+    function tryLoad() {
+      if (cancelled) return
+      setImgLoading(true)
+      setImgError(false)
+      const img = new window.Image()
+      img.crossOrigin = "anonymous"
+      img.onload = () => {
+        if (cancelled) return
+        setImgSize({ w: img.naturalWidth, h: img.naturalHeight })
+        setImgLoading(false)
+        retryCountRef.current = 0
+      }
+      img.onerror = () => {
+        if (cancelled) return
+        retryCountRef.current++
+        if (retryCountRef.current < maxRetries) {
+          // Retry with increasing delay (1s, 2s, 3s, ...)
+          retryTimer = setTimeout(tryLoad, retryCountRef.current * 1000)
+        } else {
+          console.error("[v0] PlanEditor: failed to load image after retries:", resolvedImage)
+          setImgError(true)
+          setImgLoading(false)
+        }
+      }
+      // Add cache-busting param on retries
+      const sep = resolvedImage.includes("?") ? "&" : "?"
+      img.src = retryCountRef.current > 0
+        ? `${resolvedImage}${sep}_r=${retryCountRef.current}`
+        : resolvedImage
     }
-    img.onerror = () => {
-      console.error("[v0] PlanEditor: failed to load image:", resolvedImage)
-      setImgError(true)
-      setImgLoading(false)
+
+    tryLoad()
+    return () => {
+      cancelled = true
+      if (retryTimer) clearTimeout(retryTimer)
     }
-    img.src = resolvedImage
   }, [resolvedImage])
 
   // Observe container width
