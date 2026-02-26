@@ -1,163 +1,255 @@
-/*
- * THEIA TX Firmware - LD2450 mmWave Radar Sensor
- * Heltec WiFi LoRa 32 V3 (ESP32-S3 + SX1262)
+/**
+ * THEIA TX — Heltec ESP32-S3 LoRa (LoRaWan_APP) + HLK-LD2450 (UART)
+ * -------------------------------------------------------------------
+ * Radar LD2450 sur Serial2
+ * - RX ESP  = GPIO19 (recoit TX du LD2450)
+ * - TX ESP  = GPIO21 (envoie vers RX du LD2450)
  *
- * Uses RadioLib for LoRa (no Heltec SDK dependency).
- * Reads presence/distance/direction from LD2450 via UART
- * and transmits via LoRa to the THEIA RX gateway.
+ * Batterie:
+ * - Module "Voltage Sensor 0-25V" (pont diviseur ~5:1)
+ *   Bornier: VCC<25V = Batt+, GND = Batt-
+ *   Pins:    S -> ADC (GPIO4),  - -> GND Heltec,  + (inutile)
+ *
+ * LoRa payload (format LD45):
+ * - Absent : LD45;__TX_ID__;0;0;0;0;4.02
+ * - Present: LD45;__TX_ID__;X;Y;D;V;4.02   (X,Y,D en cm, V en cm/s)
+ *
+ * Detection (Option B):
+ * - Presence basee sur mouvement humain:
+ *   - vitesse >= V_MIN_CM_S  OU variation position >= 3cm
+ *   - CONFIRM_FRAMES frames consecutives avant passage en presence
+ *   - HOLD_MS maintien apres dernier mouvement
  *
  * TX_ID is replaced at flash time by the THEIA provisioning system.
- *
  * (c) 2026 Yoann ETE - THEIA Project
  */
 
 #include <Arduino.h>
-#include <RadioLib.h>
+#include <LD2450.h>
+#include "LoRaWan_APP.h"
+#include "HT_SSD1306Wire.h"
+#include <math.h>
 
-// ── TX ID (replaced by provisioning) ──────────────
-#define TX_ID       "__TX_ID__"
+// ================= CONFIG =================
+#define TX_ID "__TX_ID__"
 
-// ── LoRa config ───────────────────────────────────
-#define LORA_FREQ   868.0       // MHz EU868
-#define LORA_BW     125.0       // kHz
-#define LORA_SF     7
-#define LORA_CR     5           // 4/5
-#define LORA_TX_PWR 14          // dBm
-#define LORA_SW     0x12        // Sync word
-#define TX_INTERVAL 2000        // ms
+// --- Radar UART ---
+#define RADAR_UART_RX 19
+#define RADAR_UART_TX 21
+#define RADAR_BAUD    115200
 
-// Heltec WiFi LoRa 32 V3 SX1262 pin mapping
-// NSS=8, DIO1=14, RST=12, BUSY=13
-SX1262 radio = new Module(8, 14, 12, 13);
+#define BUTTON_PRG 0
 
-// ── LD2450 UART ───────────────────────────────────
-// GPIO18=RX from sensor, GPIO17=TX to sensor
-#define LD_RX_PIN   18
-#define LD_TX_PIN   17
-#define LD_BAUD     256000
+// --- Batterie (aligne TX02) ---
+#define ADC_BATT_PIN        4
+#define VOLT_SAMPLES        8
+#define VOLT_READ_PERIOD_MS 1000UL
+#define VOLT_DIV_RATIO      5.00f
 
-HardwareSerial LDSerial(1);
+#define BUFFER_SIZE 96
+char txpacket[BUFFER_SIZE];
 
-// LD2450 frame: AA FF 03 00 ... 55 CC (30 bytes)
-#define LD_FRAME_LEN 30
-uint8_t ldBuf[LD_FRAME_LEN];
-int ldIdx = 0;
+// ===== OPTION B (mouvement humain) =====
+#define V_MIN_CM_S      8
+#define HOLD_MS         2500UL
+#define CONFIRM_FRAMES  2
+// ========================================
 
-struct Target {
-  int16_t x;      // mm
-  int16_t y;      // mm (forward distance)
-  int16_t speed;  // cm/s
-};
-Target targets[3];
-int targetCount = 0;
+LD2450 radar;
+SSD1306Wire screen(0x3c, 500000, SDA_OLED, SCL_OLED, GEOMETRY_128_64, RST_OLED);
 
-// ── Battery ───────────────────────────────────────
-// Heltec V3: ADC1 on GPIO1 with voltage divider
-float readBattery() {
-  uint32_t raw = analogRead(1);
-  return (raw / 4095.0) * 3.3 * 2.0;
+// Batterie cache
+static float g_battV = 0.0f;
+static float g_battPct = 0.0f;
+static uint32_t g_lastBattMs = 0;
+
+// Mouvement / presence
+static bool presenceState = false;
+static unsigned long lastMoveMs = 0;
+static int consecutiveMove = 0;
+
+static bool havePrev = false;
+static int prevX = 0, prevY = 0;
+
+static int lastX = 0, lastY = 0, lastD = 0, lastV = 0;
+
+// ------------------ Batterie ------------------
+static float batteryPercentCurve(float v) {
+  if (v >= 4.20f) return 100;
+  if (v >= 4.10f) return 90;
+  if (v >= 4.00f) return 80;
+  if (v >= 3.92f) return 70;
+  if (v >= 3.85f) return 60;
+  if (v >= 3.80f) return 50;
+  if (v >= 3.75f) return 40;
+  if (v >= 3.70f) return 30;
+  if (v >= 3.60f) return 20;
+  if (v >= 3.50f) return 10;
+  return 0;
 }
 
-// ── LD2450 parser ─────────────────────────────────
-bool parseLD2450Frame(uint8_t *buf) {
-  if (buf[0] != 0xAA || buf[1] != 0xFF) return false;
-  if (buf[2] != 0x03 || buf[3] != 0x00) return false;
-  if (buf[28] != 0x55 || buf[29] != 0xCC) return false;
+static float readBatteryVoltage(float* out_vpin = nullptr, uint32_t* out_mv = nullptr) {
+  analogReadResolution(12);
+  analogSetPinAttenuation(ADC_BATT_PIN, ADC_11db);
 
-  targetCount = 0;
-  for (int i = 0; i < 3; i++) {
-    int off = 4 + i * 8;
-    int16_t x  = (int16_t)(buf[off] | (buf[off + 1] << 8));
-    int16_t y  = (int16_t)(buf[off + 2] | (buf[off + 3] << 8));
-    int16_t sp = (int16_t)(buf[off + 4] | (buf[off + 5] << 8));
-
-    if (x & 0x8000) x = -(x & 0x7FFF);
-    if (y & 0x8000) y = -(y & 0x7FFF);
-    if (sp & 0x8000) sp = -(sp & 0x7FFF);
-
-    if (y > 0) {
-      targets[targetCount++] = {x, y, sp};
-    }
+  uint32_t acc = 0;
+  for (int i = 0; i < VOLT_SAMPLES; ++i) {
+    delayMicroseconds(150);
+    acc += analogReadMilliVolts(ADC_BATT_PIN);
   }
-  return true;
+
+  uint32_t mv = (uint32_t)lround(acc / (float)VOLT_SAMPLES);
+  float v_pin = mv / 1000.0f;
+  float v_batt = v_pin * VOLT_DIV_RATIO;
+
+  if (out_vpin) *out_vpin = v_pin;
+  if (out_mv)   *out_mv   = mv;
+
+  return v_batt;
 }
 
-void readLD2450() {
-  while (LDSerial.available()) {
-    uint8_t b = LDSerial.read();
-    if (ldIdx == 0 && b != 0xAA) continue;
-    if (ldIdx == 1 && b != 0xFF) { ldIdx = 0; continue; }
-    ldBuf[ldIdx++] = b;
-    if (ldIdx >= LD_FRAME_LEN) {
-      parseLD2450Frame(ldBuf);
-      ldIdx = 0;
-    }
+static void updateBatteryIfNeeded(uint32_t now) {
+  if (g_lastBattMs == 0 || (now - g_lastBattMs) >= VOLT_READ_PERIOD_MS) {
+    g_lastBattMs = now;
+
+    float vpin = 0.0f;
+    uint32_t mv = 0;
+    g_battV = readBatteryVoltage(&vpin, &mv);
+    g_battPct = batteryPercentCurve(g_battV);
+
+    Serial.printf("[BATT] mv=%lumV vpin=%.3fV vbatt=%.3fV pct=%.0f%% ratio=%.2f\n",
+                  (unsigned long)mv, vpin, g_battV, g_battPct, (float)VOLT_DIV_RATIO);
   }
 }
 
-// ── Packet builder ────────────────────────────────
-// "TX_ID | x=X y=Y spd=S presence=P direction=D distance=CM vbatt=V"
-String buildPacket() {
-  float vbatt = readBattery();
-  String pkt = String(TX_ID) + " | ";
-
-  if (targetCount > 0) {
-    int closest = 0;
-    for (int i = 1; i < targetCount; i++) {
-      if (targets[i].y < targets[closest].y) closest = i;
-    }
-    Target &t = targets[closest];
-    int distCm = t.y / 10;
-    int xCm = t.x / 10;
-
-    String dir = "C";
-    if (xCm < -30) dir = "L";
-    else if (xCm > 30) dir = "R";
-
-    pkt += "x=" + String(xCm) + " y=" + String(distCm);
-    pkt += " spd=" + String(t.speed);
-    pkt += " presence=1 direction=" + dir;
-    pkt += " distance=" + String(distCm);
-    pkt += " targets=" + String(targetCount);
-  } else {
-    pkt += "x=0 y=0 presence=0 distance=0";
-  }
-  pkt += " vbatt=" + String(vbatt, 2);
-  return pkt;
+// ------------------ LD2450 helpers ------------------
+static int16_t ld2450_decode_signed15(uint16_t raw) {
+  if (raw & 0x8000) return (int16_t)(raw - 0x8000);
+  return -(int16_t)raw;
 }
 
-// ── Main ──────────────────────────────────────────
-unsigned long lastTx = 0;
+static inline int iabs(int v) { return v < 0 ? -v : v; }
 
+// ===================== SETUP =====================
 void setup() {
   Serial.begin(115200);
-  Serial.println("[THEIA-TX] " TX_ID " booting (RadioLib)...");
 
-  // LD2450
-  LDSerial.begin(LD_BAUD, SERIAL_8N1, LD_RX_PIN, LD_TX_PIN);
+  // Radar
+  Serial2.begin(RADAR_BAUD, SERIAL_8N1, RADAR_UART_RX, RADAR_UART_TX);
+  radar.begin(Serial2, false);
 
-  // SX1262 LoRa init
-  Serial.print("[LoRa] Init SX1262... ");
-  int state = radio.begin(LORA_FREQ, LORA_BW, LORA_SF, LORA_CR, LORA_SW, LORA_TX_PWR);
-  if (state == RADIOLIB_ERR_NONE) {
-    Serial.println("OK");
-  } else {
-    Serial.print("FAIL code=");
-    Serial.println(state);
-  }
-  // Heltec V3 DIO2 controls RF switch
-  radio.setDio2AsRfSwitch(true);
+  // LoRa
+  Mcu.begin(HELTEC_BOARD, SLOW_CLK_TPYE);
+  Radio.Init(nullptr);
+  Radio.SetChannel(868000000);
+  Radio.SetTxConfig(MODEM_LORA, 10, 0, 0, 7, 1, 8, false, true, 0, 0, false, 3000);
 
-  Serial.println("[THEIA-TX] Ready. Interval=" + String(TX_INTERVAL) + "ms");
+  // OLED
+  screen.init();
+  screen.setFont(ArialMT_Plain_10);
+  screen.clear();
+  screen.drawString(0, 0, "LD2450 TX READY");
+  screen.display();
+
+  // Batterie (1x au boot)
+  updateBatteryIfNeeded(millis());
 }
 
+// ===================== LOOP =====================
 void loop() {
-  readLD2450();
+  unsigned long now = millis();
 
-  if (millis() - lastTx >= TX_INTERVAL) {
-    lastTx = millis();
-    String pkt = buildPacket();
-    Serial.println("[TX] " + pkt);
-    radio.transmit(pkt);
+  // Batterie (1x/s)
+  updateBatteryIfNeeded(now);
+
+  int targets = radar.read();
+
+  bool haveCandidate = false;
+  int x_cm = 0, y_cm = 0, d_cm = 0, v_cms = 0;
+
+  // ===== Lecture radar =====
+  if (targets > 0) {
+    for (int i = 0; i < targets; i++) {
+      LD2450::RadarTarget t = radar.getTarget(i);
+      if (!t.valid) continue;
+
+      uint16_t rawX = (uint16_t)(int16_t)t.x;
+      uint16_t rawY = (uint16_t)(int16_t)t.y;
+      uint16_t rawS = (uint16_t)(int16_t)t.speed;
+
+      int16_t x_mm = ld2450_decode_signed15(rawX);
+      int16_t y_mm = ld2450_decode_signed15(rawY);
+      int16_t v    = ld2450_decode_signed15(rawS);
+
+      // conversion cm
+      x_cm = x_mm / 10;
+      y_cm = y_mm / 10;
+
+      // distance recalculee (FIABLE)
+      d_cm = (int)lroundf(sqrtf((float)x_mm * x_mm + (float)y_mm * y_mm) / 10.0f);
+
+      v_cms = v;
+
+      // ignore bruit trop proche
+      if (d_cm < 15) continue;
+
+      haveCandidate = true;
+      break;
+    }
   }
+
+  // ===== Option B : mouvement =====
+  bool moved = false;
+
+  if (haveCandidate) {
+    // vitesse
+    if (iabs(v_cms) >= V_MIN_CM_S) moved = true;
+
+    // variation position
+    if (havePrev) {
+      if (iabs(x_cm - prevX) >= 3) moved = true;
+      if (iabs(y_cm - prevY) >= 3) moved = true;
+    }
+
+    prevX = x_cm;
+    prevY = y_cm;
+    havePrev = true;
+  }
+
+  if (moved) {
+    consecutiveMove++;
+    lastMoveMs = now;
+
+    lastX = x_cm;
+    lastY = y_cm;
+    lastD = d_cm;
+    lastV = v_cms;
+
+    if (!presenceState && consecutiveMove >= CONFIRM_FRAMES)
+      presenceState = true;
+
+  } else {
+    consecutiveMove = 0;
+    if (presenceState && (now - lastMoveMs > HOLD_MS)) {
+      presenceState = false;
+      havePrev = false;
+    }
+  }
+
+  // ===== Envoi LoRa =====
+  if (presenceState) {
+    snprintf(txpacket, BUFFER_SIZE,
+             "LD45;%s;%d;%d;%d;%d;%.2f",
+             TX_ID, lastX, lastY, lastD, lastV, g_battV);
+  } else {
+    snprintf(txpacket, BUFFER_SIZE,
+             "LD45;%s;0;0;0;0;%.2f",
+             TX_ID, g_battV);
+  }
+
+  Radio.Send((uint8_t*)txpacket, strlen(txpacket));
+
+  Serial.printf("[TX %s] %s\n", TX_ID, txpacket);
+
+  delay(200);
 }
