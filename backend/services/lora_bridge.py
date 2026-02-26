@@ -13,6 +13,7 @@ Port detection:
 - Fallback: scans /dev/ttyUSB* + /dev/ttyACM*, excludes GPS_DEVICE.
 """
 import asyncio
+import shutil
 import glob
 import json
 import math
@@ -735,36 +736,57 @@ class LoRaBridge:
         print("[THEIA] LoRa bridge starting (multi-port mode)")
         # Start device health watchdog
         self._tasks.append(asyncio.create_task(self._device_watchdog()))
-    _first_scan = True
-    while self._running:
-      ports = self._scan_ports()
-      if _first_scan:
-        udev_ok = os.path.exists(self.THEIA_RX_SYMLINK)
-        if udev_ok:
-          real = os.path.realpath(self.THEIA_RX_SYMLINK)
-          print(f"[THEIA] Port scan: /dev/theia-rx -> {real}")
-          # Auto-capture RX ESP32 MAC at startup for flash safety
-          try:
-            from backend.routers.firmware import _read_esp32_mac, _get_rx_mac, _store_rx_mac
-            existing_mac = _get_rx_mac()
-            if not existing_mac:
-              print("[THEIA] RX MAC not stored yet, capturing via esptool...")
-              mac = await _read_esp32_mac(self.THEIA_RX_SYMLINK)
-              if mac:
-                _store_rx_mac(mac)
-                print(f"[THEIA] RX MAC auto-captured: {mac}")
-              else:
-                print("[THEIA] Could not auto-capture RX MAC (esptool failed)")
-            else:
-              print(f"[THEIA] RX MAC already stored: {existing_mac}")
-          except Exception as e:
-            print(f"[THEIA] RX MAC auto-capture error: {e}")
-        else:
-          by_id = [os.path.basename(p) for p in glob.glob("/dev/serial/by-id/*")]
-          print(f"[THEIA] Port scan: /dev/theia-rx NOT found, by-id={by_id}, selected={ports}")
-          if not ports:
-            print("[THEIA] WARNING: No serial ports found! Run: sudo bash scripts/setup-udev-rules.sh")
-        _first_scan = False
+        _first_scan = True
+        while self._running:
+            ports = self._scan_ports()
+            if _first_scan:
+                udev_ok = os.path.exists(self.THEIA_RX_SYMLINK)
+                if udev_ok:
+                    real = os.path.realpath(self.THEIA_RX_SYMLINK)
+                    print(f"[THEIA] Port scan: /dev/theia-rx -> {real}")
+                    # Auto-capture RX ESP32 MAC at startup for flash safety
+                    try:
+                        rx_mac_file = os.path.join(os.getenv("THEIA_DATA_DIR", "/opt/theia/data"), "rx_mac.txt")
+                        has_mac = os.path.isfile(rx_mac_file) and len(open(rx_mac_file).read().strip()) == 17
+                        if not has_mac:
+                            print("[THEIA] RX MAC not stored yet, capturing via esptool...")
+                            esptool = shutil.which("esptool") or shutil.which("esptool.py")
+                            if not esptool:
+                                for p in glob.glob(os.path.expanduser("~/.arduino15/packages/esp32/tools/esptool_py/*/esptool")):
+                                    if os.path.isfile(p):
+                                        esptool = p
+                                        break
+                            if esptool:
+                                import subprocess as _sp
+                                result = _sp.run([esptool, "--port", real, "--no-stub", "read_mac"],
+                                                 capture_output=True, text=True, timeout=10)
+                                mac = None
+                                for line in result.stdout.splitlines():
+                                    if "MAC:" in line.upper():
+                                        parts_l = line.split("MAC:")
+                                        if len(parts_l) > 1:
+                                            m = parts_l[1].strip().lower()
+                                            if len(m) == 17 and m.count(":") == 5:
+                                                mac = m
+                                if mac:
+                                    os.makedirs(os.path.dirname(rx_mac_file), exist_ok=True)
+                                    with open(rx_mac_file, "w") as f:
+                                        f.write(mac)
+                                    print(f"[THEIA] RX MAC auto-captured: {mac}")
+                                else:
+                                    print(f"[THEIA] Could not read RX MAC. stdout={result.stdout[:200]}")
+                            else:
+                                print("[THEIA] esptool not found, cannot auto-capture RX MAC")
+                        else:
+                            print(f"[THEIA] RX MAC already stored: {open(rx_mac_file).read().strip()}")
+                    except Exception as e:
+                        print(f"[THEIA] RX MAC auto-capture error: {e}")
+                else:
+                    by_id = [os.path.basename(p) for p in glob.glob("/dev/serial/by-id/*")]
+                    print(f"[THEIA] Port scan: /dev/theia-rx NOT found, by-id={by_id}, selected={ports}")
+                    if not ports:
+                        print("[THEIA] WARNING: No serial ports found! Run: sudo bash scripts/setup-udev-rules.sh")
+                _first_scan = False
             for port in ports:
                 if port not in self._readers:
                     reader = PortReader(port)
