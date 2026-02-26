@@ -678,6 +678,9 @@ export default function MissionDetailPage() {
     }
   }, [mutateDevices])
 
+  // MUST be declared before any early return to respect Rules of Hooks
+  const [planImageTs, setPlanImageTs] = useState(() => Date.now())
+
   if (isLoading || !mission) {
     return (
       <>
@@ -714,7 +717,6 @@ export default function MissionDetailPage() {
   const isPlanMode = env === "plan"
   // Use direct backend URL for plan image (avoids Next.js proxy multipart/binary issues)
   const backendBase = typeof window !== "undefined" ? `http://${window.location.hostname}:8000` : ""
-  const [planImageTs, setPlanImageTs] = useState(() => Date.now())
   const planImageUrl = isPlanMode ? `${backendBase}/api/missions/${id}/plan-image/file?t=${planImageTs}` : null
   const floorMode: "floor" | "section" = (env === "garage") ? "section" : "floor"
   const missionFloors = mission?.floors ?? []

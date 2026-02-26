@@ -20,7 +20,7 @@ import {
   FileImage, Upload, X,
 } from "lucide-react"
 
-const STEPS = ["Info", "Location", "Type", "Review"] as const
+const STEPS = ["Info", "Type", "Location", "Review"] as const
 
 interface GeoResult {
   display_name: string
@@ -165,7 +165,8 @@ export default function NewMissionPage() {
 
   const canNext =
     step === 0 ? form.name.trim().length > 0
-    : step === 1 ? form.environment === "plan" ? !!planFile : (positionSet.current || (form.center_lat !== 48.8566 || form.center_lon !== 2.3522))
+    : step === 1 ? true  // Type step: always valid (has default)
+    : step === 2 ? form.environment === "plan" ? !!planFile : (positionSet.current || (form.center_lat !== 48.8566 || form.center_lon !== 2.3522))
     : true
 
   return (
@@ -242,8 +243,8 @@ export default function NewMissionPage() {
             </Card>
           )}
 
-          {/* ── Step 1: Location ── */}
-          {step === 1 && (
+          {/* ── Step 2: Location / Plan ── */}
+          {step === 2 && (
             <div className="flex flex-col gap-4">
               <Card className="border-border/50 bg-card">
                 <CardHeader className="pb-3">
@@ -438,8 +439,8 @@ export default function NewMissionPage() {
             </div>
           )}
 
-          {/* ── Step 2: Environment Type ── */}
-          {step === 2 && (
+          {/* ── Step 1: Environment Type ── */}
+          {step === 1 && (
             <Card className="border-border/50 bg-card">
               <CardHeader>
                 <CardTitle className="text-sm">Type de mission</CardTitle>
