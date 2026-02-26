@@ -712,9 +712,9 @@ export default function MissionDetailPage() {
   const env = mission?.environment ?? "habitation"
   const isFloorMode = env === "vertical" || env === "etages" || env === "garage"
   const isPlanMode = env === "plan"
-  // Always try the proxy URL for plan mode -- the image may have been uploaded
-  // even if mission.plan_image hasn't been fetched yet (SWR stale data)
-  const planImageUrl = isPlanMode ? `/api/missions/${id}/plan-image` : null
+  // Use direct backend URL for plan image (avoids Next.js proxy multipart/binary issues)
+  const backendBase = typeof window !== "undefined" ? `http://${window.location.hostname}:8000` : ""
+  const planImageUrl = isPlanMode ? `${backendBase}/api/missions/${id}/plan-image/file` : null
   const floorMode: "floor" | "section" = (env === "garage") ? "section" : "floor"
   const missionFloors = mission?.floors ?? []
 
@@ -1085,7 +1085,8 @@ export default function MissionDetailPage() {
                             const fd = new FormData()
                             fd.append("file", file)
                             try {
-                              const res = await fetch(`/api/missions/${id}/plan-image`, { method: "POST", body: fd })
+                              const backendBase = typeof window !== "undefined" ? `http://${window.location.hostname}:8000` : ""
+                              const res = await fetch(`${backendBase}/api/missions/${id}/plan-image`, { method: "POST", body: fd })
                               if (res.ok) mutate()
                             } catch (err) {
                               console.error("Upload error:", err)

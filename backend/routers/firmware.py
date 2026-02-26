@@ -75,12 +75,15 @@ async def list_ports():
 
     # ── Step 3: scan raw ttyUSB/ttyACM ports, filter out reserved ──
     ports = []
+    skipped: list[dict] = []  # for debug
     for pattern in ["/dev/ttyUSB*", "/dev/ttyACM*"]:
         for p in sorted(glob.glob(pattern)):
             real = os.path.realpath(p)
 
             # Skip if this real path is a known system device or enrolled device
             if real in all_reserved or p in all_reserved:
+                reason = "system" if real in reserved_real_paths else "enrolled"
+                skipped.append({"port": p, "real": real, "reason": reason})
                 continue
 
             info: dict = {
@@ -143,6 +146,7 @@ async def list_ports():
         ],
         "enrolled_count": len(enrolled_ports) // 2,  # each device has port + real
         "all_raw": all_raw_reals,  # complete snapshot of all plugged USB serial devices
+        "skipped": skipped,  # debug: which ports were filtered out and why
     }
 
 

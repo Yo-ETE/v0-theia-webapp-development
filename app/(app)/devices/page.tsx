@@ -650,31 +650,66 @@ export default function DevicesPage() {
                   </>
                 )}
               </div>
-              {/* Manual fallback */}
-              {!detectedPort && ports.length > 0 && (
+              {/* Manual fallback -- show when auto-detection doesn't find a port */}
+              {!detectedPort && (
                 <div className="border-t border-border/50 pt-3">
-                  <p className="text-[10px] text-muted-foreground mb-2">Ou selectionner un port manuellement :</p>
-                  <Select
-                    value={flashForm.port}
-                    onValueChange={(v) => {
-                      const found = ports.find(p => p.port === v)
-                      if (found) { setDetectedPort(found); setFlashForm(f => ({ ...f, port: v })) }
-                    }}
-                  >
-                    <SelectTrigger className="h-8 text-xs bg-input/50 border-border font-mono">
-                      <SelectValue placeholder="Selectionnez un port" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {ports.map((p) => (
-                        <SelectItem key={p.port} value={p.port} className="text-xs">
-                          <div className="flex flex-col">
-                            <span className="font-mono">{p.port}</span>
-                            <span className="text-[9px] text-muted-foreground">{p.summary || p.real}</span>
-                          </div>
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
+                  {ports.length > 0 ? (
+                    <>
+                      <p className="text-[10px] text-muted-foreground mb-2">Ou selectionner un port manuellement :</p>
+                      <Select
+                        value={flashForm.port}
+                        onValueChange={(v) => {
+                          const found = ports.find(p => p.port === v)
+                          if (found) { setDetectedPort(found); setFlashForm(f => ({ ...f, port: v })) }
+                        }}
+                      >
+                        <SelectTrigger className="h-8 text-xs bg-input/50 border-border font-mono">
+                          <SelectValue placeholder="Selectionnez un port" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {ports.map((p) => (
+                            <SelectItem key={p.port} value={p.port} className="text-xs">
+                              <div className="flex flex-col">
+                                <span className="font-mono">{p.port}</span>
+                                <span className="text-[9px] text-muted-foreground">{p.summary || p.real}</span>
+                              </div>
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </>
+                  ) : (
+                    <>
+                      <p className="text-[10px] text-amber-400 mb-1">Aucun port libre detecte.</p>
+                      <p className="text-[9px] text-muted-foreground mb-2">
+                        Tous les ports sont reserves. Entrez manuellement le chemin du port si le capteur est branche :
+                      </p>
+                      <input
+                        type="text"
+                        placeholder="/dev/ttyUSB2 ou /dev/ttyACM0"
+                        className="h-8 w-full rounded-md border border-border bg-input/50 px-3 text-xs font-mono text-foreground placeholder:text-muted-foreground/50"
+                        onBlur={(e) => {
+                          const val = e.target.value.trim()
+                          if (val) {
+                            setDetectedPort({ port: val, real: val, label: "", vid: "", pid: "", manufacturer: "", description: "", summary: "Port manuel" })
+                            setFlashForm(f => ({ ...f, port: val }))
+                          }
+                        }}
+                        onKeyDown={(e) => {
+                          if (e.key === "Enter") {
+                            const val = (e.target as HTMLInputElement).value.trim()
+                            if (val) {
+                              setDetectedPort({ port: val, real: val, label: "", vid: "", pid: "", manufacturer: "", description: "", summary: "Port manuel" })
+                              setFlashForm(f => ({ ...f, port: val }))
+                            }
+                          }
+                        }}
+                      />
+                      {usbDebug && (
+                        <p className="text-[8px] font-mono text-muted-foreground/50 mt-2 break-all">{usbDebug}</p>
+                      )}
+                    </>
+                  )}
                 </div>
               )}
               {systemPorts.length > 0 && (

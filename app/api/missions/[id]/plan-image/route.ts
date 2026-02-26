@@ -10,7 +10,7 @@ export async function POST(
   // Read the raw body and re-forward it to the backend
   // We can't use formData() and re-send because Node fetch may lose boundaries
   const contentType = request.headers.get("content-type") || ""
-  console.log("[v0] Plan image upload proxy: id=", id, "content-type=", contentType)
+
 
   try {
     // Forward raw body with original content-type to preserve multipart boundary

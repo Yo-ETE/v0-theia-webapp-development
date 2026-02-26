@@ -97,22 +97,23 @@ export default function MissionsPage() {
                         </div>
                         <div className="mt-2 flex items-center justify-between text-[10px] text-muted-foreground">
                           <span>Created {formatDate(mission.created_at)}</span>
-                          <span>Updated {formatRelative(mission.updated_at)}</span>
+                          <div className="flex items-center gap-2">
+                            <span>Updated {formatRelative(mission.updated_at)}</span>
+                            <button
+                              onClick={(e) => {
+                                e.preventDefault()
+                                e.stopPropagation()
+                                setDeleteTarget({ id: mission.id, name: mission.name })
+                              }}
+                              className="opacity-100 sm:opacity-0 sm:group-hover:opacity-100 transition-opacity rounded p-1.5 hover:bg-destructive/10 text-muted-foreground hover:text-destructive"
+                              title="Delete mission"
+                            >
+                              <Trash2 className="h-3.5 w-3.5" />
+                            </button>
+                          </div>
                         </div>
                       </CardContent>
                     </Link>
-                    {/* Delete button */}
-                    <button
-                      onClick={(e) => {
-                        e.preventDefault()
-                        e.stopPropagation()
-                        setDeleteTarget({ id: mission.id, name: mission.name })
-                      }}
-                      className="absolute top-3 right-10 opacity-100 sm:opacity-0 sm:group-hover:opacity-100 transition-opacity rounded p-2 min-h-[36px] min-w-[36px] flex items-center justify-center hover:bg-destructive/10 text-muted-foreground hover:text-destructive"
-                      title="Delete mission"
-                    >
-                      <Trash2 className="h-4 w-4" />
-                    </button>
                   </Card>
                 )
               })}
