@@ -108,10 +108,10 @@ export default function MissionsPage() {
                         e.stopPropagation()
                         setDeleteTarget({ id: mission.id, name: mission.name })
                       }}
-                      className="absolute top-3 right-10 opacity-0 group-hover:opacity-100 transition-opacity rounded p-1 hover:bg-destructive/10 text-muted-foreground hover:text-destructive"
+                      className="absolute top-3 right-10 opacity-100 sm:opacity-0 sm:group-hover:opacity-100 transition-opacity rounded p-2 min-h-[36px] min-w-[36px] flex items-center justify-center hover:bg-destructive/10 text-muted-foreground hover:text-destructive"
                       title="Delete mission"
                     >
-                      <Trash2 className="h-3.5 w-3.5" />
+                      <Trash2 className="h-4 w-4" />
                     </button>
                   </Card>
                 )

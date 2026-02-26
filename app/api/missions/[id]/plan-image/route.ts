@@ -41,21 +41,27 @@ export async function GET(
 
   try {
     // Backend endpoint is at /api/missions/{id}/plan-image/file
-    const res = await proxyToBackend(`/api/missions/${id}/plan-image/file`, {
-      method: "GET",
-    })
+    // Use direct fetch to avoid any Content-Type interference from proxyToBackend
+    const backendUrl = process.env.THEIA_BACKEND_URL || "http://localhost:8000"
+    const url = `${backendUrl}/api/missions/${id}/plan-image/file`
+    const res = await fetch(url, { method: "GET" })
     if (!res.ok) {
-      console.error("[THEIA] Plan image GET failed:", res.status)
+      console.error("[THEIA] Plan image GET failed:", res.status, url)
       return NextResponse.json({ error: "Not found" }, { status: 404 })
     }
-    const blob = await res.blob()
-    return new NextResponse(blob, {
+    // Read as arrayBuffer and forward with correct content-type
+    const buffer = await res.arrayBuffer()
+    const contentType = res.headers.get("content-type") || "image/jpeg"
+    return new NextResponse(Buffer.from(buffer), {
+      status: 200,
       headers: {
-        "Content-Type": res.headers.get("content-type") || "image/jpeg",
+        "Content-Type": contentType,
         "Cache-Control": "public, max-age=3600",
+        "Content-Length": String(buffer.byteLength),
       },
     })
-  } catch {
+  } catch (err) {
+    console.error("[THEIA] Plan image GET error:", err)
     return NextResponse.json({ error: "Not found" }, { status: 404 })
   }
 }

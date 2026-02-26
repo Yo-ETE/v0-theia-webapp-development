@@ -54,11 +54,6 @@ async def list_ports():
         real = os.path.realpath(symlink)
         reserved_real_paths.add(real)
         system_symlinks[symlink] = real
-        # Fingerprint RX device USB serial for cross-reference safety
-        if "rx" in symlink.lower() and os.path.exists(real):
-            serial = _get_usb_serial(real)
-            if serial:
-                _rx_usb_serials.add(serial)
 
     # ── Step 2: also reserve ports used by enrolled devices ──
     db = await get_db()
@@ -86,10 +81,6 @@ async def list_ports():
 
             # Skip if this real path is a known system device or enrolled device
             if real in all_reserved or p in all_reserved:
-                continue
-
-            # Skip if USB serial matches a known RX device
-            if _check_usb_serial_is_rx(p):
                 continue
 
             info: dict = {
@@ -206,8 +197,11 @@ async def upload_sketch(
 
 
 def _get_usb_serial(port_path: str) -> str | None:
-    """Get the USB serial number for a port (used to fingerprint devices)."""
+    """Get the USB serial number for a port (used to fingerprint devices).
+    Only returns 'specific' serials (>= 6 chars, not generic patterns)."""
     import subprocess
+    # Generic serials shared by many CP2102 / CH340 devices -- NOT unique
+    GENERIC_SERIALS = {"0", "0001", "0000", "1", "12345678", ""}
     try:
         real = os.path.realpath(port_path)
         result = subprocess.run(
@@ -218,7 +212,7 @@ def _get_usb_serial(port_path: str) -> str | None:
             line = line.strip()
             if 'ATTRS{serial}' in line and '"' in line:
                 serial = line.split('"')[1]
-                if serial and serial != "0":
+                if serial and serial not in GENERIC_SERIALS and len(serial) >= 6:
                     return serial
     except Exception:
         pass
@@ -234,13 +228,13 @@ async def _build_reserved_map(db) -> dict[str, str]:
     Also fingerprints system devices by USB serial number."""
     global _rx_usb_serials
     reserved: dict[str, str] = {}
-    # 1) System symlinks -- resolve fresh each time
+    # 1) System symlinks -- resolve fresh each time (ALWAYS re-resolve)
     for symlink in glob.glob("/dev/theia-*"):
         real = os.path.realpath(symlink)
         role = symlink.replace("/dev/theia-", "").upper()
         reserved[symlink] = f"{role} systeme ({symlink})"
         reserved[real] = f"{role} systeme ({symlink})"
-        # Also fingerprint the USB serial of system devices (especially RX)
+        # Fingerprint RX with SPECIFIC USB serials only (>= 6 chars, not generic)
         if "rx" in symlink.lower() and os.path.exists(real):
             serial = _get_usb_serial(real)
             if serial:
@@ -264,7 +258,8 @@ async def _build_reserved_map(db) -> dict[str, str]:
 
 
 def _check_usb_serial_is_rx(port_path: str) -> str | None:
-    """Check if a port's USB serial matches a known RX device. Returns reason if blocked."""
+    """Check if a port's USB serial matches a known RX device. Returns reason if blocked.
+    Only triggers on SPECIFIC serial numbers (not generic CP2102/CH340 serials)."""
     serial = _get_usb_serial(port_path)
     if serial and serial in _rx_usb_serials:
         return f"USB serial {serial} correspond au recepteur RX"

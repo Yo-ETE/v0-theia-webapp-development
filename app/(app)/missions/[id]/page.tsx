@@ -712,9 +712,9 @@ export default function MissionDetailPage() {
   const env = mission?.environment ?? "habitation"
   const isFloorMode = env === "vertical" || env === "etages" || env === "garage"
   const isPlanMode = env === "plan"
-  // plan_image from backend is "/api/missions/{id}/plan-image/file" or null
-  // We always use our Next.js proxy GET route if the mission has a plan_image set
-  const planImageUrl = mission?.plan_image ? `/api/missions/${id}/plan-image` : null
+  // Always try the proxy URL for plan mode -- the image may have been uploaded
+  // even if mission.plan_image hasn't been fetched yet (SWR stale data)
+  const planImageUrl = isPlanMode ? `/api/missions/${id}/plan-image` : null
   const floorMode: "floor" | "section" = (env === "garage") ? "section" : "floor"
   const missionFloors = mission?.floors ?? []
 
@@ -1070,12 +1070,11 @@ export default function MissionDetailPage() {
                       <Button variant="ghost" size="sm" className="h-7 px-2 text-[10px] text-cyan-400" onClick={() => setSensorPlaceMode(null)}>Annuler</Button>
                     </div>
                   )}
-                  {!planImageUrl ? (
-                    /* No plan image yet -- show upload prompt */
-                    <div className="flex flex-col items-center justify-center gap-3 rounded-lg border-2 border-dashed border-border/50 p-8 bg-muted/10 min-h-[300px]">
-                      <FileImage className="h-10 w-10 text-muted-foreground" />
-                      <p className="text-sm text-muted-foreground text-center">Aucun plan importe</p>
-                      <label className="cursor-pointer">
+                  {/* Upload button shown when no plan image is set yet */}
+                  {!mission?.plan_image && (
+                    <div className="flex items-center justify-between gap-2 rounded-lg border border-amber-500/30 bg-amber-500/10 px-3 py-2">
+                      <p className="text-xs text-amber-300">Aucun plan importe pour cette mission</p>
+                      <label className="cursor-pointer shrink-0">
                         <input
                           type="file"
                           accept="image/jpeg,image/png,image/webp"
@@ -1093,13 +1092,13 @@ export default function MissionDetailPage() {
                             }
                           }}
                         />
-                        <span className="inline-flex items-center gap-1.5 rounded-md bg-primary px-4 py-2 text-xs font-medium text-primary-foreground hover:bg-primary/90 transition-colors">
-                          <FileImage className="h-3.5 w-3.5" />
-                          Importer un plan
+                        <span className="inline-flex items-center gap-1.5 rounded-md bg-primary px-3 py-1.5 text-[10px] font-medium text-primary-foreground hover:bg-primary/90 transition-colors">
+                          <FileImage className="h-3 w-3" />
+                          Importer
                         </span>
                       </label>
                     </div>
-                  ) : (
+                  )}
                   <PlanEditor
                     imageUrl={planImageUrl!}
                     imageWidth={mission?.plan_width ?? undefined}
@@ -1116,8 +1115,7 @@ export default function MissionDetailPage() {
                     onZonePolygonUpdate={updateZonePolygon}
                     showFov={showFov}
                     className="rounded-lg overflow-hidden border border-border/50"
-                  />
-                  )}
+                  />}
                   {/* Timelapse panel for plan mode */}
                   {timelapseMode && (
                     <div className="space-y-2">
