@@ -500,12 +500,34 @@ async def flash_device(req: FlashRequest):
             yield "data: [DONE] FAIL\n\n"
             shutil.rmtree(tmp_dir, ignore_errors=True)
             return
-        # Log USB device identity for debugging
+        # Log USB device identity for debugging -- enumerate ALL ttyUSB devices
         target_serial = _get_usb_serial(req.port)
         rx_real = os.path.realpath("/dev/theia-rx") if os.path.exists("/dev/theia-rx") else "N/A"
         rx_serial = _get_usb_serial("/dev/theia-rx") if os.path.exists("/dev/theia-rx") else "N/A"
-        yield f"data: [INFO] Port verifie: {req.port} -> {current_real} (serial={target_serial})\n\n"
+        # Log full USB port map for debugging
+        all_usb = sorted(glob.glob("/dev/ttyUSB*"))
+        usb_map_lines = []
+        for up in all_usb:
+            us = _get_usb_serial(up)
+            role = ""
+            if os.path.exists("/dev/theia-rx") and os.path.realpath("/dev/theia-rx") == os.path.realpath(up):
+                role = " [RX SYSTEME]"
+            elif os.path.exists("/dev/theia-gps") and os.path.realpath("/dev/theia-gps") == os.path.realpath(up):
+                role = " [GPS SYSTEME]"
+            elif os.path.realpath(up) == current_real:
+                role = " [CIBLE FLASH]"
+            usb_map_lines.append(f"{up} serial={us}{role}")
+        yield f"data: [INFO] === Carte USB avant flash ===\n\n"
+        for ln in usb_map_lines:
+            yield f"data: [INFO]   {ln}\n\n"
+        yield f"data: [INFO] Cible: {req.port} -> {current_real} (serial={target_serial})\n\n"
         yield f"data: [INFO] RX: /dev/theia-rx -> {rx_real} (serial={rx_serial})\n\n"
+        if target_serial == rx_serial and target_serial != "N/A":
+            yield f"data: [ERROR] SECURITE: Le port cible a le MEME serial USB que le RX ({target_serial}). Flash annule.\n\n"
+            yield "data: [DONE] FAIL\n\n"
+            shutil.rmtree(tmp_dir, ignore_errors=True)
+            return
+        print(f"[THEIA] Pre-flash USB map: {usb_map_lines}")
         print(f"[THEIA] Pre-flash: target={req.port}({current_real}) serial={target_serial}, RX={rx_real} serial={rx_serial}")
 
         # Upload
@@ -535,6 +557,23 @@ async def flash_device(req: FlashRequest):
             return
 
         yield f"data: [STEP] Flash termine avec succes!\n\n"
+
+        # Post-flash USB map verification
+        await asyncio.sleep(1)  # wait for USB to stabilize
+        post_usb = sorted(glob.glob("/dev/ttyUSB*"))
+        yield f"data: [INFO] === Carte USB apres flash ===\n\n"
+        for up in post_usb:
+            us = _get_usb_serial(up)
+            role = ""
+            if os.path.exists("/dev/theia-rx") and os.path.realpath("/dev/theia-rx") == os.path.realpath(up):
+                role = " [RX SYSTEME]"
+            elif os.path.exists("/dev/theia-gps") and os.path.realpath("/dev/theia-gps") == os.path.realpath(up):
+                role = " [GPS SYSTEME]"
+            yield f"data: [INFO]   {up} serial={us}{role}\n\n"
+        post_rx_real = os.path.realpath("/dev/theia-rx") if os.path.exists("/dev/theia-rx") else "N/A"
+        if post_rx_real != rx_real and rx_real != "N/A":
+            yield f"data: [WARN] Le RX a change de port: {rx_real} -> {post_rx_real} (re-enumeration USB)\n\n"
+            print(f"[THEIA] POST-FLASH WARNING: RX port changed from {rx_real} to {post_rx_real}")
 
         # Register device in DB
         try:

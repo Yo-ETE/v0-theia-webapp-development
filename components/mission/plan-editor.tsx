@@ -138,7 +138,6 @@ export function PlanEditor({
       setImgLoading(true)
       setImgError(false)
       const img = new window.Image()
-      img.crossOrigin = "anonymous"
       img.onload = () => {
         if (cancelled) return
         setImgSize({ w: img.naturalWidth, h: img.naturalHeight })
@@ -339,7 +338,7 @@ export function PlanEditor({
     }
   }, [sensorPlaceMode, handlePlaceClick, drawingMode, handleClick])
 
-  if (!planImage || imgSize.w === 0) {
+  if (!resolvedImage || imgSize.w === 0) {
     return (
       <div className={cn("flex items-center justify-center bg-muted/20 rounded-lg min-h-[200px]", className)}>
         <p className="text-xs text-muted-foreground">Chargement du plan...</p>
