@@ -203,7 +203,7 @@ async def delete_mission(mission_id: str):
     return {"ok": True}
 
 
-# ── Plan Image Upload ────────────────────��──��────────────────
+# ── Plan Image Upload ───────────────────────��────────────────
 import os
 from fastapi import UploadFile, File
 
@@ -274,7 +274,7 @@ async def upload_plan_image(mission_id: str, request: Request):
 
 
 @router.get("/{mission_id}/plan-image/file")
-async def get_plan_image(mission_id: str, request: Request):
+async def get_plan_image(mission_id: str):
     """Serve the floor plan image file."""
     from fastapi.responses import FileResponse
     for ext in ("jpg", "png", "webp"):
@@ -282,15 +282,6 @@ async def get_plan_image(mission_id: str, request: Request):
         if os.path.exists(filepath):
             media = {"jpg": "image/jpeg", "png": "image/png", "webp": "image/webp"}[ext]
             print(f"[THEIA] Serving plan image: {filepath}")
-            origin = request.headers.get("origin", "*")
-            return FileResponse(
-                filepath,
-                media_type=media,
-                headers={
-                    "Access-Control-Allow-Origin": origin,
-                    "Access-Control-Allow-Credentials": "true",
-                    "Cache-Control": "no-cache",
-                },
-            )
+            return FileResponse(filepath, media_type=media)
     print(f"[THEIA] Plan image NOT FOUND for {mission_id} in {PLANS_DIR}")
     raise HTTPException(status_code=404, detail="Plan image not found")
