@@ -1729,16 +1729,21 @@ export default function MissionDetailPage() {
                 {heatmapMode && eventList.length > 0 && (() => {
                   const BANDS = [20, 40, 60, 80, 100, 150, 250, 600]
                   const BAND_LABELS = ["0-20", "20-40", "40-60", "60-80", "80-100", "100-150", "150-250", "250+"]
-                  const zoneStats: Record<string, { count: number; totalDist: number; devices: Set<string>; label: string; bands: number[] }> = {}
+                  const zoneStats: Record<string, { count: number; totalDist: number; devices: Set<string>; label: string; bands: number[]; dirG: number; dirC: number; dirD: number }> = {}
                   for (const evt of eventList) {
                     // Use zone_id if available, otherwise fallback to zone_label or device_id (for floor mode)
                     const zId = evt.zone_id || evt.zone_label || evt.device_id
                     if (!zId) continue
                     const p = evt.payload ?? {}
                     const dist = Number(p.distance ?? 0)
-                    if (!zoneStats[zId]) zoneStats[zId] = { count: 0, totalDist: 0, devices: new Set(), label: evt.zone_label || evt.device_name || zId, bands: BANDS.map(() => 0) }
+                    const angle = Number(p.angle ?? 0)
+                    const dirPos = angle < -15 ? "G" : angle > 15 ? "D" : "C"
+                    if (!zoneStats[zId]) zoneStats[zId] = { count: 0, totalDist: 0, devices: new Set(), label: evt.zone_label || evt.device_name || zId, bands: BANDS.map(() => 0), dirG: 0, dirC: 0, dirD: 0 }
                     zoneStats[zId].count++
                     zoneStats[zId].totalDist += dist
+                    if (dirPos === "G") zoneStats[zId].dirG++
+                    else if (dirPos === "D") zoneStats[zId].dirD++
+                    else zoneStats[zId].dirC++
                     if (evt.device_id) zoneStats[zId].devices.add(evt.device_id)
                     for (let i = 0; i < BANDS.length; i++) {
                       if (dist <= BANDS[i]) { zoneStats[zId].bands[i]++; break }
@@ -1758,6 +1763,22 @@ export default function MissionDetailPage() {
                             <div className="text-[10px] text-muted-foreground mb-2">
                               {Math.round(s.totalDist / s.count)}cm avg | {s.devices.size} TX
                             </div>
+                            {/* Direction distribution (G / C / D) */}
+                            {(s.dirG > 0 || s.dirD > 0) && (
+                              <div className="mb-2">
+                                <div className="flex items-center gap-1 mb-1">
+                                  <span className="text-[8px] text-muted-foreground">Position:</span>
+                                  <span className="text-[9px] font-mono text-blue-400">G:{s.dirG}</span>
+                                  <span className="text-[9px] font-mono text-success">C:{s.dirC}</span>
+                                  <span className="text-[9px] font-mono text-orange-400">D:{s.dirD}</span>
+                                </div>
+                                <div className="flex h-1.5 gap-px rounded-sm overflow-hidden">
+                                  {s.dirG > 0 && <div className="bg-blue-400 rounded-sm" style={{ flex: s.dirG }} />}
+                                  {s.dirC > 0 && <div className="bg-success rounded-sm" style={{ flex: s.dirC }} />}
+                                  {s.dirD > 0 && <div className="bg-orange-400 rounded-sm" style={{ flex: s.dirD }} />}
+                                </div>
+                              </div>
+                            )}
                             {/* Distance distribution bar chart */}
                             <div className="flex items-end gap-0.5 h-10">
                               {s.bands.map((cnt, i) => {

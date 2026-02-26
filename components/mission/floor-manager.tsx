@@ -494,6 +494,26 @@ export function FloorManager({
                       {hasLive && live.latest && typeof live.latest.distance === "number" && (
                         <p className="text-[8px] font-mono text-success relative z-10">{live.latest.distance.toFixed(1)}m</p>
                       )}
+                      {/* Direction bar: G | C | D */}
+                      {hasLive && live.detections.length > 0 && (
+                        <div className="flex h-1 gap-px w-full rounded-sm overflow-hidden relative z-10 mt-1">
+                          {(["G", "C", "D"] as const).map((pos) => {
+                            const count = live.detections.filter(d => d.position === pos).length
+                            return (
+                              <div
+                                key={pos}
+                                className={cn(
+                                  "flex-1 rounded-sm transition-all",
+                                  count > 0
+                                    ? pos === "G" ? "bg-blue-400" : pos === "D" ? "bg-orange-400" : "bg-success"
+                                    : "bg-border/30"
+                                )}
+                                title={`${positionLabel(pos)}: ${count}`}
+                              />
+                            )
+                          })}
+                        </div>
+                      )}
                     </div>
                   )
                 })}
@@ -524,6 +544,9 @@ export function FloorManager({
                   .filter(([, v]) => v.count > 0)
                   .map(([level, data]) => {
                     const floor = floors.find(f => f.level === Number(level))
+                    const gCount = data.detections.filter(d => d.position === "G").length
+                    const cCount = data.detections.filter(d => d.position === "C").length
+                    const dCount = data.detections.filter(d => d.position === "D").length
                     return (
                       <Badge
                         key={level}
@@ -532,6 +555,15 @@ export function FloorManager({
                       >
                         <Radio className="h-2.5 w-2.5" />
                         {floor?.label ?? `Lvl ${level}`}: {data.count}
+                        {data.detections.length > 0 && (
+                          <span className="ml-1 text-[8px] opacity-80">
+                            {gCount > 0 && <span className="text-blue-400">G:{gCount}</span>}
+                            {gCount > 0 && (cCount > 0 || dCount > 0) && " "}
+                            {cCount > 0 && <span className="text-success">C:{cCount}</span>}
+                            {cCount > 0 && dCount > 0 && " "}
+                            {dCount > 0 && <span className="text-orange-400">D:{dCount}</span>}
+                          </span>
+                        )}
                       </Badge>
                     )
                   })}
