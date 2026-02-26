@@ -372,7 +372,7 @@ export default function DevicesPage() {
             <CardContent>
               {isLoading ? (
                 <div className="h-48 animate-pulse rounded bg-muted" />
-              ) : devices?.length === 0 ? (
+              ) : enabledDevices.length === 0 ? (
                 <div className="flex flex-col items-center justify-center py-12 gap-3">
                   <Radio className="h-8 w-8 text-muted-foreground/40" />
                   <p className="text-sm text-muted-foreground">No devices enrolled</p>
@@ -399,10 +399,10 @@ export default function DevicesPage() {
                     </TableRow>
                   </TableHeader>
                   <TableBody>
-                    {devices?.map((device) => {
+                    {enabledDevices.map((device) => {
                       const sCfg = deviceStatusConfig[device.status] ?? deviceStatusConfig.unknown
                       return (
-                        <TableRow key={device.id} className={cn("border-border/30", device.enabled === 0 && "opacity-40")}>
+                        <TableRow key={device.id} className="border-border/30">
                           <TableCell className="font-mono text-xs font-medium text-foreground">
                             <div className="flex items-center gap-2">
                               <Signal className={cn("h-3 w-3", sCfg.className.includes("success") ? "text-success" : sCfg.className.includes("destructive") ? "text-destructive" : "text-muted-foreground")} />

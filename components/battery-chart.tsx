@@ -3,7 +3,7 @@
 import { useState, useMemo } from "react"
 import useSWR from "swr"
 import {
-  LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend,
+  LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip,
   ResponsiveContainer, ReferenceLine,
 } from "recharts"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
@@ -114,31 +114,66 @@ const PERIODS = [
 
 export function BatteryChart() {
   const [hours, setHours] = useState(24)
+  const [selectedDevices, setSelectedDevices] = useState<Set<string> | "all">("all")
   const { data, isLoading } = useSWR<DeviceBatteryData[]>(
     `/api/devices/battery-history/all?hours=${hours}`,
     fetcher,
     { refreshInterval: 30000 }
   )
 
-  // Transform data for recharts: merge all devices into time-aligned rows
-  const { chartData, devices } = useMemo(() => {
-    if (!data || data.length === 0) return { chartData: [], devices: [] }
-
-    // Collect all timestamps and create a unified timeline
-    const allPoints: Map<string, Record<string, number>> = new Map()
-    const devs = data.map((d, i) => ({
+  // Build list of all devices
+  const allDevices = useMemo(() => {
+    if (!data || data.length === 0) return []
+    return data.map((d, i) => ({
       id: d.device_id,
       name: d.name || d.dev_eui,
+      eui: d.dev_eui,
       color: DEVICE_COLORS[i % DEVICE_COLORS.length],
       key: `v_${d.dev_eui}`,
       estimation: estimateBattery(d.readings),
     }))
+  }, [data])
+
+  // Toggle device visibility
+  const toggleDevice = (eui: string) => {
+    setSelectedDevices(prev => {
+      if (prev === "all") {
+        // Switch from "all" to "all except this one"
+        const newSet = new Set(allDevices.map(d => d.eui))
+        newSet.delete(eui)
+        return newSet.size === 0 ? "all" : newSet
+      }
+      const newSet = new Set(prev)
+      if (newSet.has(eui)) {
+        newSet.delete(eui)
+        if (newSet.size === 0) return "all" // if none selected, show all
+      } else {
+        newSet.add(eui)
+        if (newSet.size === allDevices.length) return "all"
+      }
+      return newSet
+    })
+  }
+
+  const showAll = () => setSelectedDevices("all")
+  const showOnly = (eui: string) => setSelectedDevices(new Set([eui]))
+
+  const isDeviceVisible = (eui: string) => selectedDevices === "all" || selectedDevices.has(eui)
+
+  // Visible devices for chart and estimation cards
+  const visibleDevices = allDevices.filter(d => isDeviceVisible(d.eui))
+
+  // Transform data for recharts: merge all devices into time-aligned rows
+  const chartData = useMemo(() => {
+    if (!data || data.length === 0) return []
+
+    const allPoints: Map<string, Record<string, number>> = new Map()
 
     for (const device of data) {
+      if (!isDeviceVisible(device.dev_eui)) continue
       const key = `v_${device.dev_eui}`
       for (const r of device.readings) {
         const ts = new Date(r.timestamp)
-        // Round to nearest minute for alignment
         ts.setSeconds(0, 0)
         const tsKey = ts.toISOString()
         if (!allPoints.has(tsKey)) {
@@ -148,8 +183,7 @@ export function BatteryChart() {
       }
     }
 
-    // Sort by time and format
-    const sorted = Array.from(allPoints.entries())
+    return Array.from(allPoints.entries())
       .sort(([a], [b]) => a.localeCompare(b))
       .map(([ts, values]) => {
         const d = new Date(ts)
@@ -159,11 +193,10 @@ export function BatteryChart() {
           ...values,
         }
       })
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [data, selectedDevices])
 
-    return { chartData: sorted, devices: devs }
-  }, [data])
-
-  const hasData = chartData.length > 0
+  const hasData = chartData.length > 0 && allDevices.length > 0
 
   return (
     <Card className="border-border/50 bg-card">
@@ -204,6 +237,54 @@ export function BatteryChart() {
           </div>
         ) : (
           <>
+            {/* Device filter */}
+            <div className="flex flex-wrap items-center gap-1.5 mb-3">
+              <button
+                onClick={showAll}
+                className={cn(
+                  "px-2 py-0.5 rounded text-[10px] font-medium transition-colors",
+                  selectedDevices === "all"
+                    ? "bg-primary text-primary-foreground"
+                    : "bg-muted text-muted-foreground hover:bg-muted/80"
+                )}
+              >
+                Tous
+              </button>
+              {allDevices.map(dev => {
+                const visible = isDeviceVisible(dev.eui)
+                return (
+                  <button
+                    key={dev.id}
+                    onClick={(e) => {
+                      if (e.shiftKey || e.metaKey) {
+                        toggleDevice(dev.eui)
+                      } else {
+                        showOnly(dev.eui)
+                      }
+                    }}
+                    onContextMenu={(e) => {
+                      e.preventDefault()
+                      toggleDevice(dev.eui)
+                    }}
+                    className={cn(
+                      "flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-medium transition-all",
+                      visible
+                        ? "bg-muted ring-1 text-foreground"
+                        : "bg-muted/40 text-muted-foreground/50"
+                    )}
+                    style={visible ? { ringColor: dev.color, borderColor: dev.color, boxShadow: `inset 0 0 0 1px ${dev.color}40` } : undefined}
+                    title="Clic = afficher seul | Shift+clic = ajouter/retirer"
+                  >
+                    <span
+                      className="h-2 w-2 rounded-full shrink-0"
+                      style={{ backgroundColor: visible ? dev.color : "hsl(0 0% 40%)" }}
+                    />
+                    {dev.name}
+                  </button>
+                )
+              })}
+            </div>
+
             {/* Chart */}
             <div className="h-[220px] w-full">
               <ResponsiveContainer width="100%" height="100%">
@@ -224,14 +305,11 @@ export function BatteryChart() {
                     tickFormatter={(v: number) => `${v.toFixed(1)}V`}
                   />
                   <Tooltip content={<BatteryTooltip />} />
-                  <Legend
-                    wrapperStyle={{ fontSize: "10px", paddingTop: "8px" }}
-                  />
                   {/* Warning / critical thresholds */}
                   <ReferenceLine y={VBATT_WARN} stroke="#f59e0b" strokeDasharray="5 5" strokeWidth={1} />
                   <ReferenceLine y={VBATT_CRIT} stroke="#ef4444" strokeDasharray="5 5" strokeWidth={1} />
 
-                  {devices.map(dev => (
+                  {visibleDevices.map(dev => (
                     <Line
                       key={dev.key}
                       type="monotone"
@@ -249,7 +327,7 @@ export function BatteryChart() {
 
             {/* Estimations per device */}
             <div className="mt-3 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2">
-              {devices.map(dev => {
+              {visibleDevices.map(dev => {
                 const est = dev.estimation
                 if (!est) return null
                 const isWarn = est.current < VBATT_WARN
