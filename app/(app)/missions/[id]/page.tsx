@@ -151,38 +151,41 @@ export default function MissionDetailPage() {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const handleReplayDetection = useCallback((dets: Record<string, any>) => {
     // Timelapse sends detections keyed by device_id (rolling window of all active devices).
-    // We resolve to zone_id keys for zone highlighting on the map.
-    // Each detection carries its own device_id for effectiveByDevice in map-inner.
+    const env = mission?.environment ?? "habitation"
+    const floorMode = env === "vertical" || env === "etages" || env === "garage"
+
+    // Floor mode: pass through by device_id (FloorManager resolves device->floor)
+    if (floorMode) {
+      setReplayDetections(dets)
+      return
+    }
+
+    // Zone mode: resolve to zone_id keys for zone highlighting on the map.
     const zones = mission?.zones ?? []
     const resolved: Record<string, any> = {}
     for (const [, det] of Object.entries(dets)) {
       if (!det) continue
-      // Find the zone for this detection
       const zoneId = det.zone_id
       const zoneLabel = det.zone_label
       let resolvedZoneId: string | null = null
 
-      // Try direct zone_id match
       if (zoneId && zones.find(z => z.id === zoneId)) {
         resolvedZoneId = zoneId
       } else if (zoneLabel) {
-        // Try by name
         const byName = zones.find(z => z.name === zoneLabel)
         if (byName) resolvedZoneId = byName.id
       }
-      // Fallback: single zone
       if (!resolvedZoneId && zones.length === 1) {
         resolvedZoneId = zones[0].id
       }
 
       if (resolvedZoneId) {
-        // Use a composite key "zoneId::deviceId" so multiple devices per zone coexist
         const devId = det.device_id || det.device_name || "unknown"
         resolved[`${resolvedZoneId}::${devId}`] = { ...det, zone_id: resolvedZoneId }
       }
     }
     setReplayDetections(resolved)
-  }, [mission?.zones])
+  }, [mission?.zones, mission?.environment])
 
   // ── Live SSE detections ──
   const [liveDetections, setLiveDetections] = useState<LiveDetection[]>([])
