@@ -745,9 +745,9 @@ export default function MissionDetailPage() {
       orientation: (d.orientation as "inward" | "outward") ?? "inward",
     }))
   // Fallback: reconstruct placements from historical events (when devices are unassigned)
-  const historicalPlacements = useMemo(() => {
+  const historicalPlacements = (() => {
     if (livePlacements.length > 0 || !events || events.length === 0) return []
-    const seen = new Map<string, typeof livePlacements[0]>()
+    const seen = new Map<string, (typeof livePlacements)[0]>()
     for (const e of events) {
       const did = e.device_id ?? ""
       if (!did || !e.zone_id || !e.side || seen.has(did)) continue
@@ -762,7 +762,7 @@ export default function MissionDetailPage() {
       })
     }
     return Array.from(seen.values())
-  }, [livePlacements.length, events])
+  })()
   const sensorPlacements = livePlacements.length > 0 ? livePlacements : historicalPlacements
 
   // Map detections: ONLY from SSE (real-time). Never from DB -- DB events are history.
