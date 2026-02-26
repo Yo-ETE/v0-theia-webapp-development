@@ -55,6 +55,7 @@ function parseEventToDetection(ev: DetectionEvent): LiveDetection | null {
     vbatt_tx: p.vbatt_tx ? Number(p.vbatt_tx) : null,
     rssi: ev.rssi,
     sensor_type: String(p.sensor_type ?? "ld2450"),
+    floor: p.floor != null ? Number(p.floor) : null,
     timestamp: ev.timestamp,
     mission_id: ev.mission_id,
   }

@@ -391,6 +391,7 @@ class PortReader:
             "vbatt_tx": vbatt,
             "tx_id": tx_id,
             "sensor_type": sensor_type,
+            "floor": device_floor,
         }
 
         # --- SINGLE phantom gate (for ALL code paths) ---
@@ -462,6 +463,7 @@ class PortReader:
             "side": side,
             "sensor_position": sensor_position,
             "orientation": device_orientation,
+            "floor": device_floor,
             "presence": presence,
             "distance": effective_distance,
             "speed": v,

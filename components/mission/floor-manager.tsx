@@ -127,6 +127,10 @@ export function FloorManager({
         const dev = devices.find(d => d.name === dname)
         if (dev?.floor != null) floorLevel = dev.floor
       }
+      // Last resort: floor stored in the detection/event payload itself
+      if (floorLevel == null && det.floor != null) {
+        floorLevel = Number(det.floor)
+      }
       if (floorLevel == null) continue
       const pos = angleToPosition(det.angle != null ? Number(det.angle) : undefined)
       const prev = map[floorLevel]
@@ -151,10 +155,15 @@ export function FloorManager({
   const eventsByFloor = useMemo(() => {
     const map: Record<number, DetectionEvent[]> = {}
     for (const evt of events) {
-      const floorLevel = deviceFloorMap.get(evt.device_id ?? "")
-      if (floorLevel == null) continue
-      if (!map[floorLevel]) map[floorLevel] = []
-      map[floorLevel].push(evt)
+      let fl = deviceFloorMap.get(evt.device_id ?? "")
+      // Fallback: floor stored in event payload
+      if (fl == null) {
+        const p = evt.payload as Record<string, unknown> | undefined
+        if (p && p.floor != null) fl = Number(p.floor)
+      }
+      if (fl == null) continue
+      if (!map[fl]) map[fl] = []
+      map[fl].push(evt)
     }
     return map
   }, [events, deviceFloorMap])

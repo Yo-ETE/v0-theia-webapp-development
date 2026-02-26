@@ -1117,6 +1117,7 @@ export default function MissionDetailPage() {
                               timestamp: String(d.timestamp ?? ""),
                               angle: Number(d.angle ?? 0),
                               speed: Number(d.speed ?? 0),
+                              floor: d.floor != null ? Number(d.floor) : null,
                             }))
                           : liveDetections
                         }
