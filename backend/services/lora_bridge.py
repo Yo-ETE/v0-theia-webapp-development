@@ -294,14 +294,14 @@ class PortReader:
                 )
                 await db.commit()
                 cursor = await db.execute(
-                    "SELECT id, mission_id, zone, zone_id, zone_label, side, name, type, muted, floor FROM devices WHERE id=?",
+                    "SELECT id, mission_id, zone, zone_id, zone_label, side, name, type, muted, floor, sensor_position, orientation FROM devices WHERE id=?",
                     (did,),
                 )
                 row = await cursor.fetchone()
 
         if not row:
             cursor = await db.execute(
-                "SELECT id, mission_id, zone, zone_id, zone_label, side, name, type, muted, floor "
+                "SELECT id, mission_id, zone, zone_id, zone_label, side, name, type, muted, floor, sensor_position, orientation "
                 "FROM devices WHERE serial_port=? AND enabled=1",
                 (self.port,),
             )
@@ -350,6 +350,14 @@ class PortReader:
             mission_id = None  # Normalize empty string to None
         side = row["side"] if row else ""
         device_name = row["name"] if row else (tx_id or self.port)
+        sensor_position = None
+        device_orientation = None
+        if row:
+            try:
+                sensor_position = row["sensor_position"]
+                device_orientation = row["orientation"]
+            except (KeyError, IndexError):
+                pass
 
         now_iso = datetime.now(timezone.utc).isoformat()
         if device_id:
@@ -423,8 +431,8 @@ class PortReader:
                 payload_json = json.dumps(payload)
                 try:
                     await db.execute(
-                        "INSERT INTO events (mission_id, device_id, event_type, zone, zone_id, side, rssi, snr, payload) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
-                        (mission_id, device_id, "detection", zone, zone_id, side, self.last_rssi, 0, payload_json),
+                        "INSERT INTO events (mission_id, device_id, event_type, zone, zone_id, side, rssi, snr, payload, sensor_position, orientation) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                        (mission_id, device_id, "detection", zone, zone_id, side, self.last_rssi, 0, payload_json, sensor_position, device_orientation),
                     )
                 except Exception:
                     await db.execute(
@@ -450,6 +458,8 @@ class PortReader:
             "zone_id": zone_id,
             "zone_label": zone_label,
             "side": side,
+            "sensor_position": sensor_position,
+            "orientation": device_orientation,
             "presence": presence,
             "distance": effective_distance,
             "speed": v,

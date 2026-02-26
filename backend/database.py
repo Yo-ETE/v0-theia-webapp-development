@@ -204,4 +204,13 @@ async def init_tables(db: aiosqlite.Connection):
             await db.execute(f"ALTER TABLE events ADD COLUMN {col} TEXT DEFAULT ''")
         except Exception:
             pass
+    # Events: store sensor position/orientation at detection time (for historical replay)
+    try:
+        await db.execute("ALTER TABLE events ADD COLUMN sensor_position REAL DEFAULT NULL")
+    except Exception:
+        pass
+    try:
+        await db.execute("ALTER TABLE events ADD COLUMN orientation TEXT DEFAULT NULL")
+    except Exception:
+        pass
     await db.commit()

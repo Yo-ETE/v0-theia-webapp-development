@@ -756,9 +756,9 @@ export default function MissionDetailPage() {
         device_name: e.device_name ?? did,
         zone_id: e.zone_id,
         side: e.side,
-        sensor_position: 0.5,
+        sensor_position: e.sensor_position ?? 0.5,
         device_type: "",
-        orientation: "inward",
+        orientation: (e.orientation as "inward" | "outward") ?? "inward",
       })
     }
     return Array.from(seen.values())
