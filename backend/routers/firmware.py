@@ -36,45 +36,54 @@ DEFAULT_FQBN = "esp32:esp32:heltec_wifi_lora_32_V3"
 FALLBACK_FQBN = "esp32:esp32:esp32s3"
 
 
-async def _read_esp32_mac(port: str) -> str | None:
-    """Read the ESP32 chip MAC address via esptool.
-    Uses --no-stub to avoid modifying the device. Returns MAC string or None."""
-    import subprocess as _sp
-    # Find esptool: bundled with arduino-cli ESP32 core or system-wide
+def _find_esptool() -> str | None:
+    """Locate esptool binary (system or bundled with arduino-cli)."""
     esptool = shutil.which("esptool") or shutil.which("esptool.py")
-    if not esptool:
-        # Try arduino-cli's bundled esptool
-        for p in glob.glob(os.path.expanduser("~/.arduino15/packages/esp32/tools/esptool_py/*/esptool")):
-            if os.path.isfile(p):
-                esptool = p
-                break
-        if not esptool:
-            for p in glob.glob(os.path.expanduser("~/.arduino15/packages/esp32/tools/esptool_py/*/esptool.py")):
-                if os.path.isfile(p):
-                    esptool = p
-                    break
+    if esptool:
+        return esptool
+    for p in glob.glob(os.path.expanduser("~/.arduino15/packages/esp32/tools/esptool_py/*/esptool")):
+        if os.path.isfile(p):
+            return p
+    for p in glob.glob(os.path.expanduser("~/.arduino15/packages/esp32/tools/esptool_py/*/esptool.py")):
+        if os.path.isfile(p):
+            return p
+    return None
+
+
+async def _read_esp32_mac(port: str) -> str | None:
+    """Read the ESP32 chip MAC address via esptool (non-blocking).
+    Uses --no-stub to avoid modifying the device. Returns MAC string or None."""
+    esptool = _find_esptool()
     if not esptool:
         print("[THEIA] esptool not found, cannot read ESP32 MAC")
         return None
 
     try:
         real = os.path.realpath(port)
-        result = _sp.run(
-            [esptool, "--port", real, "--no-stub", "read_mac"],
-            capture_output=True, text=True, timeout=10
+        proc = await asyncio.create_subprocess_exec(
+            esptool, "--port", real, "--no-stub", "read_mac",
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.PIPE
         )
+        try:
+            stdout, stderr = await asyncio.wait_for(proc.communicate(), timeout=10)
+        except asyncio.TimeoutError:
+            proc.kill()
+            await proc.wait()
+            print(f"[THEIA] esptool read_mac timeout on {port}")
+            return None
+        output = stdout.decode(errors="replace")
         # Parse MAC from output like: "MAC: aa:bb:cc:dd:ee:ff"
-        for line in result.stdout.splitlines():
+        for line in output.splitlines():
             if "MAC:" in line.upper():
                 parts = line.split("MAC:")
                 if len(parts) > 1:
                     mac = parts[1].strip().lower()
-                    # Validate MAC format
                     if len(mac) == 17 and mac.count(":") == 5:
                         return mac
         print(f"[THEIA] esptool read_mac: no MAC found in output for {port}")
-        print(f"[THEIA] esptool stdout: {result.stdout[:200]}")
-        print(f"[THEIA] esptool stderr: {result.stderr[:200]}")
+        print(f"[THEIA] esptool stdout: {output[:200]}")
+        print(f"[THEIA] esptool stderr: {stderr.decode(errors='replace')[:200]}")
     except Exception as e:
         print(f"[THEIA] esptool read_mac error on {port}: {e}")
     return None
@@ -224,7 +233,33 @@ async def list_ports():
 
             ports.append(info)
 
-    # ── Step 4: build the full list of raw USB real paths (for baseline snapshot) ──
+    # ── Step 4: MAC-based exclusion (definitive, survives USB re-enumeration) ──
+    rx_mac = _get_rx_mac()
+    mac_excluded: list[dict] = []
+    if rx_mac and ports:
+        safe_ports = []
+        for info in ports:
+            try:
+                port_mac = await _read_esp32_mac(info["port"])
+                info["esp32_mac"] = port_mac
+                if port_mac and port_mac == rx_mac:
+                    mac_excluded.append({"port": info["port"], "mac": port_mac, "reason": "MAC matches RX"})
+                    print(f"[THEIA] list_ports: EXCLUDED {info['port']} (MAC {port_mac} = RX)")
+                    continue
+                elif port_mac:
+                    print(f"[THEIA] list_ports: {info['port']} MAC={port_mac} (not RX, OK)")
+                else:
+                    # esptool failed - port might be busy (LoRa bridge using it = likely RX)
+                    # Mark as warning but still include (user can decide)
+                    info["mac_warning"] = "Impossible de lire le MAC (port occupe?)"
+                    print(f"[THEIA] list_ports: {info['port']} MAC read failed (port busy?)")
+            except Exception as e:
+                info["mac_warning"] = f"Erreur MAC: {e}"
+                print(f"[THEIA] list_ports: MAC check error on {info['port']}: {e}")
+            safe_ports.append(info)
+        ports = safe_ports
+
+    # ── Step 5: build the full list of raw USB real paths (for baseline snapshot) ──
     all_raw_reals: list[str] = []
     for pattern in ["/dev/ttyUSB*", "/dev/ttyACM*"]:
         for p in sorted(glob.glob(pattern)):
@@ -232,6 +267,7 @@ async def list_ports():
 
     return {
         "ports": ports,
+        "rx_mac": rx_mac,
         "system": [
             {"symlink": k, "real": v, "role": k.replace("/dev/theia-", "")}
             for k, v in system_symlinks.items()
@@ -240,6 +276,7 @@ async def list_ports():
         "enrolled_count": len(enrolled_ports) // 2,  # each device has port + real
         "all_raw": all_raw_reals,  # complete snapshot of all plugged USB serial devices
         "skipped": skipped,  # debug: which ports were filtered out and why
+        "mac_excluded": mac_excluded,  # ports excluded by MAC check
     }
 
 

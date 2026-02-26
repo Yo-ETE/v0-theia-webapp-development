@@ -37,7 +37,7 @@ export default function DevicesPage() {
   const [flashLogs, setFlashLogs] = useState<string[]>([])
   const [flashing, setFlashing] = useState(false)
   const [flashDone, setFlashDone] = useState<"ok" | "fail" | null>(null)
-  type PortInfo = {port: string; real: string; summary?: string; label?: string; usb_serial?: string}
+  type PortInfo = {port: string; real: string; summary?: string; label?: string; usb_serial?: string; esp32_mac?: string; mac_warning?: string}
   const [ports, setPorts] = useState<PortInfo[]>([])
   const [detectedPort, setDetectedPort] = useState<PortInfo | null>(null)
   const [systemPorts, setSystemPorts] = useState<{symlink: string; real: string; role: string}[]>([])
@@ -129,16 +129,20 @@ export default function DevicesPage() {
         if (newPort) {
           setDetectedPort(newPort)
           setFlashForm(f => ({ ...f, port: newPort!.port, port_serial: newPort!.usb_serial || "" }))
-          setUsbDebug(`Detecte: ${newPort.port} (${newPort.real}) serial=${newPort.usb_serial || "??"}`)
+          const macInfo = newPort.esp32_mac ? ` MAC=${newPort.esp32_mac}` : ""
+          const macWarn = newPort.mac_warning ? ` [${newPort.mac_warning}]` : ""
+          setUsbDebug(`Detecte: ${newPort.port} (${newPort.real})${macInfo}${macWarn}`)
           clearInterval(interval)
         } else {
-          const skippedPorts = skipped.map(s => `${s.port.replace("/dev/","")}(${s.reason})`).join(", ")
-          setUsbDebug(`Recherche... ${currentRawCount} raw, ${portList.length} libres${skippedPorts ? ` | Filtres: ${skippedPorts}` : ""}`)
+          const macExcluded = (data.mac_excluded || []).map((m: { port: string; mac: string }) => `${m.port.replace("/dev/","")}(RX:${m.mac.slice(-8)})`).join(", ")
+          const skippedPorts = skipped.map((s: { port: string; reason: string }) => `${s.port.replace("/dev/","")}(${s.reason})`).join(", ")
+          const filteredInfo = [skippedPorts, macExcluded].filter(Boolean).join(", ")
+          setUsbDebug(`Recherche... ${currentRawCount} raw, ${portList.length} libres${filteredInfo ? ` | Filtres: ${filteredInfo}` : ""}`)
         }
       } catch (err) {
         setUsbDebug(`Erreur poll: ${err instanceof Error ? err.message : String(err)}`)
       }
-    }, 1500)
+    }, 5000)  // 5s to allow time for MAC verification per port
 
     return () => { cancelled = true; clearInterval(interval) }
   }, [flashOpen, wizardStep, backendBase])
