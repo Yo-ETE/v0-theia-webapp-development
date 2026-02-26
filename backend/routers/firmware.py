@@ -120,6 +120,9 @@ async def list_ports():
             except Exception:
                 pass
 
+            # Add USB serial identity for safety tracking
+            info["usb_serial"] = _get_usb_serial(real)
+
             # Build summary
             parts = []
             if info["description"]:
@@ -202,10 +205,10 @@ async def upload_sketch(
 
 
 def _get_usb_serial(port_path: str) -> str | None:
-    """Get the USB serial number for a port (used to fingerprint devices).
-    Only returns 'specific' serials (>= 6 chars, not generic patterns)."""
+    """Get a unique identity for a USB-serial device.
+    Returns the USB serial number if unique, otherwise the sysfs device path
+    (which identifies the physical USB port the device is plugged into)."""
     import subprocess
-    # Generic serials shared by many CP2102 / CH340 devices -- NOT unique
     GENERIC_SERIALS = {"0", "0001", "0000", "1", "12345678", ""}
     try:
         real = os.path.realpath(port_path)
@@ -213,12 +216,21 @@ def _get_usb_serial(port_path: str) -> str | None:
             ["udevadm", "info", "-a", real],
             capture_output=True, text=True, timeout=3
         )
+        # First pass: try to find a unique USB serial
         for line in result.stdout.splitlines():
             line = line.strip()
             if 'ATTRS{serial}' in line and '"' in line:
                 serial = line.split('"')[1]
                 if serial and serial not in GENERIC_SERIALS and len(serial) >= 6:
                     return serial
+        # Fallback: use the sysfs device path (identifies physical USB port)
+        result2 = subprocess.run(
+            ["udevadm", "info", "-q", "path", real],
+            capture_output=True, text=True, timeout=3
+        )
+        devpath = result2.stdout.strip()
+        if devpath:
+            return f"path:{devpath}"
     except Exception:
         pass
     return None
@@ -320,7 +332,8 @@ async def verify_port(port: str):
             label = os.path.basename(link)
             break
 
-    return {"safe": True, "port": port, "real": real, "label": label, **info}
+    usb_serial = _get_usb_serial(port)
+    return {"safe": True, "port": port, "real": real, "label": label, "usb_serial": usb_serial, **info}
 
 
 class FlashRequest(BaseModel):
@@ -329,6 +342,7 @@ class FlashRequest(BaseModel):
     sensor_type: str  # "ld2450" or "c4001"
     sketch_name: str | None = None  # If None, uses built-in for sensor_type
     fqbn: str | None = None
+    port_serial: str | None = None  # USB identity captured at detection time for safety verification
 
 
 @router.post("/flash")
@@ -507,6 +521,26 @@ async def flash_device(req: FlashRequest):
         yield f"data: [INFO] Port verifie: {req.port} -> {current_real} (serial={target_serial})\n\n"
         yield f"data: [INFO] RX: /dev/theia-rx -> {rx_real} (serial={rx_serial})\n\n"
         print(f"[THEIA] Pre-flash: target={req.port}({current_real}) serial={target_serial}, RX={rx_real} serial={rx_serial}")
+
+        # SAFETY: verify USB identity hasn't changed since detection (port re-enumeration guard)
+        if req.port_serial and target_serial and req.port_serial != target_serial:
+            msg = f"SECURITE: Le port {req.port} a change d'identite USB depuis la detection! " \
+                  f"Attendu: {req.port_serial}, Actuel: {target_serial}. " \
+                  f"Les ports USB ont ete re-enumeres. Flash annule."
+            print(f"[THEIA] FLASH BLOCKED (identity drift): {msg}")
+            yield f"data: [ERROR] {msg}\n\n"
+            yield "data: [DONE] FAIL\n\n"
+            shutil.rmtree(tmp_dir, ignore_errors=True)
+            return
+
+        # SAFETY: confirm target serial is NOT the RX serial
+        if target_serial and rx_serial and target_serial != "N/A" and rx_serial != "N/A" and target_serial == rx_serial:
+            msg = f"SECURITE: Le port {req.port} a le meme identifiant USB que le RX ({target_serial}). Flash annule."
+            print(f"[THEIA] FLASH BLOCKED (same serial as RX): {msg}")
+            yield f"data: [ERROR] {msg}\n\n"
+            yield "data: [DONE] FAIL\n\n"
+            shutil.rmtree(tmp_dir, ignore_errors=True)
+            return
 
         # Upload
         upload_cmd = [cli, "upload", "--fqbn", used_fqbn, "-p", req.port, tmp_sketch_dir]

@@ -339,20 +339,12 @@ export function PlanEditor({
     }
   }, [sensorPlaceMode, handlePlaceClick, drawingMode, handleClick])
 
-  if (!planImage || imgSize.w === 0) {
-    return (
-      <div className={cn("flex items-center justify-center bg-muted/20 rounded-lg min-h-[200px]", className)}>
-        <p className="text-xs text-muted-foreground">Chargement du plan...</p>
-      </div>
-    )
-  }
-
   const activeZones = editingZoneId && editPoly
     ? zones.map(z => z.id === editingZoneId ? { ...z, polygon: editPoly } : z)
     : zones
 
-  // Loading / error states
-  if (imgLoading || (!resolvedImage && !imgError)) {
+  // Loading / error states (no image URL yet, or still loading)
+  if (!resolvedImage || imgLoading) {
     return (
       <div ref={containerRef} className={cn("flex items-center justify-center rounded-lg bg-muted/10 min-h-[300px]", className)}>
         <div className="flex flex-col items-center gap-2 text-muted-foreground">

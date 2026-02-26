@@ -33,11 +33,11 @@ export default function DevicesPage() {
   // Flash / Provisioning wizard state
   const [flashOpen, setFlashOpen] = useState(false)
   const [wizardStep, setWizardStep] = useState(1) // 1=name, 2=plug USB, 3=type, 4=flash
-  const [flashForm, setFlashForm] = useState({ tx_id: "", sensor_type: "ld2450", port: "", sketch_name: "__default__", custom_sketch: null as File | null })
+  const [flashForm, setFlashForm] = useState({ tx_id: "", sensor_type: "ld2450", port: "", port_serial: "", sketch_name: "__default__", custom_sketch: null as File | null })
   const [flashLogs, setFlashLogs] = useState<string[]>([])
   const [flashing, setFlashing] = useState(false)
   const [flashDone, setFlashDone] = useState<"ok" | "fail" | null>(null)
-  type PortInfo = {port: string; real: string; summary?: string; label?: string}
+  type PortInfo = {port: string; real: string; summary?: string; label?: string; usb_serial?: string}
   const [ports, setPorts] = useState<PortInfo[]>([])
   const [detectedPort, setDetectedPort] = useState<PortInfo | null>(null)
   const [systemPorts, setSystemPorts] = useState<{symlink: string; real: string; role: string}[]>([])
@@ -128,8 +128,8 @@ export default function DevicesPage() {
 
         if (newPort) {
           setDetectedPort(newPort)
-          setFlashForm(f => ({ ...f, port: newPort!.port }))
-          setUsbDebug(`Detecte: ${newPort.port} (${newPort.real})`)
+          setFlashForm(f => ({ ...f, port: newPort!.port, port_serial: newPort!.usb_serial || "" }))
+          setUsbDebug(`Detecte: ${newPort.port} (${newPort.real}) serial=${newPort.usb_serial || "??"}`)
           clearInterval(interval)
         } else {
           const skippedPorts = skipped.map(s => `${s.port.replace("/dev/","")}(${s.reason})`).join(", ")
@@ -150,9 +150,16 @@ export default function DevicesPage() {
     setPortVerifying(true)
     setPortVerified(null)
     fetch(`${backendBase}/api/firmware/verify-port?port=${encodeURIComponent(flashForm.port)}`)
-      .then(r => r.json())
-      .then(data => { if (!cancelled) { setPortVerified(data); setPortVerifying(false) } })
-      .catch(() => { if (!cancelled) { setPortVerified({ safe: true }); setPortVerifying(false) } })
+    .then(r => r.json())
+    .then(data => {
+      if (!cancelled) {
+        setPortVerified(data)
+        setPortVerifying(false)
+        // Capture USB serial for safety verification during flash
+        if (data.usb_serial) setFlashForm(f => ({ ...f, port_serial: data.usb_serial }))
+      }
+    })
+    .catch(() => { if (!cancelled) { setPortVerified({ safe: true }); setPortVerifying(false) } })
     return () => { cancelled = true }
   }, [flashForm.port, backendBase])
 
@@ -208,12 +215,13 @@ export default function DevicesPage() {
       const res = await fetch(`${backendBase}/api/firmware/flash`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          port: flashForm.port,
-          tx_id: flashForm.tx_id.trim(),
-          sensor_type: flashForm.sensor_type,
-          sketch_name: customSketchName || (flashForm.sketch_name === "__default__" ? null : flashForm.sketch_name),
-        }),
+      body: JSON.stringify({
+        port: flashForm.port,
+        tx_id: flashForm.tx_id.trim(),
+        sensor_type: flashForm.sensor_type,
+        sketch_name: customSketchName || (flashForm.sketch_name === "__default__" ? null : flashForm.sketch_name),
+        port_serial: flashForm.port_serial || null,
+      }),
       })
 
       if (!res.ok) {
@@ -343,7 +351,7 @@ export default function DevicesPage() {
                 setFlashDone(null)
                 setDetectedPort(null)
                 baselineRef.current = new Set()
-                setFlashForm({ tx_id: "", sensor_type: "ld2450", port: "", sketch_name: "__default__", custom_sketch: null })
+                setFlashForm({ tx_id: "", sensor_type: "ld2450", port: "", port_serial: "", sketch_name: "__default__", custom_sketch: null })
               }}
               className="gap-1.5 shrink-0"
             >
