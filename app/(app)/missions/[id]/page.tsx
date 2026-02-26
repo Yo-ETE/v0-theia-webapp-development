@@ -904,7 +904,7 @@ export default function MissionDetailPage() {
                       FOV
                     </Button>
                   )}
-                  {missionDevices.length >= 2 && (
+                  {!isPlanMode && missionDevices.length >= 2 && (
                     <Button
                       variant={estimatePosition ? "default" : "outline"}
                       size="sm"
@@ -939,7 +939,27 @@ export default function MissionDetailPage() {
               <Button variant="ghost" size="sm" className="h-7 px-2 text-[10px] text-cyan-400" onClick={() => setSensorPlaceMode(null)}>Annuler</Button>
             </div>
           )}
-          {/* Full-height map */}
+          {isPlanMode ? (
+            /* Fullscreen PlanEditor */
+            <PlanEditor
+              imageUrl={planImageUrl!}
+              imageWidth={mission?.plan_width ?? undefined}
+              imageHeight={mission?.plan_height ?? undefined}
+              zones={zones}
+              sensorPlacements={sensorPlacements}
+              liveByDevice={filteredLiveByDevice}
+              drawingMode={drawingMode}
+              sensorPlaceMode={sensorPlaceMode}
+              onZoneCreated={handlePolygonDrawn}
+              onSensorPlace={(zoneId, side, t) => {
+                handleSensorPlace(zoneId, side, t)
+              }}
+              onZonePolygonUpdate={updateZonePolygon}
+              showFov={showFov}
+              className="rounded-lg overflow-hidden border border-border/50 h-[calc(100vh-310px)]"
+            />
+          ) : (
+          /* Full-height map */
           <ErrorBoundary>
           <MissionMap
             key={`full-${mission.id}`}
@@ -967,6 +987,7 @@ export default function MissionDetailPage() {
                   replayMode={false}
                 />
               </ErrorBoundary>
+          )}
 
               {/* Compact TX summary bar */}
               <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 lg:grid-cols-4">
@@ -1064,6 +1085,14 @@ export default function MissionDetailPage() {
               ) : isPlanMode ? (
                 /* ── Plan mode: PlanEditor ── */
                 <div className="flex flex-col gap-3">
+                  {/* Static mini-map for location context */}
+                  <StaticMiniMap
+                    lat={mission.center_lat}
+                    lon={mission.center_lon}
+                    zoom={Math.min(mission.zoom ?? 17, 17)}
+                    label={mission.name}
+                    className="h-[140px]"
+                  />
                   {/* Sensor placement banner */}
                   {sensorPlaceMode && (
                     <div className="flex items-center justify-between gap-2 rounded-lg border border-cyan-500/50 bg-cyan-500/10 px-3 py-2">
@@ -1108,23 +1137,33 @@ export default function MissionDetailPage() {
                       </label>
                     </div>
                   )}
-                  <PlanEditor
-                    imageUrl={planImageUrl!}
-                    imageWidth={mission?.plan_width ?? undefined}
-                    imageHeight={mission?.plan_height ?? undefined}
-                    zones={zones}
-                    sensorPlacements={sensorPlacements}
-                    liveByDevice={filteredLiveByDevice}
-                    drawingMode={drawingMode}
-                    sensorPlaceMode={sensorPlaceMode}
-                    onZoneCreated={handlePolygonDrawn}
-                    onSensorPlace={(zoneId, side, t) => {
-                      handleSensorPlace(zoneId, side, t)
-                    }}
-                    onZonePolygonUpdate={updateZonePolygon}
-                    showFov={showFov}
-                    className="rounded-lg overflow-hidden border border-border/50"
-                  />
+                  <div className="relative">
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      className="absolute top-2 right-2 z-[1000] min-h-[32px] text-[10px] px-2 gap-1 bg-background/80 backdrop-blur-sm"
+                      onClick={() => setFullMapMode(true)}
+                    >
+                      <Maximize2 className="h-3.5 w-3.5" />
+                    </Button>
+                    <PlanEditor
+                      imageUrl={planImageUrl!}
+                      imageWidth={mission?.plan_width ?? undefined}
+                      imageHeight={mission?.plan_height ?? undefined}
+                      zones={zones}
+                      sensorPlacements={sensorPlacements}
+                      liveByDevice={filteredLiveByDevice}
+                      drawingMode={drawingMode}
+                      sensorPlaceMode={sensorPlaceMode}
+                      onZoneCreated={handlePolygonDrawn}
+                      onSensorPlace={(zoneId, side, t) => {
+                        handleSensorPlace(zoneId, side, t)
+                      }}
+                      onZonePolygonUpdate={updateZonePolygon}
+                      showFov={showFov}
+                      className="rounded-lg overflow-hidden border border-border/50"
+                    />
+                  </div>
                   {/* Timelapse panel for plan mode */}
                   {timelapseMode && (
                     <div className="space-y-2">

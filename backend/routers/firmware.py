@@ -28,10 +28,99 @@ if not os.path.isdir(FIRMWARE_DIR):
     FIRMWARE_DIR = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(__file__))), "firmware")
 
 ARDUINO_CLI = shutil.which("arduino-cli") or "/usr/local/bin/arduino-cli"
+DATA_DIR = os.getenv("THEIA_DATA_DIR", "/opt/theia/data")
+RX_MAC_FILE = os.path.join(DATA_DIR, "rx_mac.txt")
 # Heltec WiFi LoRa 32 V3 FQBN from standard ESP32 core
 # Uses RadioLib for LoRa -- no Heltec SDK dependency
 DEFAULT_FQBN = "esp32:esp32:heltec_wifi_lora_32_V3"
 FALLBACK_FQBN = "esp32:esp32:esp32s3"
+
+
+async def _read_esp32_mac(port: str) -> str | None:
+    """Read the ESP32 chip MAC address via esptool.
+    Uses --no-stub to avoid modifying the device. Returns MAC string or None."""
+    import subprocess as _sp
+    # Find esptool: bundled with arduino-cli ESP32 core or system-wide
+    esptool = shutil.which("esptool") or shutil.which("esptool.py")
+    if not esptool:
+        # Try arduino-cli's bundled esptool
+        for p in glob.glob(os.path.expanduser("~/.arduino15/packages/esp32/tools/esptool_py/*/esptool")):
+            if os.path.isfile(p):
+                esptool = p
+                break
+        if not esptool:
+            for p in glob.glob(os.path.expanduser("~/.arduino15/packages/esp32/tools/esptool_py/*/esptool.py")):
+                if os.path.isfile(p):
+                    esptool = p
+                    break
+    if not esptool:
+        print("[THEIA] esptool not found, cannot read ESP32 MAC")
+        return None
+
+    try:
+        real = os.path.realpath(port)
+        result = _sp.run(
+            [esptool, "--port", real, "--no-stub", "read_mac"],
+            capture_output=True, text=True, timeout=10
+        )
+        # Parse MAC from output like: "MAC: aa:bb:cc:dd:ee:ff"
+        for line in result.stdout.splitlines():
+            if "MAC:" in line.upper():
+                parts = line.split("MAC:")
+                if len(parts) > 1:
+                    mac = parts[1].strip().lower()
+                    # Validate MAC format
+                    if len(mac) == 17 and mac.count(":") == 5:
+                        return mac
+        print(f"[THEIA] esptool read_mac: no MAC found in output for {port}")
+        print(f"[THEIA] esptool stdout: {result.stdout[:200]}")
+        print(f"[THEIA] esptool stderr: {result.stderr[:200]}")
+    except Exception as e:
+        print(f"[THEIA] esptool read_mac error on {port}: {e}")
+    return None
+
+
+def _get_rx_mac() -> str | None:
+    """Get the stored RX MAC address."""
+    try:
+        if os.path.isfile(RX_MAC_FILE):
+            mac = open(RX_MAC_FILE).read().strip().lower()
+            if len(mac) == 17 and mac.count(":") == 5:
+                return mac
+    except Exception:
+        pass
+    return None
+
+
+def _store_rx_mac(mac: str):
+    """Store the RX MAC address to disk."""
+    try:
+        os.makedirs(os.path.dirname(RX_MAC_FILE), exist_ok=True)
+        with open(RX_MAC_FILE, "w") as f:
+            f.write(mac.lower().strip())
+        print(f"[THEIA] RX MAC stored: {mac}")
+    except Exception as e:
+        print(f"[THEIA] Failed to store RX MAC: {e}")
+
+
+@router.post("/capture-rx-mac")
+async def capture_rx_mac():
+    """Read and store the RX ESP32's MAC address from /dev/theia-rx.
+    This is the definitive device identity that survives USB re-enumeration."""
+    if not os.path.exists("/dev/theia-rx"):
+        raise HTTPException(status_code=404, detail="/dev/theia-rx non disponible")
+    mac = await _read_esp32_mac("/dev/theia-rx")
+    if not mac:
+        raise HTTPException(status_code=500, detail="Impossible de lire le MAC de l'ESP32 RX")
+    _store_rx_mac(mac)
+    return {"mac": mac, "port": os.path.realpath("/dev/theia-rx")}
+
+
+@router.get("/rx-mac")
+async def get_rx_mac_endpoint():
+    """Get the stored RX MAC address."""
+    mac = _get_rx_mac()
+    return {"mac": mac, "stored": mac is not None}
 
 
 @router.get("/ports")
@@ -541,6 +630,31 @@ async def flash_device(req: FlashRequest):
             yield "data: [DONE] FAIL\n\n"
             shutil.rmtree(tmp_dir, ignore_errors=True)
             return
+
+        # ── DEFINITIVE SAFETY: ESP32 MAC address check ──
+        # This reads the actual chip identity via esptool, NOT the USB bus path.
+        # It's the only 100% reliable way to distinguish two identical ESP32 boards.
+        rx_mac = _get_rx_mac()
+        if rx_mac:
+            yield f"data: [INFO] Verification MAC ESP32 sur {req.port}...\n\n"
+            target_mac = await _read_esp32_mac(req.port)
+            if target_mac:
+                yield f"data: [INFO] MAC cible: {target_mac}, MAC RX connu: {rx_mac}\n\n"
+                print(f"[THEIA] MAC check: target={target_mac}, RX={rx_mac}")
+                if target_mac == rx_mac:
+                    msg = f"SECURITE CRITIQUE: Le device sur {req.port} a le meme MAC que le RX ({rx_mac}). " \
+                          f"C'est le recepteur LoRa! Flash ANNULE."
+                    print(f"[THEIA] FLASH BLOCKED (MAC = RX): {msg}")
+                    yield f"data: [ERROR] {msg}\n\n"
+                    yield "data: [DONE] FAIL\n\n"
+                    shutil.rmtree(tmp_dir, ignore_errors=True)
+                    return
+                else:
+                    yield f"data: [INFO] MAC OK: {target_mac} != RX ({rx_mac})\n\n"
+            else:
+                yield f"data: [WARN] Impossible de lire le MAC ESP32 sur {req.port}. Continuer avec prudence.\n\n"
+        else:
+            yield f"data: [WARN] MAC du RX non enregistre. Utilisez Administration > Capturer MAC RX.\n\n"
 
         # Upload
         upload_cmd = [cli, "upload", "--fqbn", used_fqbn, "-p", req.port, tmp_sketch_dir]

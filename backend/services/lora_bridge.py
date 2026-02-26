@@ -735,20 +735,36 @@ class LoRaBridge:
         print("[THEIA] LoRa bridge starting (multi-port mode)")
         # Start device health watchdog
         self._tasks.append(asyncio.create_task(self._device_watchdog()))
-        _first_scan = True
-        while self._running:
-            ports = self._scan_ports()
-            if _first_scan:
-                udev_ok = os.path.exists(self.THEIA_RX_SYMLINK)
-                if udev_ok:
-                    real = os.path.realpath(self.THEIA_RX_SYMLINK)
-                    print(f"[THEIA] Port scan: /dev/theia-rx -> {real}")
-                else:
-                    by_id = [os.path.basename(p) for p in glob.glob("/dev/serial/by-id/*")]
-                    print(f"[THEIA] Port scan: /dev/theia-rx NOT found, by-id={by_id}, selected={ports}")
-                    if not ports:
-                        print("[THEIA] WARNING: No serial ports found! Run: sudo bash scripts/setup-udev-rules.sh")
-                _first_scan = False
+    _first_scan = True
+    while self._running:
+      ports = self._scan_ports()
+      if _first_scan:
+        udev_ok = os.path.exists(self.THEIA_RX_SYMLINK)
+        if udev_ok:
+          real = os.path.realpath(self.THEIA_RX_SYMLINK)
+          print(f"[THEIA] Port scan: /dev/theia-rx -> {real}")
+          # Auto-capture RX ESP32 MAC at startup for flash safety
+          try:
+            from backend.routers.firmware import _read_esp32_mac, _get_rx_mac, _store_rx_mac
+            existing_mac = _get_rx_mac()
+            if not existing_mac:
+              print("[THEIA] RX MAC not stored yet, capturing via esptool...")
+              mac = await _read_esp32_mac(self.THEIA_RX_SYMLINK)
+              if mac:
+                _store_rx_mac(mac)
+                print(f"[THEIA] RX MAC auto-captured: {mac}")
+              else:
+                print("[THEIA] Could not auto-capture RX MAC (esptool failed)")
+            else:
+              print(f"[THEIA] RX MAC already stored: {existing_mac}")
+          except Exception as e:
+            print(f"[THEIA] RX MAC auto-capture error: {e}")
+        else:
+          by_id = [os.path.basename(p) for p in glob.glob("/dev/serial/by-id/*")]
+          print(f"[THEIA] Port scan: /dev/theia-rx NOT found, by-id={by_id}, selected={ports}")
+          if not ports:
+            print("[THEIA] WARNING: No serial ports found! Run: sudo bash scripts/setup-udev-rules.sh")
+        _first_scan = False
             for port in ports:
                 if port not in self._readers:
                     reader = PortReader(port)
