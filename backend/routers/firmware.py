@@ -245,7 +245,9 @@ async def _build_reserved_map(db) -> dict[str, str]:
             if serial:
                 _rx_usb_serials.add(serial)
                 print(f"[THEIA] RX fingerprint: {symlink} -> {real} serial={serial}")
-    # 2) Enrolled device ports
+    # Save system keys so enrolled devices NEVER overwrite them
+    system_keys = set(reserved.keys())
+    # 2) Enrolled device ports (lower priority -- never overwrite system)
     try:
         cursor = await db.execute(
             "SELECT serial_port, name, dev_eui FROM devices WHERE enabled=1 AND serial_port IS NOT NULL AND serial_port != ''"
@@ -255,8 +257,11 @@ async def _build_reserved_map(db) -> dict[str, str]:
             sp = d["serial_port"]
             label = f"device {d.get('dev_eui') or d.get('name', '?')}"
             if sp and os.path.exists(sp):
-                reserved[sp] = label
-                reserved[os.path.realpath(sp)] = label
+                if sp not in system_keys:
+                    reserved[sp] = label
+                real = os.path.realpath(sp)
+                if real not in system_keys:
+                    reserved[real] = label
     except Exception:
         pass
     return reserved
@@ -470,10 +475,18 @@ async def flash_device(req: FlashRequest):
 
         yield f"data: [STEP] Compilation reussie ({used_fqbn}). Upload vers {req.port}...\n\n"
 
-        # ── PRE-UPLOAD SAFETY: FULL re-check (symlinks + enrolled devices + USB serial) ──
+        # ── PRE-UPLOAD SAFETY: FULL re-check ──
         # USB re-enumeration may have swapped port assignments since detection
-        pre_reserved = await _build_reserved_map(db)
         current_real = os.path.realpath(req.port)
+        # Direct symlink check first (most reliable)
+        for symlink in ["/dev/theia-rx", "/dev/theia-gps"]:
+            if os.path.exists(symlink) and os.path.realpath(symlink) == current_real:
+                role = symlink.replace("/dev/theia-", "").upper()
+                yield f"data: [ERROR] SECURITE: {req.port} ({current_real}) est le {role} systeme. Flash annule.\n\n"
+                yield "data: [DONE] FAIL\n\n"
+                shutil.rmtree(tmp_dir, ignore_errors=True)
+                return
+        pre_reserved = await _build_reserved_map(db)
         pre_block = pre_reserved.get(req.port) or pre_reserved.get(current_real)
         if pre_block:
             yield f"data: [ERROR] SECURITE: {req.port} ({current_real}) est maintenant {pre_block}. Flash annule.\n\n"
@@ -521,9 +534,14 @@ async def flash_device(req: FlashRequest):
         try:
             dev_type = "c4001" if req.sensor_type == "c4001" else "microwave_tx"
             did = str(uuid.uuid4())[:8]
+            # Always store the resolved real path, never a symlink like /dev/theia-*
+            store_port = os.path.realpath(req.port)
+            # Extra guard: NEVER store a system symlink path
+            if store_port.startswith("/dev/theia-"):
+                store_port = req.port  # fallback to original
             await db.execute(
                 "INSERT INTO devices (id, dev_eui, name, type, serial_port, enabled) VALUES (?, ?, ?, ?, ?, 1)",
-                (did, req.tx_id, f"TX-{req.tx_id}", dev_type, req.port),
+                (did, req.tx_id, f"TX-{req.tx_id}", dev_type, store_port),
             )
             await db.execute(
                 "INSERT INTO logs (level, source, message) VALUES (?, ?, ?)",

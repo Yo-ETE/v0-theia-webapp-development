@@ -215,46 +215,33 @@ PLANS_DIR = os.path.join(_DATA_DIR, "plans")
 @router.post("/{mission_id}/plan-image")
 async def upload_plan_image(mission_id: str, request: Request):
     """Upload a floor plan image for a plan-type mission.
-    Uses Request.form() directly to avoid UploadFile.read() returning 0 bytes."""
+    Accepts raw binary body with X-Filename and Content-Type headers.
+    This bypasses python-multipart entirely to avoid 0-byte reads."""
     db = await get_db()
     cursor = await db.execute("SELECT id FROM missions WHERE id=?", (mission_id,))
     if not await cursor.fetchone():
         raise HTTPException(status_code=404, detail="Mission not found")
 
     os.makedirs(PLANS_DIR, exist_ok=True)
-    print(f"[THEIA] PLANS_DIR={PLANS_DIR}")
 
-    # Read file from form data
-    form = await request.form()
-    file = form.get("file")
-    if file is None:
-        print(f"[THEIA] Plan image upload: no 'file' field in form. Keys: {list(form.keys())}")
-        raise HTTPException(status_code=400, detail="No file field in form data")
-
-    # file is a starlette UploadFile
-    file_content_type = getattr(file, "content_type", "") or ""
-    file_filename = getattr(file, "filename", "") or ""
-    print(f"[THEIA] Plan image upload: mission={mission_id}, filename={file_filename}, content_type={file_content_type}")
-
-    # Read the raw bytes via the SpooledTemporaryFile
-    file_obj = file.file  # the underlying SpooledTemporaryFile
-    file_obj.seek(0)
-    content = file_obj.read()
-    print(f"[THEIA] Plan image read {len(content)} bytes (via .file.read())")
+    # Read raw body bytes directly -- no multipart parsing
+    content = await request.body()
+    ct = request.headers.get("content-type", "")
+    filename_header = request.headers.get("x-filename", "image.jpg")
+    print(f"[THEIA] Plan image upload: mission={mission_id}, filename={filename_header}, content-type={ct}, body={len(content)} bytes")
 
     if len(content) == 0:
-        # Fallback: try async read
-        content = await file.read()
-        print(f"[THEIA] Fallback async read: {len(content)} bytes")
+        raise HTTPException(status_code=400, detail="Empty body")
 
-    if len(content) == 0:
-        raise HTTPException(status_code=400, detail=f"Empty file uploaded (filename={file_filename})")
-
-    # Determine extension from content type
+    # Determine extension
     ext = "jpg"
-    if "png" in file_content_type:
+    if "png" in ct:
         ext = "png"
-    elif "webp" in file_content_type:
+    elif "webp" in ct:
+        ext = "webp"
+    elif filename_header.lower().endswith(".png"):
+        ext = "png"
+    elif filename_header.lower().endswith(".webp"):
         ext = "webp"
 
     filename = f"{mission_id}.{ext}"

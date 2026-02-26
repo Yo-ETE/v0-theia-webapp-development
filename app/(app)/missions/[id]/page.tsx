@@ -1082,11 +1082,16 @@ export default function MissionDetailPage() {
                           onChange={async (e) => {
                             const file = e.target.files?.[0]
                             if (!file) return
-                            const fd = new FormData()
-                            fd.append("file", file)
                             try {
                               const backendBase = typeof window !== "undefined" ? `http://${window.location.hostname}:8000` : ""
-                              const res = await fetch(`${backendBase}/api/missions/${id}/plan-image`, { method: "POST", body: fd })
+                              const res = await fetch(`${backendBase}/api/missions/${id}/plan-image`, {
+                                method: "POST",
+                                headers: {
+                                  "Content-Type": file.type || "application/octet-stream",
+                                  "X-Filename": file.name,
+                                },
+                                body: file,
+                              })
                               if (res.ok) mutate()
                             } catch (err) {
                               console.error("Upload error:", err)

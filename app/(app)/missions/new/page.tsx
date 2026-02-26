@@ -133,11 +133,16 @@ export default function NewMissionPage() {
       const mission = await createMission(form)
       // If plan type, upload the plan image DIRECTLY to backend (avoid Next.js proxy multipart issues)
       if (form.environment === "plan" && planFile && mission.id) {
-        const fd = new FormData()
-        fd.append("file", planFile)
         try {
           const backendBase = typeof window !== "undefined" ? `http://${window.location.hostname}:8000` : ""
-          const uploadRes = await fetch(`${backendBase}/api/missions/${mission.id}/plan-image`, { method: "POST", body: fd })
+          const uploadRes = await fetch(`${backendBase}/api/missions/${mission.id}/plan-image`, {
+            method: "POST",
+            headers: {
+              "Content-Type": planFile.type || "application/octet-stream",
+              "X-Filename": planFile.name,
+            },
+            body: planFile,
+          })
           if (!uploadRes.ok) {
             const errTxt = await uploadRes.text().catch(() => "")
             console.error("[v0] Plan image upload failed:", uploadRes.status, errTxt)
