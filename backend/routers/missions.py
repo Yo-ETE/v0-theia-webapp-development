@@ -5,7 +5,7 @@ Field names aligned with frontend: center_lat, center_lon, zoom, environment, lo
 import json
 import uuid
 from datetime import datetime, timezone
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Request
 from pydantic import BaseModel, Field
 from backend.database import get_db
 
@@ -213,9 +213,9 @@ PLANS_DIR = os.path.join(_DATA_DIR, "plans")
 
 
 @router.post("/{mission_id}/plan-image")
-async def upload_plan_image(mission_id: str, file: UploadFile = File(...)):
-    """Upload a floor plan image for a plan-type mission."""
-    print(f"[THEIA] Plan image upload: mission={mission_id}, filename={file.filename}, content_type={file.content_type}")
+async def upload_plan_image(mission_id: str, request: Request):
+    """Upload a floor plan image for a plan-type mission.
+    Uses Request.form() directly to avoid UploadFile.read() returning 0 bytes."""
     db = await get_db()
     cursor = await db.execute("SELECT id FROM missions WHERE id=?", (mission_id,))
     if not await cursor.fetchone():
@@ -224,21 +224,42 @@ async def upload_plan_image(mission_id: str, file: UploadFile = File(...)):
     os.makedirs(PLANS_DIR, exist_ok=True)
     print(f"[THEIA] PLANS_DIR={PLANS_DIR}")
 
+    # Read file from form data
+    form = await request.form()
+    file = form.get("file")
+    if file is None:
+        print(f"[THEIA] Plan image upload: no 'file' field in form. Keys: {list(form.keys())}")
+        raise HTTPException(status_code=400, detail="No file field in form data")
+
+    # file is a starlette UploadFile
+    file_content_type = getattr(file, "content_type", "") or ""
+    file_filename = getattr(file, "filename", "") or ""
+    print(f"[THEIA] Plan image upload: mission={mission_id}, filename={file_filename}, content_type={file_content_type}")
+
+    # Read the raw bytes via the SpooledTemporaryFile
+    file_obj = file.file  # the underlying SpooledTemporaryFile
+    file_obj.seek(0)
+    content = file_obj.read()
+    print(f"[THEIA] Plan image read {len(content)} bytes (via .file.read())")
+
+    if len(content) == 0:
+        # Fallback: try async read
+        content = await file.read()
+        print(f"[THEIA] Fallback async read: {len(content)} bytes")
+
+    if len(content) == 0:
+        raise HTTPException(status_code=400, detail=f"Empty file uploaded (filename={file_filename})")
+
     # Determine extension from content type
     ext = "jpg"
-    if file.content_type and "png" in file.content_type:
+    if "png" in file_content_type:
         ext = "png"
-    elif file.content_type and "webp" in file.content_type:
+    elif "webp" in file_content_type:
         ext = "webp"
 
     filename = f"{mission_id}.{ext}"
     filepath = os.path.join(PLANS_DIR, filename)
 
-    # Write file
-    content = await file.read()
-    print(f"[THEIA] Plan image read {len(content)} bytes -> {filepath}")
-    if len(content) == 0:
-        raise HTTPException(status_code=400, detail="Empty file uploaded")
     with open(filepath, "wb") as f:
         f.write(content)
     print(f"[THEIA] Plan image saved: {filepath} ({len(content)} bytes)")

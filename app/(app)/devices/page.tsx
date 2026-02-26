@@ -94,8 +94,10 @@ export default function DevicesPage() {
         const data = await res.json()
         const portList: PortInfo[] = data.ports ?? data
         const allRaw: string[] = data.all_raw ?? []
+        const systemReals: string[] = data.system_reals ?? []
         const skipped: Array<{port: string, real: string, reason: string}> = data.skipped ?? []
         const currentRawCount = allRaw.length
+        const systemSet = new Set(systemReals)
 
         setPorts(portList)
 
@@ -108,13 +110,12 @@ export default function DevicesPage() {
           newPort = portList[portList.length - 1] // take the last free port
         }
 
-        // Method 3: if a new raw port appeared that wasn't in the baseline
-        // (even if raw count is same due to re-enumeration, or increased but filtered)
-        // it means new hardware was plugged in. Offer it even if it's "reserved".
+        // Method 3: if a new raw port appeared that wasn't in the baseline,
+        // offer it even if it's "reserved" (enrolled port re-enumeration).
+        // CRITICAL: NEVER offer a system port (theia-rx, theia-gps realpath).
         if (!newPort) {
-          const newRaw = allRaw.find(r => !baselineRef.current.has(r))
+          const newRaw = allRaw.find(r => !baselineRef.current.has(r) && !systemSet.has(r))
           if (newRaw) {
-            // This port is reserved but it's genuinely new hardware
             const skippedInfo = skipped.find(s => s.real === newRaw || s.port === newRaw)
             const syntheticPort: PortInfo = {
               port: newRaw, real: newRaw,

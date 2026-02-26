@@ -144,6 +144,7 @@ async def list_ports():
             {"symlink": k, "real": v, "role": k.replace("/dev/theia-", "")}
             for k, v in system_symlinks.items()
         ],
+        "system_reals": sorted(reserved_real_paths),  # real paths of ALL system devices
         "enrolled_count": len(enrolled_ports) // 2,  # each device has port + real
         "all_raw": all_raw_reals,  # complete snapshot of all plugged USB serial devices
         "skipped": skipped,  # debug: which ports were filtered out and why
@@ -330,18 +331,31 @@ async def flash_device(req: FlashRequest):
     """Compile and flash a sketch to an ESP32. Returns SSE stream of progress."""
     db = await get_db()
 
-    # ── SAFETY: block flashing to system ports (RX, GPS, TX already enrolled) ──
-    reserved = await _build_reserved_map(db)
+    # ── SAFETY LEVEL 1: direct symlink check (ALWAYS works, no DB needed) ──
     target_real = os.path.realpath(req.port)
+    for symlink in ["/dev/theia-rx", "/dev/theia-gps"]:
+        if os.path.exists(symlink):
+            sym_real = os.path.realpath(symlink)
+            if target_real == sym_real or req.port == symlink:
+                role = symlink.replace("/dev/theia-", "").upper()
+                print(f"[THEIA] FLASH BLOCKED (direct check): {req.port} -> {target_real} is {role} ({symlink} -> {sym_real})")
+                raise HTTPException(
+                    status_code=400,
+                    detail=f"SECURITE: {req.port} est le {role} systeme ({symlink}). Impossible de flasher le recepteur !"
+                )
+
+    # ── SAFETY LEVEL 2: full reserved map (system + enrolled devices) ──
+    reserved = await _build_reserved_map(db)
+    print(f"[THEIA] Flash safety: target={req.port} -> {target_real}, reserved_map={dict(reserved)}")
     block_reason = reserved.get(req.port) or reserved.get(target_real)
     if block_reason:
-        print(f"[THEIA] FLASH BLOCKED: {req.port} -> {target_real} is {block_reason}")
+        print(f"[THEIA] FLASH BLOCKED (reserved map): {req.port} -> {target_real} is {block_reason}")
         raise HTTPException(
             status_code=400,
             detail=f"Port {req.port} ({target_real}) est {block_reason}. Impossible de flasher dessus."
         )
 
-    # Extra safety: check USB serial fingerprint matches a known RX device
+    # ── SAFETY LEVEL 3: USB serial fingerprint ──
     rx_match = _check_usb_serial_is_rx(req.port)
     if rx_match:
         print(f"[THEIA] FLASH BLOCKED by USB serial: {req.port} -> {rx_match}")
@@ -350,7 +364,7 @@ async def flash_device(req: FlashRequest):
             detail=f"SECURITE: {req.port} est identifie comme le RX ({rx_match}). Flash bloque."
         )
 
-    print(f"[THEIA] Flash target: {req.port} -> {target_real} (not reserved, {len(reserved)} reserved paths checked)")
+    print(f"[THEIA] Flash target APPROVED: {req.port} -> {target_real} ({len(reserved)} reserved paths)")
 
     # Check TX_ID uniqueness
     cursor = await db.execute("SELECT id FROM devices WHERE dev_eui=?", (req.tx_id,))
