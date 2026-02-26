@@ -215,22 +215,19 @@ async def delete_device(device_id: str):
 
     device = dict(row)
 
-    # ── Clean up references in other tables BEFORE deleting ──
-    # Events: set device_id to NULL (don't lose event history)
-    await db.execute("UPDATE events SET device_id=NULL WHERE device_id=?", (device_id,))
-    # Notifications: clear device_id reference
+    # ── Soft-delete: set enabled=0 so the bridge ignores future frames ──
+    # (Hard DELETE would cause the bridge to auto-re-create the device
+    #  as soon as it receives a LoRa frame from this TX)
     await db.execute(
-        "UPDATE notifications SET device_id=NULL WHERE device_id=?", (device_id,)
+        "UPDATE devices SET enabled=0, mission_id=NULL, zone=NULL, zone_id=NULL, zone_label=NULL, side=NULL WHERE id=?",
+        (device_id,),
     )
-
-    # ── Hard DELETE the device row ──
-    await db.execute("DELETE FROM devices WHERE id=?", (device_id,))
     await db.commit()
 
     # Log the deletion
     await db.execute(
         "INSERT INTO logs (level, source, message) VALUES (?, ?, ?)",
-        ("info", "api", f"Device deleted: {device.get('name', '')} ({device.get('dev_eui', '')})"),
+        ("info", "api", f"Device disabled: {device.get('name', '')} ({device.get('dev_eui', '')})"),
     )
     await db.commit()
 

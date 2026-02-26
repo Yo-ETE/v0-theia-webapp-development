@@ -641,24 +641,42 @@ async def flash_device(req: FlashRequest):
 
         yield f"data: [STEP] Flash termine avec succes!\n\n"
 
-        # Register device in DB
+        # Register device in DB (upsert: re-activate if soft-deleted, update if exists)
         try:
             dev_type = "c4001" if req.sensor_type == "c4001" else "microwave_tx"
-            did = str(uuid.uuid4())[:8]
-            # TX devices communicate via LoRa after flashing, not USB.
-            # Store the RX symlink as serial_port so the bridge can match them.
             rx_symlink = "/dev/theia-rx"
             store_port = rx_symlink if os.path.exists(rx_symlink) else req.port
-            await db.execute(
-                "INSERT INTO devices (id, dev_eui, name, type, serial_port, enabled) VALUES (?, ?, ?, ?, ?, 1)",
-                (did, req.tx_id, f"TX-{req.tx_id}", dev_type, store_port),
+
+            # Check if dev_eui already exists (soft-deleted or active)
+            cursor = await db.execute(
+                "SELECT id, enabled FROM devices WHERE dev_eui=?", (req.tx_id,)
             )
+            existing = await cursor.fetchone()
+
+            if existing:
+                # Re-activate and update existing device
+                await db.execute(
+                    "UPDATE devices SET name=?, type=?, serial_port=?, enabled=1, "
+                    "mission_id=NULL, zone=NULL, zone_id=NULL, zone_label=NULL, side=NULL "
+                    "WHERE dev_eui=?",
+                    (f"TX-{req.tx_id}", dev_type, store_port, req.tx_id),
+                )
+                action = "reactive" if not existing["enabled"] else "mis a jour"
+            else:
+                # Create new device
+                did = str(uuid.uuid4())[:8]
+                await db.execute(
+                    "INSERT INTO devices (id, dev_eui, name, type, serial_port, enabled) VALUES (?, ?, ?, ?, ?, 1)",
+                    (did, req.tx_id, f"TX-{req.tx_id}", dev_type, store_port),
+                )
+                action = "cree"
+
             await db.execute(
                 "INSERT INTO logs (level, source, message) VALUES (?, ?, ?)",
-                ("info", "firmware", f"Device {req.tx_id} ({req.sensor_type}) flashe et enregistre sur {req.port}"),
+                ("info", "firmware", f"Device {req.tx_id} ({req.sensor_type}) flashe et {action} sur {req.port}"),
             )
             await db.commit()
-            yield f"data: [STEP] Device {req.tx_id} enregistre en base de donnees\n\n"
+            yield f"data: [STEP] Device {req.tx_id} {action} en base de donnees\n\n"
         except Exception as e:
             yield f"data: [WARN] Flash OK mais enregistrement DB echoue: {str(e)}\n\n"
 
