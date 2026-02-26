@@ -253,7 +253,7 @@ class PortReader:
 
         if tx_id:
             cursor = await db.execute(
-                "SELECT id, mission_id, zone, zone_id, zone_label, side, name, type, muted "
+                "SELECT id, mission_id, zone, zone_id, zone_label, side, name, type, muted, floor "
                 "FROM devices WHERE dev_eui=? AND enabled=1",
                 (tx_id,),
             )
@@ -294,14 +294,14 @@ class PortReader:
                 )
                 await db.commit()
                 cursor = await db.execute(
-                    "SELECT id, mission_id, zone, zone_id, zone_label, side, name, type, muted FROM devices WHERE id=?",
+                    "SELECT id, mission_id, zone, zone_id, zone_label, side, name, type, muted, floor FROM devices WHERE id=?",
                     (did,),
                 )
                 row = await cursor.fetchone()
 
         if not row:
             cursor = await db.execute(
-                "SELECT id, mission_id, zone, zone_id, zone_label, side, name, type, muted "
+                "SELECT id, mission_id, zone, zone_id, zone_label, side, name, type, muted, floor "
                 "FROM devices WHERE serial_port=? AND enabled=1",
                 (self.port,),
             )
@@ -316,6 +316,16 @@ class PortReader:
         zone = row["zone"] if row else ""
         zone_id = row["zone_id"] if row else None
         zone_label = row["zone_label"] if row else ""
+
+        # For floor-mode devices: derive zone_label from floor number if zone_label is empty
+        device_floor = None
+        if row:
+            try:
+                device_floor = row["floor"]
+            except (KeyError, IndexError):
+                device_floor = None
+        if not zone_label and device_floor is not None:
+            zone_label = f"Etage {device_floor}"
 
         # Check mission status: only record events if mission is "active"
         # Use a 5-second cache to avoid querying SQLite on every frame

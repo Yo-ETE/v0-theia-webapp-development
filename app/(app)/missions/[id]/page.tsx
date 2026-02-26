@@ -648,11 +648,14 @@ export default function MissionDetailPage() {
 
   const handleFloorDeviceAssign = useCallback(async (deviceId: string, floor: number) => {
     try {
+      // Derive zone_label from the floor label for detection feed display
+      const floorObj = (mission?.floors ?? []).find((f: Floor) => f.level === floor)
+      const label = floorObj?.label ?? `Etage ${floor}`
       await updateDevice(deviceId, {
         mission_id: id,
         floor,
         zone_id: "",
-        zone_label: "",
+        zone_label: label,
         side: "",
         sensor_position: 0.5,
       } as Partial<import("@/lib/types").Device>)
@@ -660,7 +663,7 @@ export default function MissionDetailPage() {
     } catch (err) {
       console.warn("[THEIA] Failed to assign device to floor:", err)
     }
-  }, [id, mutateDevices])
+  }, [id, mission?.floors, mutateDevices])
 
   const handleFloorDeviceUnassign = useCallback(async (deviceId: string) => {
     try {
@@ -698,16 +701,19 @@ export default function MissionDetailPage() {
   const statusCfg = missionStatusConfig[mission.status] ?? missionStatusConfig.draft
   const zones = mission.zones ?? []
   const eventList = events ?? []
-  // Only show devices that are assigned to this mission AND have a zone+side placement AND are enabled
+  // Show devices assigned to this mission:
+  // - habitation/plan: must have zone_id (placed on a zone/facade)
+  // - etages/garage: must have floor != null (assigned to a floor/section)
   const missionDevices = allDevices?.filter((d) =>
-    d.enabled && d.mission_id === id && d.zone_id && d.id !== unassigning
+    d.enabled && d.mission_id === id && d.id !== unassigning &&
+    (d.zone_id || d.floor != null)
   ) ?? []
 
   // Devices available to assign: enabled devices not currently placed in this mission
   const unassigned = allDevices?.filter((d) => {
     if (!d.enabled) return false  // Skip soft-deleted devices
-    // Already placed in this mission with a zone
-    if (d.mission_id === id && d.zone_id) return false
+    // Already placed in this mission with a zone or floor
+    if (d.mission_id === id && (d.zone_id || d.floor != null)) return false
     return true
   }) ?? []
 
@@ -1081,6 +1087,16 @@ export default function MissionDetailPage() {
                       />
                     </CardContent>
                   </Card>
+
+                  {/* Timelapse panel for floor mode */}
+                  {timelapseMode && (
+                    <div className="space-y-2">
+                      <DetectionTimelapse
+                        missionId={id}
+                        onDetection={handleReplayDetection}
+                      />
+                    </div>
+                  )}
                 </div>
               ) : isPlanMode ? (
                 /* ── Plan mode: PlanEditor ── */
@@ -1411,7 +1427,7 @@ export default function MissionDetailPage() {
                             </div>
                             <div className="flex flex-wrap items-center gap-x-2 gap-y-0 text-[10px] text-muted-foreground">
                               <span>
-                                {d.zone_label || "---"}
+                                {d.zone_label || (d.floor != null ? `Etage ${d.floor}` : "---")}
                                 {d.side && <span className="text-primary ml-0.5">[{d.side}]</span>}
                                 {wallDist && <span className="ml-0.5">{wallDist}</span>}
                               </span>
@@ -1563,7 +1579,7 @@ export default function MissionDetailPage() {
                         <div className="flex-1 min-w-0">
                           <div className="flex items-center gap-1.5">
                             <span className="text-[10px] font-semibold text-foreground">
-                              {det.zone_label || "Unknown"}
+                              {det.zone_label || det.device_name || "Unknown"}
                             </span>
                             {det.side && (
                               <span className="text-[9px] font-mono font-bold text-primary">
@@ -1679,11 +1695,12 @@ export default function MissionDetailPage() {
                   const BAND_LABELS = ["0-20", "20-40", "40-60", "60-80", "80-100", "100-150", "150-250", "250+"]
                   const zoneStats: Record<string, { count: number; totalDist: number; devices: Set<string>; label: string; bands: number[] }> = {}
                   for (const evt of eventList) {
-                    const zId = evt.zone_id
+                    // Use zone_id if available, otherwise fallback to zone_label or device_id (for floor mode)
+                    const zId = evt.zone_id || evt.zone_label || evt.device_id
                     if (!zId) continue
                     const p = evt.payload ?? {}
                     const dist = Number(p.distance ?? 0)
-                    if (!zoneStats[zId]) zoneStats[zId] = { count: 0, totalDist: 0, devices: new Set(), label: evt.zone_label ?? zId, bands: BANDS.map(() => 0) }
+                    if (!zoneStats[zId]) zoneStats[zId] = { count: 0, totalDist: 0, devices: new Set(), label: evt.zone_label || evt.device_name || zId, bands: BANDS.map(() => 0) }
                     zoneStats[zId].count++
                     zoneStats[zId].totalDist += dist
                     if (evt.device_id) zoneStats[zId].devices.add(evt.device_id)
@@ -1819,8 +1836,8 @@ export default function MissionDetailPage() {
                                 </Badge>
                               </TableCell>
                               <TableCell className="text-xs text-muted-foreground">
-                                {device.zone_label ? (
-                                  <span>{device.zone_label}{device.side && <span className="ml-1 text-primary font-mono">[{device.side}]</span>}</span>
+                                {device.zone_label || device.floor != null ? (
+                                  <span>{device.zone_label || `Etage ${device.floor}`}{device.side && <span className="ml-1 text-primary font-mono">[{device.side}]</span>}</span>
                                 ) : "---"}
                               </TableCell>
                               <TableCell>
