@@ -1115,7 +1115,7 @@ export default function MissionDetailPage() {
                     onZonePolygonUpdate={updateZonePolygon}
                     showFov={showFov}
                     className="rounded-lg overflow-hidden border border-border/50"
-                  />}
+                  />
                   {/* Timelapse panel for plan mode */}
                   {timelapseMode && (
                     <div className="space-y-2">
