@@ -94,10 +94,10 @@ export default function DevicesPage() {
         const data = await res.json()
         const portList: PortInfo[] = data.ports ?? data
         const allRaw: string[] = data.all_raw ?? []
-        const systemReals: string[] = data.system_reals ?? []
+        const busyPorts: string[] = data.busy_ports ?? []
         const skipped: Array<{port: string, real: string, reason: string}> = data.skipped ?? []
         const currentRawCount = allRaw.length
-        const systemSet = new Set(systemReals)
+        const busySet = new Set(busyPorts)
 
         setPorts(portList)
 
@@ -114,7 +114,7 @@ export default function DevicesPage() {
         // offer it even if it's "reserved" (enrolled port re-enumeration).
         // CRITICAL: NEVER offer a system port (theia-rx, theia-gps realpath).
         if (!newPort) {
-          const newRaw = allRaw.find(r => !baselineRef.current.has(r) && !systemSet.has(r))
+          const newRaw = allRaw.find(r => !baselineRef.current.has(r) && !busySet.has(r))
           if (newRaw) {
             const skippedInfo = skipped.find(s => s.real === newRaw || s.port === newRaw)
             const syntheticPort: PortInfo = {
@@ -744,11 +744,11 @@ export default function DevicesPage() {
                   )}
                 </div>
               )}
-              {systemPorts.length > 0 && (
-                <p className="text-[9px] text-muted-foreground">
-                  Ports systeme exclus : {systemPorts.map(s => `${s.symlink} (${s.role})`).join(", ")}
-                </p>
-              )}
+{systemPorts.length > 0 && (
+  <p className="text-[9px] text-muted-foreground">
+Symlinks : {systemPorts.map(s => `${s.symlink} -> ${s.real} (${s.role})`).join(", ")}
+  </p>
+  )}
             </div>
           )}
 

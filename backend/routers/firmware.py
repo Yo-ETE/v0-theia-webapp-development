@@ -158,55 +158,36 @@ def _get_busy_serial_ports() -> set[str]:
 async def list_ports():
     """List available USB serial ports for flashing new TX devices.
 
-    Exclusion strategy:
-    1. fuser: any port with a process holding it open is BUSY (RX, GPS, etc).
-       This is the ONLY reliable method when ESP32 boards are identical
-       (same VID/PID/MAC). fuser checks the kernel file descriptor table.
-    2. Enrolled device ports from DB (already deployed TX).
+    Exclusion strategy -- fuser ONLY:
+    Any port with a process holding it open is BUSY (RX reader, gpsd, etc).
+    This is the ONLY reliable method when ESP32 boards are identical
+    (same VID/PID/MAC/USB-serial). fuser checks the kernel FD table.
+
+    We do NOT exclude enrolled device ports: TX devices are autonomous after
+    flashing (LoRa), their stored serial_port is stale and would block
+    legitimate new device detection after USB re-enumeration.
     """
     import subprocess
 
     # ── Step 1: find ALL busy ports via fuser (kernel-level, 100% reliable) ──
     busy_ports = _get_busy_serial_ports()
-    if busy_ports:
-        print(f"[THEIA] list_ports: busy ports (fuser): {sorted(busy_ports)}")
 
     # ── Step 2: system symlinks (for debug info only, NOT for exclusion) ──
     system_symlinks: dict[str, str] = {}
     for symlink in sorted(glob.glob("/dev/theia-*")):
         system_symlinks[symlink] = os.path.realpath(symlink)
 
-    # ── Step 3: enrolled device ports from DB ──
-    db = await get_db()
-    enrolled_ports: set[str] = set()
-    try:
-        cursor = await db.execute(
-            "SELECT serial_port FROM devices WHERE enabled=1 AND serial_port IS NOT NULL AND serial_port != ''"
-        )
-        rows = await cursor.fetchall()
-        for row in rows:
-            sp = dict(row)["serial_port"]
-            if sp and os.path.exists(sp):
-                enrolled_ports.add(sp)
-                enrolled_ports.add(os.path.realpath(sp))
-    except Exception:
-        pass
-
-    all_reserved = busy_ports | enrolled_ports
-
-    # ── Step 4: scan raw ttyUSB/ttyACM ports, filter out reserved ──
+    # ── Step 3: scan raw ttyUSB/ttyACM ports, exclude only busy (fuser) ──
     ports = []
     skipped: list[dict] = []
+    all_raw: list[str] = []
     for pattern in ["/dev/ttyUSB*", "/dev/ttyACM*"]:
         for p in sorted(glob.glob(pattern)):
             real = os.path.realpath(p)
+            all_raw.append(p)
 
-            if real in all_reserved or p in all_reserved:
-                if real in busy_ports or p in busy_ports:
-                    reason = "busy (fuser)"
-                else:
-                    reason = "enrolled"
-                skipped.append({"port": p, "real": real, "reason": reason})
+            if real in busy_ports or p in busy_ports:
+                skipped.append({"port": p, "real": real, "reason": "busy (fuser)"})
                 continue
 
             info: dict = {
@@ -254,11 +235,9 @@ async def list_ports():
 
             ports.append(info)
 
-    # ── Step 5: baseline snapshot ──
-    all_raw_reals: list[str] = []
-    for pattern in ["/dev/ttyUSB*", "/dev/ttyACM*"]:
-        for p in sorted(glob.glob(pattern)):
-            all_raw_reals.append(os.path.realpath(p))
+    print(f"[THEIA] list_ports: raw={[p for p in all_raw]}, busy={sorted(busy_ports)}, "
+          f"skipped={[s['port']+'('+s['reason']+')' for s in skipped]}, "
+          f"available={[p['port'] for p in ports]}")
 
     return {
         "ports": ports,
@@ -267,8 +246,7 @@ async def list_ports():
             for k, v in system_symlinks.items()
         ],
         "busy_ports": sorted(busy_ports),
-        "enrolled_count": len(enrolled_ports) // 2,
-        "all_raw": all_raw_reals,
+        "all_raw": all_raw,
         "skipped": skipped,
     }
 
@@ -413,23 +391,25 @@ def _check_usb_serial_is_rx(port_path: str) -> str | None:
 
 @router.get("/verify-port")
 async def verify_port(port: str):
-    """Verify a port is safe to flash -- not a system/enrolled device."""
+    """Verify a port is safe to flash.
+    Uses fuser (kernel FD check) as the SOLE authority: if a process holds the
+    port open, it's busy (RX reader, gpsd, etc.). Otherwise it's available."""
     import subprocess as _sp
     if not os.path.exists(port):
         raise HTTPException(status_code=404, detail=f"Port {port} n'existe pas")
 
     real = os.path.realpath(port)
-    db = await get_db()
-    reserved = await _build_reserved_map(db)
 
-    block = reserved.get(port) or reserved.get(real)
-    if block:
-        return {"safe": False, "reason": block, "port": port, "real": real}
-
-    # Definitive check: is any process holding this port open? (fuser)
+    # fuser: definitive check -- is any process holding this port open?
     busy_ports = _get_busy_serial_ports()
     if real in busy_ports or port in busy_ports:
-        return {"safe": False, "reason": "Port utilise par un autre processus (RX/GPS actif)", "port": port, "real": real}
+        # Try to identify what's using it
+        role = "inconnu"
+        for symlink in glob.glob("/dev/theia-*"):
+            if os.path.realpath(symlink) == real:
+                role = symlink.replace("/dev/theia-", "")
+                break
+        return {"safe": False, "reason": f"Port occupe par un processus actif (role probable: {role})", "port": port, "real": real}
 
     # Get device info via udevadm
     info: dict[str, str] = {}
@@ -473,40 +453,31 @@ async def flash_device(req: FlashRequest):
     """Compile and flash a sketch to an ESP32. Returns SSE stream of progress."""
     db = await get_db()
 
-    # ── SAFETY LEVEL 1: direct symlink check (ALWAYS works, no DB needed) ──
+    # ── SAFETY: fuser check (kernel-level, the SOLE authority) ──
+    # With identical ESP32 boards (same VID/PID/MAC/USB-serial), the ONLY
+    # reliable method is checking if a process holds the port's file descriptor.
+    # Busy = RX reader / gpsd / etc. Free = safe to flash.
+    import subprocess as _sp_init
     target_real = os.path.realpath(req.port)
-    for symlink in ["/dev/theia-rx", "/dev/theia-gps"]:
-        if os.path.exists(symlink):
-            sym_real = os.path.realpath(symlink)
-            if target_real == sym_real or req.port == symlink:
-                role = symlink.replace("/dev/theia-", "").upper()
-                print(f"[THEIA] FLASH BLOCKED (direct check): {req.port} -> {target_real} is {role} ({symlink} -> {sym_real})")
-                raise HTTPException(
-                    status_code=400,
-                    detail=f"SECURITE: {req.port} est le {role} systeme ({symlink}). Impossible de flasher le recepteur !"
-                )
+    try:
+        fuser_result = _sp_init.run(["fuser", target_real], capture_output=True, text=True, timeout=3)
+        if fuser_result.returncode == 0:
+            pids = fuser_result.stderr.strip()
+            # Identify likely role
+            role = "inconnu"
+            for symlink in glob.glob("/dev/theia-*"):
+                if os.path.realpath(symlink) == target_real:
+                    role = symlink.replace("/dev/theia-", "")
+                    break
+            msg = f"SECURITE: {req.port} ({target_real}) est utilise par un processus (PIDs:{pids}, role: {role}). Flash bloque."
+            print(f"[THEIA] FLASH BLOCKED (fuser): {msg}")
+            raise HTTPException(status_code=400, detail=msg)
+    except HTTPException:
+        raise
+    except Exception as e:
+        print(f"[THEIA] fuser check error (non-blocking): {e}")
 
-    # ── SAFETY LEVEL 2: full reserved map (system + enrolled devices) ──
-    reserved = await _build_reserved_map(db)
-    print(f"[THEIA] Flash safety: target={req.port} -> {target_real}, reserved_map={dict(reserved)}")
-    block_reason = reserved.get(req.port) or reserved.get(target_real)
-    if block_reason:
-        print(f"[THEIA] FLASH BLOCKED (reserved map): {req.port} -> {target_real} is {block_reason}")
-        raise HTTPException(
-            status_code=400,
-            detail=f"Port {req.port} ({target_real}) est {block_reason}. Impossible de flasher dessus."
-        )
-
-    # ── SAFETY LEVEL 3: USB serial fingerprint ──
-    rx_match = _check_usb_serial_is_rx(req.port)
-    if rx_match:
-        print(f"[THEIA] FLASH BLOCKED by USB serial: {req.port} -> {rx_match}")
-        raise HTTPException(
-            status_code=400,
-            detail=f"SECURITE: {req.port} est identifie comme le RX ({rx_match}). Flash bloque."
-        )
-
-    print(f"[THEIA] Flash target APPROVED: {req.port} -> {target_real} ({len(reserved)} reserved paths)")
+    print(f"[THEIA] Flash target APPROVED (fuser: port libre): {req.port} -> {target_real}")
 
     # Check TX_ID uniqueness
     cursor = await db.execute("SELECT id FROM devices WHERE dev_eui=?", (req.tx_id,))
@@ -612,35 +583,27 @@ async def flash_device(req: FlashRequest):
 
         yield f"data: [STEP] Compilation reussie ({used_fqbn}). Upload vers {req.port}...\n\n"
 
-        # ── PRE-UPLOAD SAFETY: FULL re-check ──
-        # USB re-enumeration may have swapped port assignments since detection
-        current_real = os.path.realpath(req.port)
-        # Direct symlink check -- GPS only (RX symlink is unreliable after re-enum)
-        for symlink in ["/dev/theia-gps"]:
-            if os.path.exists(symlink) and os.path.realpath(symlink) == current_real:
-                role = symlink.replace("/dev/theia-", "").upper()
-                yield f"data: [ERROR] SECURITE: {req.port} ({current_real}) est le {role} systeme. Flash annule.\n\n"
-                yield "data: [DONE] FAIL\n\n"
-                shutil.rmtree(tmp_dir, ignore_errors=True)
-                return
-        pre_reserved = await _build_reserved_map(db)
-        pre_block = pre_reserved.get(req.port) or pre_reserved.get(current_real)
-        if pre_block:
-            yield f"data: [ERROR] SECURITE: {req.port} ({current_real}) est maintenant {pre_block}. Flash annule.\n\n"
-            yield "data: [DONE] FAIL\n\n"
-            shutil.rmtree(tmp_dir, ignore_errors=True)
-            return
-        # ── DEFINITIVE SAFETY: fuser check (kernel-level, 100% reliable) ──
-        # If any process holds the port open, it's busy (RX, GPS, etc.)
+        # ── PRE-UPLOAD SAFETY: fuser check (kernel-level, 100% reliable) ──
+        # This is the SOLE safety gate. fuser checks the kernel file descriptor
+        # table: if ANY process holds this port open, it's the RX/GPS/etc.
+        # Symlinks, MAC addresses, USB serials are all unreliable after
+        # USB re-enumeration with identical ESP32 boards.
         import subprocess as _sp
+        current_real = os.path.realpath(req.port)
         yield f"data: [INFO] Port cible: {req.port} -> {current_real}\n\n"
         try:
             fuser_result = _sp.run(["fuser", current_real], capture_output=True, text=True, timeout=3)
             port_is_busy = fuser_result.returncode == 0
             if port_is_busy:
                 pids = fuser_result.stderr.strip()
-                msg = f"SECURITE: {req.port} ({current_real}) est utilise par un autre processus (PIDs: {pids}). C'est probablement le RX ou le GPS. Flash ANNULE."
-                print(f"[THEIA] FLASH BLOCKED (fuser: port busy): {msg}")
+                # Identify what's likely using it
+                role = "inconnu"
+                for symlink in glob.glob("/dev/theia-*"):
+                    if os.path.realpath(symlink) == current_real:
+                        role = symlink.replace("/dev/theia-", "")
+                        break
+                msg = f"SECURITE: {req.port} ({current_real}) est utilise par un processus (PIDs:{pids}, role probable: {role}). Flash ANNULE."
+                print(f"[THEIA] FLASH BLOCKED (fuser): {msg}")
                 yield f"data: [ERROR] {msg}\n\n"
                 yield "data: [DONE] FAIL\n\n"
                 shutil.rmtree(tmp_dir, ignore_errors=True)
