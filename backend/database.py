@@ -115,6 +115,14 @@ async def init_tables(db: aiosqlite.Connection):
             created_at TEXT DEFAULT (datetime('now'))
         );
 
+        CREATE TABLE IF NOT EXISTS battery_history (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            device_id TEXT NOT NULL,
+            voltage REAL NOT NULL,
+            timestamp TEXT DEFAULT (datetime('now')),
+            FOREIGN KEY (device_id) REFERENCES devices(id) ON DELETE CASCADE
+        );
+
         CREATE INDEX IF NOT EXISTS idx_events_mission ON events(mission_id);
         CREATE INDEX IF NOT EXISTS idx_events_timestamp ON events(timestamp);
         CREATE INDEX IF NOT EXISTS idx_logs_timestamp ON logs(timestamp);
@@ -122,6 +130,8 @@ async def init_tables(db: aiosqlite.Connection):
         CREATE INDEX IF NOT EXISTS idx_devices_mission ON devices(mission_id);
         CREATE INDEX IF NOT EXISTS idx_notifications_created ON notifications(created_at);
         CREATE INDEX IF NOT EXISTS idx_notifications_dismissed ON notifications(dismissed);
+        CREATE INDEX IF NOT EXISTS idx_battery_history_device ON battery_history(device_id);
+        CREATE INDEX IF NOT EXISTS idx_battery_history_ts ON battery_history(timestamp);
     """)
     await db.commit()
 

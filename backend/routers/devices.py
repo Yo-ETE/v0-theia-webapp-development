@@ -163,6 +163,47 @@ async def update_device(device_id: str, body: DeviceUpdate):
     return await patch_device(device_id, body)
 
 
+@router.get("/battery-history/all")
+async def get_all_battery_history(hours: int = 24):
+    """Return battery history for ALL enabled devices (for overlay chart)."""
+    db = await get_db()
+    cursor = await db.execute(
+        """SELECT bh.device_id, d.name, d.dev_eui, bh.voltage, bh.timestamp
+           FROM battery_history bh
+           JOIN devices d ON d.id = bh.device_id AND d.enabled=1
+           WHERE bh.timestamp >= datetime('now', ?)
+           ORDER BY bh.timestamp ASC""",
+        (f"-{hours} hours",),
+    )
+    rows = await cursor.fetchall()
+    # Group by device
+    by_device: dict[str, dict] = {}
+    for r in rows:
+        did = r["device_id"]
+        if did not in by_device:
+            by_device[did] = {"device_id": did, "name": r["name"], "dev_eui": r["dev_eui"], "readings": []}
+        by_device[did]["readings"].append({"voltage": r["voltage"], "timestamp": r["timestamp"]})
+    return list(by_device.values())
+
+
+@router.get("/{device_id}/battery-history")
+async def get_battery_history(device_id: str, hours: int = 24):
+    """Return battery voltage history for a device over the last N hours."""
+    db = await get_db()
+    cursor = await db.execute("SELECT id FROM devices WHERE id=?", (device_id,))
+    if not await cursor.fetchone():
+        raise HTTPException(status_code=404, detail="Device not found")
+
+    cursor = await db.execute(
+        """SELECT voltage, timestamp FROM battery_history
+           WHERE device_id=? AND timestamp >= datetime('now', ?)
+           ORDER BY timestamp ASC""",
+        (device_id, f"-{hours} hours"),
+    )
+    rows = await cursor.fetchall()
+    return [{"voltage": r["voltage"], "timestamp": r["timestamp"]} for r in rows]
+
+
 @router.delete("/{device_id}")
 async def delete_device(device_id: str):
     db = await get_db()

@@ -104,6 +104,10 @@ class PortReader:
     async def _process_line(self, line: str):
         if line.startswith("[RX]"):
             await self._parse_rx_frame(line)
+        elif line.startswith("[TX]"):
+            # TX frames have same format as RX: [TX] TX03 | x=0 y=0 ...
+            # Treat them identically (TX might be read directly via USB)
+            await self._parse_rx_frame("[RX]" + line[4:])
         elif line.startswith("LD45;"):
             await self._parse_ld45(line)
         elif line.startswith("{"):
@@ -197,15 +201,17 @@ class PortReader:
             if has_xy:
                 x = int(kv.get("x", "0"))
                 y = int(kv.get("y", "0"))
-                d = int(kv.get("d", "0"))
+                d = int(kv.get("d", kv.get("distance", "0")))
                 v = int(kv.get("v", "0"))
             elif has_presence_only:
                 x, y, v = 0, 0, 0
-                d = int(kv.get("d", "0"))
+                d = int(kv.get("d", kv.get("distance", "0")))
             else:
                 self.packets_err += 1
                 return
-            vbatt = float(kv["battTX"]) if "battTX" in kv else None
+            # Accept both "battTX" (RX format) and "vbatt" (TX direct format)
+            batt_key = "battTX" if "battTX" in kv else ("vbatt" if "vbatt" in kv else None)
+            vbatt = float(kv[batt_key]) if batt_key else None
         except (ValueError, KeyError):
             self.packets_err += 1
             return
@@ -341,6 +347,19 @@ class PortReader:
                 "UPDATE devices SET battery=?, last_seen=?, rssi=?, serial_port=? WHERE id=?",
                 (vbatt, now_iso, self.last_rssi, self.port, device_id),
             )
+            # Record battery history (throttled: max 1 per 30 seconds per device)
+            if vbatt is not None and vbatt > 0:
+                cache_key = f"batt_{device_id}"
+                last_batt_ts = self._last_insert_ts.get(cache_key, 0)
+                if time.time() - last_batt_ts >= 30:
+                    self._last_insert_ts[cache_key] = time.time()
+                    try:
+                        await db.execute(
+                            "INSERT INTO battery_history (device_id, voltage, timestamp) VALUES (?, ?, ?)",
+                            (device_id, vbatt, now_iso),
+                        )
+                    except Exception:
+                        pass  # table might not exist yet
 
         direction = "D" if angle > 30 else ("G" if angle < -30 else "C")
         effective_distance = d if presence else 0

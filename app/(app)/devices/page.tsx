@@ -19,6 +19,7 @@ import {
   Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
 } from "@/components/ui/table"
 import { useDevices, useMissions } from "@/hooks/use-api"
+import { BatteryChart } from "@/components/battery-chart"
 import { createDevice, deleteDevice, updateDevice } from "@/lib/api-client"
 import { deviceStatusConfig, formatRelative } from "@/lib/format"
 import { cn } from "@/lib/utils"
@@ -504,6 +505,8 @@ export default function DevicesPage() {
               )}
             </CardContent>
           </Card>
+          {/* Battery consumption chart */}
+          <BatteryChart />
         </div>
       </main>
 

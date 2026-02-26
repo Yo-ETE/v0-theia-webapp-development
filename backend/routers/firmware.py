@@ -645,11 +645,10 @@ async def flash_device(req: FlashRequest):
         try:
             dev_type = "c4001" if req.sensor_type == "c4001" else "microwave_tx"
             did = str(uuid.uuid4())[:8]
-            # Always store the resolved real path, never a symlink like /dev/theia-*
-            store_port = os.path.realpath(req.port)
-            # Extra guard: NEVER store a system symlink path
-            if store_port.startswith("/dev/theia-"):
-                store_port = req.port  # fallback to original
+            # TX devices communicate via LoRa after flashing, not USB.
+            # Store the RX symlink as serial_port so the bridge can match them.
+            rx_symlink = "/dev/theia-rx"
+            store_port = rx_symlink if os.path.exists(rx_symlink) else req.port
             await db.execute(
                 "INSERT INTO devices (id, dev_eui, name, type, serial_port, enabled) VALUES (?, ?, ?, ?, ?, 1)",
                 (did, req.tx_id, f"TX-{req.tx_id}", dev_type, store_port),
