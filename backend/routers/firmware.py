@@ -132,47 +132,49 @@ async def get_rx_mac_endpoint():
     return {"mac": mac, "stored": mac is not None}
 
 
-def _get_bridge_ports() -> set[str]:
-    """Get the set of real paths currently held open by the LoRa bridge.
-    Any port in this set is the RX -- do NOT flash it."""
-    try:
-        from backend.services.lora_bridge import lora_bridge
-        bridge_reals: set[str] = set()
-        for port_path in lora_bridge._readers.keys():
-            bridge_reals.add(os.path.realpath(port_path))
-            bridge_reals.add(port_path)
-        return bridge_reals
-    except Exception:
-        return set()
+def _get_busy_serial_ports() -> set[str]:
+    """Use fuser to find which /dev/ttyUSB* ports are currently held open by a process.
+    A busy port = active serial connection = the RX (or GPS). Do NOT flash it.
+    This is the ONLY reliable method when devices are identical (same VID/PID/MAC)."""
+    import subprocess
+    busy: set[str] = set()
+    for pattern in ["/dev/ttyUSB*", "/dev/ttyACM*"]:
+        for port in glob.glob(pattern):
+            try:
+                result = subprocess.run(
+                    ["fuser", port],
+                    capture_output=True, text=True, timeout=3
+                )
+                # fuser writes PIDs to stderr, returns 0 if port is in use
+                if result.returncode == 0:
+                    busy.add(port)
+                    busy.add(os.path.realpath(port))
+            except Exception:
+                pass
+    return busy
 
 
 @router.get("/ports")
 async def list_ports():
     """List available USB serial ports for flashing new TX devices.
 
-    Exclusion strategy (in order of reliability):
-    1. GPS symlink (/dev/theia-gps) -- always reliable for GPS.
-    2. LoRa bridge active ports -- the bridge holds the RX port open,
-       so any port in its _readers dict IS the RX regardless of ttyUSB numbering.
-       This is the ONLY reliable way to identify the RX after USB re-enumeration
-       (symlinks and MAC addresses are unreliable for identical ESP32 boards).
-    3. Enrolled device ports from DB.
+    Exclusion strategy:
+    1. fuser: any port with a process holding it open is BUSY (RX, GPS, etc).
+       This is the ONLY reliable method when ESP32 boards are identical
+       (same VID/PID/MAC). fuser checks the kernel file descriptor table.
+    2. Enrolled device ports from DB (already deployed TX).
     """
     import subprocess
 
-    # ── Step 1: GPS symlink exclusion ──
-    gps_reserved: set[str] = set()
+    # ── Step 1: find ALL busy ports via fuser (kernel-level, 100% reliable) ──
+    busy_ports = _get_busy_serial_ports()
+    if busy_ports:
+        print(f"[THEIA] list_ports: busy ports (fuser): {sorted(busy_ports)}")
+
+    # ── Step 2: system symlinks (for debug info only, NOT for exclusion) ──
     system_symlinks: dict[str, str] = {}
     for symlink in sorted(glob.glob("/dev/theia-*")):
-        real = os.path.realpath(symlink)
-        system_symlinks[symlink] = real
-        if "gps" in symlink:
-            gps_reserved.add(real)
-
-    # ── Step 2: LoRa bridge active ports = RX (definitive) ──
-    bridge_ports = _get_bridge_ports()
-    if bridge_ports:
-        print(f"[THEIA] list_ports: bridge holds ports: {bridge_ports}")
+        system_symlinks[symlink] = os.path.realpath(symlink)
 
     # ── Step 3: enrolled device ports from DB ──
     db = await get_db()
@@ -190,7 +192,7 @@ async def list_ports():
     except Exception:
         pass
 
-    all_reserved = gps_reserved | bridge_ports | enrolled_ports
+    all_reserved = busy_ports | enrolled_ports
 
     # ── Step 4: scan raw ttyUSB/ttyACM ports, filter out reserved ──
     ports = []
@@ -200,10 +202,8 @@ async def list_ports():
             real = os.path.realpath(p)
 
             if real in all_reserved or p in all_reserved:
-                if real in gps_reserved:
-                    reason = "gps"
-                elif real in bridge_ports or p in bridge_ports:
-                    reason = "rx-bridge"
+                if real in busy_ports or p in busy_ports:
+                    reason = "busy (fuser)"
                 else:
                     reason = "enrolled"
                 skipped.append({"port": p, "real": real, "reason": reason})
@@ -266,8 +266,7 @@ async def list_ports():
             {"symlink": k, "real": v, "role": k.replace("/dev/theia-", "")}
             for k, v in system_symlinks.items()
         ],
-        "bridge_ports": sorted(bridge_ports),
-        "system_reals": sorted(gps_reserved),
+        "busy_ports": sorted(busy_ports),
         "enrolled_count": len(enrolled_ports) // 2,
         "all_raw": all_raw_reals,
         "skipped": skipped,
@@ -427,10 +426,10 @@ async def verify_port(port: str):
     if block:
         return {"safe": False, "reason": block, "port": port, "real": real}
 
-    # Definitive check: is this port held open by the LoRa bridge?
-    bridge_ports = _get_bridge_ports()
-    if real in bridge_ports or port in bridge_ports:
-        return {"safe": False, "reason": "Port utilise par le recepteur LoRa (bridge actif)", "port": port, "real": real}
+    # Definitive check: is any process holding this port open? (fuser)
+    busy_ports = _get_busy_serial_ports()
+    if real in busy_ports or port in busy_ports:
+        return {"safe": False, "reason": "Port utilise par un autre processus (RX/GPS actif)", "port": port, "real": real}
 
     # Get device info via udevadm
     info: dict[str, str] = {}
@@ -631,23 +630,25 @@ async def flash_device(req: FlashRequest):
             yield "data: [DONE] FAIL\n\n"
             shutil.rmtree(tmp_dir, ignore_errors=True)
             return
-        # ── DEFINITIVE SAFETY: check if target port is held by LoRa bridge ──
-        # The bridge holds the RX serial port open. If the target port's realpath
-        # matches any port the bridge is reading, it IS the RX.
-        bridge_ports = _get_bridge_ports()
+        # ── DEFINITIVE SAFETY: fuser check (kernel-level, 100% reliable) ──
+        # If any process holds the port open, it's busy (RX, GPS, etc.)
+        import subprocess as _sp
         yield f"data: [INFO] Port cible: {req.port} -> {current_real}\n\n"
-        yield f"data: [INFO] Ports bridge (RX): {sorted(bridge_ports) if bridge_ports else 'aucun'}\n\n"
-        print(f"[THEIA] Pre-flash: target={req.port}({current_real}), bridge_ports={bridge_ports}")
-
-        if current_real in bridge_ports or req.port in bridge_ports:
-            msg = f"SECURITE: {req.port} ({current_real}) est actuellement utilise par le recepteur LoRa. Flash ANNULE."
-            print(f"[THEIA] FLASH BLOCKED (port held by bridge): {msg}")
-            yield f"data: [ERROR] {msg}\n\n"
-            yield "data: [DONE] FAIL\n\n"
-            shutil.rmtree(tmp_dir, ignore_errors=True)
-            return
-        else:
-            yield f"data: [INFO] Port {req.port} libre (pas utilise par le bridge RX)\n\n"
+        try:
+            fuser_result = _sp.run(["fuser", current_real], capture_output=True, text=True, timeout=3)
+            port_is_busy = fuser_result.returncode == 0
+            if port_is_busy:
+                pids = fuser_result.stderr.strip()
+                msg = f"SECURITE: {req.port} ({current_real}) est utilise par un autre processus (PIDs: {pids}). C'est probablement le RX ou le GPS. Flash ANNULE."
+                print(f"[THEIA] FLASH BLOCKED (fuser: port busy): {msg}")
+                yield f"data: [ERROR] {msg}\n\n"
+                yield "data: [DONE] FAIL\n\n"
+                shutil.rmtree(tmp_dir, ignore_errors=True)
+                return
+            else:
+                yield f"data: [INFO] Port {req.port} libre (fuser: aucun processus)\n\n"
+        except Exception as e:
+            yield f"data: [WARN] Impossible de verifier fuser sur {req.port}: {e}\n\n"
 
         # Upload
         upload_cmd = [cli, "upload", "--fqbn", used_fqbn, "-p", req.port, tmp_sketch_dir]

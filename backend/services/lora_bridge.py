@@ -35,6 +35,7 @@ class PortReader:
         self.port = port
         self.baud = baud
         self.running = False
+        self.connected_real: str | None = None  # realpath at time of serial.open()
         self.packets_ok = 0
         self.packets_err = 0
         self.last_rssi: int = -120
@@ -80,11 +81,13 @@ class PortReader:
         self.running = True
         while self.running:
             try:
+                # Resolve realpath BEFORE opening (this is what the kernel will use)
+                self.connected_real = os.path.realpath(self.port)
                 ser = await asyncio.get_event_loop().run_in_executor(
                     None,
                     lambda: serial.Serial(port=self.port, baudrate=self.baud, timeout=1),
                 )
-                print(f"[THEIA] LoRa reader connected: {self.port}")
+                print(f"[THEIA] LoRa reader connected: {self.port} -> {self.connected_real}")
                 while self.running:
                     raw = await asyncio.get_event_loop().run_in_executor(None, ser.readline)
                     if raw:

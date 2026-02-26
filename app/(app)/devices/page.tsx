@@ -133,10 +133,10 @@ export default function DevicesPage() {
           clearInterval(interval)
         } else {
           const skippedPorts = skipped.map((s: { port: string; reason: string }) => `${s.port.replace("/dev/","")}(${s.reason})`).join(", ")
-          const bridgePorts = (data.bridge_ports || []).map((p: string) => p.replace("/dev/","")).join(", ")
+          const busyPorts = (data.busy_ports || []).map((p: string) => p.replace("/dev/","")).join(", ")
           const debugParts = [`${currentRawCount} raw, ${portList.length} libres`]
           if (skippedPorts) debugParts.push(`Filtres: ${skippedPorts}`)
-          if (bridgePorts) debugParts.push(`RX bridge: ${bridgePorts}`)
+          if (busyPorts) debugParts.push(`Occupes: ${busyPorts}`)
           setUsbDebug(`Recherche... ${debugParts.join(" | ")}`)
         }
       } catch (err) {
