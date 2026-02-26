@@ -701,26 +701,27 @@ export default function MissionDetailPage() {
   const statusCfg = missionStatusConfig[mission.status] ?? missionStatusConfig.draft
   const zones = mission.zones ?? []
   const eventList = events ?? []
-  // Show devices assigned to this mission:
-  // - habitation/plan: must have zone_id (placed on a zone/facade)
-  // - etages/garage: must have floor != null (assigned to a floor/section)
-  const missionDevices = allDevices?.filter((d) =>
-    d.enabled && d.mission_id === id && d.id !== unassigning &&
-    (d.zone_id || d.floor != null)
-  ) ?? []
 
-  // Devices available to assign: enabled devices not currently placed in this mission
-  const unassigned = allDevices?.filter((d) => {
-    if (!d.enabled) return false  // Skip soft-deleted devices
-    // Already placed in this mission with a zone or floor
-    if (d.mission_id === id && (d.zone_id || d.floor != null)) return false
-    return true
-  }) ?? []
-
-  // ── Floor mode (etages / garage) ──
+  // ── Environment / mode detection ──
   const env = mission?.environment ?? "habitation"
   const isFloorMode = env === "vertical" || env === "etages" || env === "garage"
   const isPlanMode = env === "plan"
+
+  // Devices assigned to this mission:
+  // - floor mode: all with mission_id match (floors tracked in mission.floors[].devices[])
+  // - habitation/plan: must have zone_id or floor set
+  const missionDevices = allDevices?.filter((d) => {
+    if (!d.enabled || d.mission_id !== id || d.id === unassigning) return false
+    if (isFloorMode) return true
+    return !!(d.zone_id || d.floor != null)
+  }) ?? []
+
+  // Available to assign: enabled devices not in this mission
+  const unassigned = allDevices?.filter((d) => {
+    if (!d.enabled) return false
+    if (d.mission_id === id) return false
+    return true
+  }) ?? []
   // Use direct backend URL for plan image (avoids Next.js proxy multipart/binary issues)
   const backendBase = typeof window !== "undefined" ? `http://${window.location.hostname}:8000` : ""
   const planImageUrl = isPlanMode ? `${backendBase}/api/missions/${id}/plan-image/file?t=${planImageTs}` : null
@@ -731,7 +732,8 @@ export default function MissionDetailPage() {
   const mutedIds = new Set(missionDevices.filter(d => d.muted).map(d => d.id))
 
   // Build sensor placements for map (exclude muted)
-  const sensorPlacements = missionDevices
+  // If devices are currently assigned, use live data; otherwise reconstruct from events
+  const livePlacements = missionDevices
     .filter((d) => d.zone_id && d.side && !mutedIds.has(d.id))
     .map((d) => ({
       device_id: d.id,
@@ -742,6 +744,26 @@ export default function MissionDetailPage() {
       device_type: d.type ?? "",
       orientation: (d.orientation as "inward" | "outward") ?? "inward",
     }))
+  // Fallback: reconstruct placements from historical events (when devices are unassigned)
+  const historicalPlacements = useMemo(() => {
+    if (livePlacements.length > 0 || !events || events.length === 0) return []
+    const seen = new Map<string, typeof livePlacements[0]>()
+    for (const e of events) {
+      const did = e.device_id ?? ""
+      if (!did || !e.zone_id || !e.side || seen.has(did)) continue
+      seen.set(did, {
+        device_id: did,
+        device_name: e.device_name ?? did,
+        zone_id: e.zone_id,
+        side: e.side,
+        sensor_position: 0.5,
+        device_type: "",
+        orientation: "inward",
+      })
+    }
+    return Array.from(seen.values())
+  }, [livePlacements.length, events])
+  const sensorPlacements = livePlacements.length > 0 ? livePlacements : historicalPlacements
 
   // Map detections: ONLY from SSE (real-time). Never from DB -- DB events are history.
   // Filter out muted devices from zone-level AND device-level aggregation
