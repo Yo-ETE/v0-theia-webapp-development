@@ -144,10 +144,13 @@ async def patch_device(device_id: str, body: DeviceUpdate):
             updates[col] = ""
 
     # Reset numeric columns to their defaults when set to None
-    nullable_num_defaults = {"sensor_position": 0.5, "floor": 0}
+    # EXCEPT floor: NULL means "not assigned to any floor" (0 = ground floor)
+    nullable_num_defaults = {"sensor_position": 0.5}
     for col, default in nullable_num_defaults.items():
         if col in updates and updates[col] is None:
             updates[col] = default
+    # floor: keep NULL when explicitly set to None (unassign)
+    # Don't convert to 0 -- 0 is a valid floor number (ground floor)
 
     set_clause = ", ".join(f"{k}=?" for k in updates)
     values = list(updates.values()) + [device_id]
