@@ -33,7 +33,26 @@ interface LiveDetection {
   rssi: number | null
   timestamp: string
   device_id?: string
+  angle?: number
+  speed?: number
   [key: string]: unknown
+}
+
+// Convert LD2450 angle to position label (Left / Centre / Right)
+// Angle: negative = left, 0 = center, positive = right (from sensor POV)
+function angleToPosition(angle: number | undefined): "G" | "C" | "D" {
+  if (angle == null) return "C"
+  if (angle < -15) return "G"   // Gauche
+  if (angle > 15) return "D"    // Droite
+  return "C"                     // Centre
+}
+
+function positionLabel(pos: "G" | "C" | "D"): string {
+  switch (pos) {
+    case "G": return "Gauche"
+    case "C": return "Centre"
+    case "D": return "Droite"
+  }
 }
 
 interface FloorManagerProps {
@@ -73,17 +92,29 @@ export function FloorManager({
   const [assignDialog, setAssignDialog] = useState<number | null>(null)
   const [selectedDevice, setSelectedDevice] = useState("")
 
-  // Compute live detection state per floor
+  // Compute live detection state per floor (with direction/angle tracking)
   const liveByFloor = useMemo(() => {
-    const map: Record<number, { count: number; latest: LiveDetection | null }> = {}
+    const map: Record<number, {
+      count: number
+      latest: LiveDetection | null
+      detections: { det: LiveDetection; position: "G" | "C" | "D" }[]
+    }> = {}
     for (const det of liveDetections) {
       const dev = devices.find(d => d.id === det.device_id || d.name === det.device_name)
       if (!dev || dev.floor == null) continue
+      const pos = angleToPosition(det.angle != null ? Number(det.angle) : undefined)
       const prev = map[dev.floor]
       if (!prev) {
-        map[dev.floor] = { count: det.presence ? 1 : 0, latest: det }
+        map[dev.floor] = {
+          count: det.presence ? 1 : 0,
+          latest: det,
+          detections: det.presence ? [{ det, position: pos }] : [],
+        }
       } else {
-        if (det.presence) prev.count++
+        if (det.presence) {
+          prev.count++
+          prev.detections.push({ det, position: pos })
+        }
         prev.latest = det
       }
     }
@@ -268,9 +299,21 @@ export function FloorManager({
                   </div>
                   <div className="flex items-center gap-1">
                     {devLive?.presence && (
-                      <span className="text-success font-semibold text-[9px]">
-                        {typeof devLive.distance === "number" ? `${devLive.distance.toFixed(1)}m` : "DETECT"}
-                      </span>
+                      <>
+                        <span className="text-success font-semibold text-[9px]">
+                          {typeof devLive.distance === "number" ? `${devLive.distance.toFixed(1)}m` : "DETECT"}
+                        </span>
+                        <span className={cn(
+                          "text-[8px] font-mono px-1 py-0.5 rounded",
+                          angleToPosition(devLive.angle != null ? Number(devLive.angle) : undefined) === "G"
+                            ? "bg-blue-500/20 text-blue-400"
+                            : angleToPosition(devLive.angle != null ? Number(devLive.angle) : undefined) === "D"
+                            ? "bg-orange-500/20 text-orange-400"
+                            : "bg-muted text-muted-foreground"
+                        )}>
+                          {positionLabel(angleToPosition(devLive.angle != null ? Number(devLive.angle) : undefined))}
+                        </span>
+                      </>
                     )}
                     <button
                       onClick={() => unassignFromFloor(dev.id, floor.level)}
@@ -384,6 +427,26 @@ export function FloorManager({
                         <div className="flex items-center gap-1 relative z-10">
                           <span className="text-[9px] font-bold text-success">{live.count}</span>
                           <Activity className="h-3 w-3 text-success animate-pulse shrink-0" />
+                        </div>
+                      )}
+                      {/* Direction bar: G | C | D */}
+                      {hasLive && live.detections.length > 0 && (
+                        <div className="absolute bottom-0.5 left-3 right-3 flex h-1 gap-px rounded-sm overflow-hidden z-10">
+                          {["G", "C", "D"].map((pos) => {
+                            const count = live.detections.filter(d => d.position === pos).length
+                            return (
+                              <div
+                                key={pos}
+                                className={cn(
+                                  "flex-1 rounded-sm transition-all",
+                                  count > 0
+                                    ? pos === "G" ? "bg-blue-400" : pos === "D" ? "bg-orange-400" : "bg-success"
+                                    : "bg-border/30"
+                                )}
+                                title={`${positionLabel(pos as "G"|"C"|"D")}: ${count}`}
+                              />
+                            )
+                          })}
                         </div>
                       )}
                     </div>

@@ -1102,7 +1102,21 @@ export default function MissionDetailPage() {
                         devices={missionDevices}
                         allDevices={allDevices ?? []}
                         events={eventList}
-                        liveDetections={liveDetections}
+                        liveDetections={timelapseMode
+                          ? Object.values(replayDetections).map((d: Record<string, unknown>) => ({
+                              presence: true,
+                              distance: Number(d.distance ?? 0),
+                              direction: String(d.direction ?? "C"),
+                              device_name: String(d.device_name ?? ""),
+                              device_id: String(d.device_id ?? ""),
+                              side: String(d.side ?? ""),
+                              rssi: d.rssi != null ? Number(d.rssi) : null,
+                              timestamp: String(d.timestamp ?? ""),
+                              angle: Number(d.angle ?? 0),
+                              speed: Number(d.speed ?? 0),
+                            }))
+                          : liveDetections
+                        }
                         onFloorsChange={handleFloorsChange}
                         onDeviceAssign={handleFloorDeviceAssign}
                         onDeviceUnassign={handleFloorDeviceUnassign}
