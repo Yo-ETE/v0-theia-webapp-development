@@ -260,12 +260,12 @@ export function FloorManager({
         key={floor.level}
         className={cn(
           "rounded-lg border transition-all flex flex-col",
-          mode === "section" ? "min-w-[200px] flex-1" : "w-full",
+          "w-full",
           hasLive ? "border-success/50 bg-success/5" : "border-border/50 bg-card"
         )}
       >
         {/* Header bar with color accent */}
-        <div className="flex items-center justify-between px-3 py-2 border-b border-border/30"
+        <div className="flex items-center justify-between gap-1 px-3 py-2 border-b border-border/30"
           style={{ borderTopColor: color, borderTopWidth: 3 }}>
           <div className="flex items-center gap-2">
             <div
@@ -379,16 +379,16 @@ export function FloorManager({
   return (
     <div className="flex flex-col gap-4">
       {/* Header */}
-      <div className="flex items-center justify-between">
-        <div className="flex items-center gap-2">
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <div className="flex items-center gap-2 min-w-0">
           {mode === "floor"
-            ? <Building2 className="h-4 w-4 text-primary" />
-            : <Warehouse className="h-4 w-4 text-primary" />}
-          <h3 className="text-sm font-semibold text-foreground">
+            ? <Building2 className="h-4 w-4 text-primary shrink-0" />
+            : <Warehouse className="h-4 w-4 text-primary shrink-0" />}
+          <h3 className="text-sm font-semibold text-foreground truncate">
             {modeLabel(mode, true)} ({floors.length})
           </h3>
         </div>
-        <div className="flex items-center gap-1.5">
+        <div className="flex items-center gap-1.5 shrink-0">
           {onResetDetections && liveDetections.length > 0 && (
             <Button variant="ghost" size="sm" className="h-7 text-[10px] gap-1 text-muted-foreground hover:text-destructive" onClick={onResetDetections}>
               <Trash2 className="h-3 w-3" />
@@ -431,7 +431,7 @@ export function FloorManager({
               /* ─��� Vertical: building visualization ── */
               <div className="flex flex-col items-center gap-0">
                 {/* Roof */}
-                <div className="w-48 h-2 bg-muted-foreground/20 rounded-t-lg" />
+                <div className="w-full max-w-56 h-2 bg-muted-foreground/20 rounded-t-lg" />
                 {sortedFloors.map((floor, idx) => {
                   const color = FLOOR_COLORS[Math.abs(floor.level) % FLOOR_COLORS.length]
                   const live = liveByFloor[floor.level]
@@ -442,7 +442,7 @@ export function FloorManager({
                     <div
                       key={floor.level}
                       className={cn(
-                        "w-56 border-x-2 border-b flex items-center gap-2 px-3 py-2 transition-all cursor-pointer hover:bg-primary/5 relative",
+                        "w-full max-w-56 border-x-2 border-b flex items-center gap-2 px-3 py-2 transition-all cursor-pointer hover:bg-primary/5 relative",
                         hasLive ? "bg-success/10 border-success/30" : "bg-card border-border/40",
                         idx === 0 && "border-t-0"
                       )}
@@ -498,11 +498,11 @@ export function FloorManager({
                   )
                 })}
                 {/* Foundation */}
-                <div className="w-56 h-2 bg-muted-foreground/30 rounded-b" />
+                <div className="w-full max-w-56 h-2 bg-muted-foreground/30 rounded-b" />
               </div>
             ) : (
               /* ── Horizontal: garage/tunnel visualization ── */
-              <div className="flex items-end gap-0">
+              <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-0">
                 {sortedFloors.map((floor) => {
                   const color = FLOOR_COLORS[Math.abs(floor.level) % FLOOR_COLORS.length]
                   const live = liveByFloor[floor.level]
@@ -513,7 +513,7 @@ export function FloorManager({
                     <div
                       key={floor.level}
                       className={cn(
-                        "flex-1 min-w-[100px] max-w-[180px] border-t-3 border-r flex flex-col items-center gap-1 px-3 py-3 transition-all cursor-pointer hover:bg-primary/5 relative",
+                        "border-t-3 border-r border-b flex flex-col items-center gap-1 px-3 py-3 transition-all cursor-pointer hover:bg-primary/5 relative",
                         hasLive ? "bg-success/10 border-success/30" : "bg-card border-border/40",
                       )}
                       style={{ borderTopColor: color }}
@@ -569,7 +569,7 @@ export function FloorManager({
           {/* Floor/Section detail cards */}
           <div className={cn(
             mode === "section"
-              ? "flex gap-2 overflow-x-auto pb-1"
+              ? "grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2"
               : "flex flex-col gap-2"
           )}>
             {sortedFloors.map(renderFloorCard)}

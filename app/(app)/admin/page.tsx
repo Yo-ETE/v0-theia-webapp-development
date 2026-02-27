@@ -543,7 +543,7 @@ export default function AdminPage() {
                       <p className="text-[10px] text-muted-foreground">Debit</p>
                       <p className="text-xs font-mono text-foreground">{wifiStatus.txRate || "---"}</p>
                     </div>
-                    <div className="col-span-2 border-t border-border/50 pt-2">
+                    <div className="sm:col-span-2 border-t border-border/50 pt-2">
                       <p className="text-[10px] text-muted-foreground mb-1">Connectivite Internet</p>
                       {wifiStatus.hasInternet ? (
                         <div className="flex items-center gap-3">
@@ -645,7 +645,7 @@ export default function AdminPage() {
                         <p className="font-mono text-xs text-foreground">{tsStatus.hostname}</p>
                       </div>
                       {tsStatus.magicDns && (
-                        <div className="col-span-2">
+                        <div className="sm:col-span-2">
                           <p className="text-[10px] text-muted-foreground">Magic DNS</p>
                           <div className="flex items-center gap-1.5">
                             <p className="font-mono text-xs text-foreground truncate">{tsStatus.magicDns}</p>
