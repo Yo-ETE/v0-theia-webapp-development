@@ -8,7 +8,7 @@ import {
   Pencil, Play, Pause, CheckCircle, Trash2, Building2, Home,
   Activity, Eye, EyeOff, Zap, Timer, Download, Signal, Battery, Wifi, Unlink,
   Flame, Crosshair, ArrowDownLeft, ArrowUpRight, Bell, BellOff,
-  Maximize2, Minimize2, FileImage,
+  Maximize2, Minimize2, FileImage, Ruler,
 } from "lucide-react"
 import { TopHeader } from "@/components/top-header"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
@@ -108,6 +108,7 @@ export default function MissionDetailPage() {
   const { data: allDevices, mutate: mutateDevices } = useDevices({ refreshInterval: 10000 })
 
   const [drawingMode, setDrawingMode] = useState(false)
+  const [calibrationMode, setCalibrationMode] = useState(false)
   const [zoneDialog, setZoneDialog] = useState(false)
   const [pendingPolygon, setPendingPolygon] = useState<[number, number][] | null>(null)
   const [zoneName, setZoneName] = useState("")
@@ -374,6 +375,22 @@ export default function MissionDetailPage() {
     setZoneDialog(true)
     setDrawingMode(false)
   }, [groupSidesByBearing])
+
+  // Calibration done: save plan_scale to mission
+  const handleCalibrationDone = useCallback(async (pxPerMeter: number) => {
+    if (!mission) return
+    try {
+      await fetch(`${API}/missions/${mission.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ plan_scale: pxPerMeter }),
+      })
+      mutate()
+      setCalibrationMode(false)
+    } catch (e) {
+      console.error("Failed to save calibration:", e)
+    }
+  }, [mission, mutate])
 
   const saveZone = useCallback(async () => {
     if (!mission || !pendingPolygon || !zoneName.trim()) return
@@ -986,8 +1003,11 @@ export default function MissionDetailPage() {
                 handleSensorPlace(zoneId, side, t)
               }}
               onZonePolygonUpdate={updateZonePolygon}
-              showFov={showFov}
-              className="rounded-lg overflow-hidden border border-border/50 h-[calc(100vh-310px)]"
+  showFov={showFov}
+  calibrationMode={calibrationMode}
+  onCalibrationDone={handleCalibrationDone}
+  planScale={mission?.plan_scale ?? null}
+  className="rounded-lg overflow-hidden border border-border/50 h-[calc(100vh-310px)]"
             />
           ) : (
           /* Full-height map */
@@ -1223,6 +1243,9 @@ export default function MissionDetailPage() {
                       }}
                       onZonePolygonUpdate={updateZonePolygon}
                       showFov={showFov}
+                      calibrationMode={calibrationMode}
+                      onCalibrationDone={handleCalibrationDone}
+                      planScale={mission?.plan_scale ?? null}
                       className="rounded-lg overflow-hidden border border-border/50"
                     />
                   </div>
@@ -1338,10 +1361,20 @@ export default function MissionDetailPage() {
                   <div className="flex items-center justify-between">
                     <CardTitle className="text-xs">Zones ({zones.length})</CardTitle>
                     <div className="flex items-center gap-1">
+                      {isPlanMode && (
+                        <Button
+                          variant={calibrationMode ? "default" : "outline"} size="sm"
+                          className="min-h-[44px] text-xs px-3 gap-1.5"
+                          onClick={() => { setCalibrationMode(!calibrationMode); setDrawingMode(false) }}
+                        >
+                          <Ruler className="h-3.5 w-3.5" />
+                          {calibrationMode ? "Calibration..." : "Calibrer"}
+                        </Button>
+                      )}
                       <Button
                         variant={drawingMode ? "default" : "outline"} size="sm"
                         className="min-h-[44px] text-xs px-3 gap-1.5"
-                        onClick={() => setDrawingMode(!drawingMode)}
+                        onClick={() => { setDrawingMode(!drawingMode); setCalibrationMode(false) }}
                       >
                         {drawingMode
                           ? <><Pencil className="h-3.5 w-3.5 animate-pulse" />Drawing...</>
@@ -1351,6 +1384,19 @@ export default function MissionDetailPage() {
                   </div>
                 </CardHeader>
                 <CardContent className="flex flex-col gap-2">
+                  {/* Calibration status (plan mode only) */}
+                  {isPlanMode && (
+                    <div className="flex items-center gap-2 text-[10px]">
+                      <Ruler className="h-3 w-3 text-muted-foreground shrink-0" />
+                      {mission?.plan_scale ? (
+                        <span className="text-success">
+                          Echelle: {mission.plan_scale.toFixed(1)} px/m ({(100 / mission.plan_scale).toFixed(2)} m/100px)
+                        </span>
+                      ) : (
+                        <span className="text-muted-foreground">Non calibre -- utilisez le bouton Calibrer</span>
+                      )}
+                    </div>
+                  )}
                   {zones.length === 0 ? (
                     <p className="text-xs text-muted-foreground py-3 text-center">
                       Cliquez &quot;Draw Zone&quot; puis placez les points un par un sur la carte.

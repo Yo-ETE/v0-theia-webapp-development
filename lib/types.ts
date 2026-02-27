@@ -79,6 +79,7 @@ export interface Mission {
   plan_image?: string | null  // URL/path to uploaded floor plan image (for "plan" environment)
   plan_width?: number | null  // image natural width in px
   plan_height?: number | null // image natural height in px
+  plan_scale?: number | null  // calibrated scale: image pixels per metre
   device_count: number
   event_count: number
 }

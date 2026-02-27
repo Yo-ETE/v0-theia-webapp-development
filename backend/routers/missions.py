@@ -26,6 +26,7 @@ class MissionCreate(BaseModel):
     plan_image: str | None = None
     plan_width: int | None = None
     plan_height: int | None = None
+    plan_scale: float | None = None
 
 
 class MissionUpdate(BaseModel):
@@ -42,6 +43,7 @@ class MissionUpdate(BaseModel):
     plan_image: str | None = None
     plan_width: int | None = None
     plan_height: int | None = None
+    plan_scale: float | None = None
     started_at: str | None = None
     ended_at: str | None = None
     device_count: int | None = None
@@ -70,6 +72,7 @@ def _row_to_dict(row) -> dict:
     d.setdefault("plan_image", None)
     d.setdefault("plan_width", None)
     d.setdefault("plan_height", None)
+    d.setdefault("plan_scale", None)
     return d
 
 
@@ -128,12 +131,12 @@ async def create_mission(body: MissionCreate):
     await db.execute(
         """INSERT INTO missions
            (id, name, description, location, environment, center_lat, center_lon, zoom, zones, floors,
-            plan_image, plan_width, plan_height, status, created_at, updated_at)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+            plan_image, plan_width, plan_height, plan_scale, status, created_at, updated_at)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
         (mid, body.name, body.description, body.location, body.environment,
          body.center_lat, body.center_lon, body.zoom,
          json.dumps(body.zones), json.dumps(body.floors),
-         body.plan_image, body.plan_width, body.plan_height,
+         body.plan_image, body.plan_width, body.plan_height, body.plan_scale,
          "draft", now, now),
     )
     await db.commit()
@@ -203,7 +206,7 @@ async def delete_mission(mission_id: str):
     return {"ok": True}
 
 
-# ── Plan Image Upload ───────────────────────��────────────────
+# ── Plan Image Upload ────────────────────��──��────────────────
 import os
 from fastapi import UploadFile, File
 

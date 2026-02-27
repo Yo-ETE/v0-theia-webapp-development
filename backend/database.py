@@ -198,6 +198,11 @@ async def init_tables(db: aiosqlite.Connection):
             await db.execute(f"ALTER TABLE missions ADD COLUMN {col} {'TEXT' if col == 'plan_image' else 'INTEGER'} DEFAULT {dflt}")
         except Exception:
             pass
+    # Mission plan_scale (pixels per metre for calibrated plans)
+    try:
+        await db.execute("ALTER TABLE missions ADD COLUMN plan_scale REAL DEFAULT NULL")
+    except Exception:
+        pass
     # Events columns
     for col in ["zone_id", "side"]:
         try:

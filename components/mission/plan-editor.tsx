@@ -36,6 +36,15 @@ interface SensorPlaceMode {
   deviceName: string
 }
 
+/** Sensor hardware specs for FOV cone visualization */
+const SENSOR_SPECS: Record<string, { fovDeg: number; maxRangeM: number; label: string }> = {
+  microwave_tx:  { fovDeg: 120, maxRangeM: 6,  label: "LD2450" },
+  tx_microwave:  { fovDeg: 120, maxRangeM: 6,  label: "LD2450" },
+  c4001:         { fovDeg: 100, maxRangeM: 8,  label: "C4001" },
+  gravity_mw:    { fovDeg: 75,  maxRangeM: 6,  label: "Gravity MW V2" },
+}
+const DEFAULT_SENSOR_SPECS = { fovDeg: 90, maxRangeM: 6, label: "Unknown" }
+
 interface PlanEditorProps {
   /** Accepts both "planImage" and "imageUrl" for convenience */
   planImage?: string
@@ -59,6 +68,11 @@ interface PlanEditorProps {
   onZonePolygonUpdate?: (zoneId: string, polygon: [number, number][]) => void
   showFov?: boolean
   replayMode?: boolean
+  /** Calibration mode: user clicks 2 points to set scale */
+  calibrationMode?: boolean
+  onCalibrationDone?: (scalePixelsPerMeter: number) => void
+  /** Calibrated scale in image-pixels per metre */
+  planScale?: number | null
 }
 
 /** Group polygon edges by bearing -- simplified for pixel coords */
@@ -103,6 +117,10 @@ export function PlanEditor({
   editingZoneId,
   editingPolygon,
   onZonePolygonUpdate,
+  showFov = false,
+  calibrationMode = false,
+  onCalibrationDone,
+  planScale,
 }: PlanEditorProps) {
   const resolvedImage = planImage || imageUrl || ""
   const handlePolygonDone = onPolygonDrawn ?? onZoneCreated
@@ -116,6 +134,16 @@ export function PlanEditor({
   const [containerW, setContainerW] = useState(0)
   const scale = containerW > 0 && imgSize.w > 0 ? containerW / imgSize.w : 1
   const displayH = imgSize.h * scale
+
+  // Calibration state
+  const [calPoints, setCalPoints] = useState<[number, number][]>([])
+  const [calDistInput, setCalDistInput] = useState("")
+  const calInputRef = useRef<HTMLInputElement>(null)
+
+  // Reset calibration points when mode toggles off
+  useEffect(() => {
+    if (!calibrationMode) { setCalPoints([]); setCalDistInput("") }
+  }, [calibrationMode])
 
   const [imgError, setImgError] = useState(false)
   const [imgLoading, setImgLoading] = useState(true)
@@ -322,22 +350,96 @@ export function PlanEditor({
     }).filter(Boolean) as (SensorPlacement & { sx: number; sy: number; det?: LiveDetection; isPresence?: boolean })[]
   }, [sensorPlacements, zones, liveByDevice, toSvg])
 
+  // Calibration click handler
+  const handleCalClick = useCallback((e: React.MouseEvent | React.TouchEvent) => {
+    if (!calibrationMode || calPoints.length >= 2) return
+    e.preventDefault()
+    const clientX = "touches" in e ? e.changedTouches[0].clientX : e.clientX
+    const clientY = "touches" in e ? e.changedTouches[0].clientY : e.clientY
+    const pt = toImgCoords(clientX, clientY)
+    setCalPoints(prev => {
+      const next = [...prev, pt]
+      if (next.length === 2) {
+        // Focus the distance input after 2nd point
+        setTimeout(() => calInputRef.current?.focus(), 100)
+      }
+      return next
+    })
+  }, [calibrationMode, calPoints, toImgCoords])
+
+  // Validate calibration
+  const handleCalValidate = useCallback(() => {
+    if (calPoints.length !== 2) return
+    const dist = parseFloat(calDistInput)
+    if (!dist || dist <= 0) return
+    // Distance in image pixels between the 2 points
+    const [r1, c1] = calPoints[0]
+    const [r2, c2] = calPoints[1]
+    const pxDist = Math.sqrt((c2 - c1) ** 2 + (r2 - r1) ** 2)
+    if (pxDist < 1) return
+    const pxPerMeter = pxDist / dist
+    onCalibrationDone?.(pxPerMeter)
+    setCalPoints([])
+    setCalDistInput("")
+  }, [calPoints, calDistInput, onCalibrationDone])
+
+  // Compute edge normal (inward-pointing) for a sensor on a polygon edge
+  const getEdgeNormal = useCallback((polygon: [number, number][], sideIdx: number, orientation: "inward" | "outward"): number => {
+    const a = polygon[sideIdx]
+    const b = polygon[(sideIdx + 1) % polygon.length]
+    // Edge vector in image coords: (dCol, dRow)
+    const dCol = b[1] - a[1]
+    const dRow = b[0] - a[0]
+    // Normal perpendicular to edge (rotated 90deg CW = inward for CW polygon)
+    let nx = -dRow
+    let ny = dCol
+    // Check if normal points toward polygon centroid (inward)
+    const cx = polygon.reduce((s, p) => s + p[1], 0) / polygon.length
+    const cy = polygon.reduce((s, p) => s + p[0], 0) / polygon.length
+    const midCol = (a[1] + b[1]) / 2
+    const midRow = (a[0] + b[0]) / 2
+    const toCx = cx - midCol
+    const toCy = cy - midRow
+    const dot = nx * toCx + ny * toCy
+    if (dot < 0) { nx = -nx; ny = -ny } // flip to point inward
+    if (orientation === "outward") { nx = -nx; ny = -ny }
+    // Return angle in degrees (0=right, 90=down in SVG coords)
+    return Math.atan2(ny, nx) * 180 / Math.PI
+  }, [])
+
+  // Build FOV arc path in SVG coords
+  const buildFovPath = useCallback((cx: number, cy: number, angleDeg: number, fovDeg: number, radiusPx: number): string => {
+    const halfFov = fovDeg / 2
+    const STEPS = 24
+    const pts: string[] = [`${cx},${cy}`]
+    for (let s = 0; s <= STEPS; s++) {
+      const a = (angleDeg - halfFov + (fovDeg * s / STEPS)) * Math.PI / 180
+      pts.push(`${cx + Math.cos(a) * radiusPx},${cy + Math.sin(a) * radiusPx}`)
+    }
+    pts.push(`${cx},${cy}`)
+    return pts.join(" ")
+  }, [])
+
   // Main click dispatcher
   const handleMainClick = useCallback((e: React.MouseEvent) => {
-    if (sensorPlaceMode) {
+    if (calibrationMode) {
+      handleCalClick(e)
+    } else if (sensorPlaceMode) {
       handlePlaceClick(e)
     } else if (drawingMode) {
       handleClick(e)
     }
-  }, [sensorPlaceMode, handlePlaceClick, drawingMode, handleClick])
+  }, [calibrationMode, handleCalClick, sensorPlaceMode, handlePlaceClick, drawingMode, handleClick])
 
   const handleMainTouch = useCallback((e: React.TouchEvent) => {
-    if (sensorPlaceMode) {
+    if (calibrationMode) {
+      handleCalClick(e)
+    } else if (sensorPlaceMode) {
       handlePlaceClick(e)
     } else if (drawingMode) {
       handleClick(e)
     }
-  }, [sensorPlaceMode, handlePlaceClick, drawingMode, handleClick])
+  }, [calibrationMode, handleCalClick, sensorPlaceMode, handlePlaceClick, drawingMode, handleClick])
 
   const activeZones = editingZoneId && editPoly
     ? zones.map(z => z.id === editingZoneId ? { ...z, polygon: editPoly } : z)
@@ -387,7 +489,7 @@ export function PlanEditor({
         onClick={handleMainClick}
         onTouchEnd={handleMainTouch}
         onDoubleClick={handleDoubleClick}
-        style={{ touchAction: drawingMode || sensorPlaceMode ? "none" : "auto" }}
+        style={{ touchAction: drawingMode || sensorPlaceMode || calibrationMode ? "none" : "auto" }}
       >
         {/* Zone polygons */}
         {activeZones.map(zone => {
@@ -529,6 +631,139 @@ export function PlanEditor({
           </g>
         ))}
 
+        {/* FOV cones (requires planScale) */}
+        {showFov && planScale && sensorMarkers.map(m => {
+          const zone = zones.find(z => z.id === m.zone_id)
+          if (!zone?.polygon?.length) return null
+          const sideIdx = sideLetterToIdx(m.side)
+          const specs = SENSOR_SPECS[m.device_type ?? ""] ?? DEFAULT_SENSOR_SPECS
+          const angleDeg = getEdgeNormal(zone.polygon, sideIdx, m.orientation ?? "inward")
+          const radiusPx = specs.maxRangeM * planScale * scale
+          const fovPath = buildFovPath(m.sx, m.sy, angleDeg, specs.fovDeg, radiusPx)
+          return (
+            <g key={`fov-${m.device_id}`}>
+              <polygon
+                points={fovPath}
+                fill="#22d3ee"
+                fillOpacity={0.08}
+                stroke="#22d3ee"
+                strokeWidth={1}
+                strokeOpacity={0.4}
+                strokeDasharray="4 2"
+              />
+              {/* Max range arc label */}
+              <text
+                x={m.sx + Math.cos(angleDeg * Math.PI / 180) * radiusPx * 0.7}
+                y={m.sy + Math.sin(angleDeg * Math.PI / 180) * radiusPx * 0.7}
+                textAnchor="middle"
+                className="fill-cyan-400/60 text-[8px] font-mono pointer-events-none"
+              >
+                {specs.maxRangeM}m
+              </text>
+            </g>
+          )
+        })}
+
+        {/* Live detection arcs (scaled) */}
+        {planScale && sensorMarkers.map(m => {
+          if (!m.isPresence || !m.det) return null
+          const zone = zones.find(z => z.id === m.zone_id)
+          if (!zone?.polygon?.length) return null
+          const sideIdx = sideLetterToIdx(m.side)
+          const specs = SENSOR_SPECS[m.device_type ?? ""] ?? DEFAULT_SENSOR_SPECS
+          const angleDeg = getEdgeNormal(zone.polygon, sideIdx, m.orientation ?? "inward")
+          const detRadiusPx = (m.det.distance / 100) * planScale * scale
+          const detPath = buildFovPath(m.sx, m.sy, angleDeg, specs.fovDeg, detRadiusPx)
+          return (
+            <polygon
+              key={`det-${m.device_id}`}
+              points={detPath}
+              fill="#f59e0b"
+              fillOpacity={0.15}
+              stroke="#f59e0b"
+              strokeWidth={1.5}
+              strokeOpacity={0.6}
+              className="pointer-events-none"
+            />
+          )
+        })}
+
+        {/* Calibration overlay */}
+        {calibrationMode && (
+          <g>
+            {/* Placed points */}
+            {calPoints.map((p, i) => {
+              const [x, y] = toSvg(p)
+              return (
+                <g key={`cal-${i}`}>
+                  <circle cx={x} cy={y} r={8} fill="none" stroke="#f43f5e" strokeWidth={2} />
+                  <circle cx={x} cy={y} r={3} fill="#f43f5e" />
+                  <text x={x + 12} y={y + 4} className="fill-rose-400 text-[10px] font-mono font-bold pointer-events-none">
+                    {i === 0 ? "A" : "B"}
+                  </text>
+                </g>
+              )
+            })}
+            {/* Line between 2 points */}
+            {calPoints.length === 2 && (() => {
+              const [x1, y1] = toSvg(calPoints[0])
+              const [x2, y2] = toSvg(calPoints[1])
+              const pxDist = Math.sqrt(
+                (calPoints[1][1] - calPoints[0][1]) ** 2 +
+                (calPoints[1][0] - calPoints[0][0]) ** 2
+              )
+              return (
+                <>
+                  <line x1={x1} y1={y1} x2={x2} y2={y2} stroke="#f43f5e" strokeWidth={2} strokeDasharray="6 3" />
+                  <text
+                    x={(x1 + x2) / 2}
+                    y={(y1 + y2) / 2 - 8}
+                    textAnchor="middle"
+                    className="fill-rose-400 text-[10px] font-mono font-bold pointer-events-none"
+                    style={{ paintOrder: "stroke", stroke: "hsl(var(--background))", strokeWidth: 3 }}
+                  >
+                    {Math.round(pxDist)}px
+                  </text>
+                </>
+              )
+            })()}
+            {/* Instruction text */}
+            {calPoints.length < 2 && (
+              <text x={containerW / 2} y={30} textAnchor="middle" className="fill-rose-400 text-[11px] font-semibold pointer-events-none"
+                style={{ paintOrder: "stroke", stroke: "hsl(var(--background))", strokeWidth: 3 }}>
+                {calPoints.length === 0
+                  ? "Cliquez le point A sur le plan"
+                  : "Cliquez le point B sur le plan"}
+              </text>
+            )}
+          </g>
+        )}
+
+        {/* Scale bar (bottom-left) */}
+        {planScale && !calibrationMode && (() => {
+          // Pick a nice round distance for the bar
+          const candidates = [1, 2, 5, 10, 20, 50]
+          const targetBarPx = Math.min(containerW * 0.25, 150)
+          let barM = 5
+          for (const c of candidates) {
+            if (c * planScale * scale <= targetBarPx * 1.2) barM = c
+          }
+          const barW = barM * planScale * scale
+          const barX = 16
+          const barY = displayH - 20
+          return (
+            <g>
+              <rect x={barX - 2} y={barY - 12} width={barW + 4} height={18} rx={3} fill="hsl(var(--background))" fillOpacity={0.7} />
+              <line x1={barX} y1={barY} x2={barX + barW} y2={barY} stroke="hsl(var(--foreground))" strokeWidth={2} />
+              <line x1={barX} y1={barY - 4} x2={barX} y2={barY + 2} stroke="hsl(var(--foreground))" strokeWidth={2} />
+              <line x1={barX + barW} y1={barY - 4} x2={barX + barW} y2={barY + 2} stroke="hsl(var(--foreground))" strokeWidth={2} />
+              <text x={barX + barW / 2} y={barY - 4} textAnchor="middle" className="fill-foreground text-[9px] font-mono font-bold pointer-events-none">
+                {barM}m
+              </text>
+            </g>
+          )
+        })()}
+
         {/* Drawing mode: in-progress polygon */}
         {drawingMode && drawPoints.length > 0 && (
           <g>
@@ -563,6 +798,38 @@ export function PlanEditor({
           </g>
         )}
       </svg>
+
+      {/* Calibration distance input (HTML overlay) */}
+      {calibrationMode && calPoints.length === 2 && (
+        <div className="absolute top-4 left-1/2 -translate-x-1/2 z-20 flex items-center gap-2 bg-card border border-border rounded-lg px-3 py-2 shadow-lg">
+          <label className="text-xs font-medium text-foreground whitespace-nowrap">Distance reelle :</label>
+          <input
+            ref={calInputRef}
+            type="number"
+            step="0.1"
+            min="0.1"
+            value={calDistInput}
+            onChange={e => setCalDistInput(e.target.value)}
+            onKeyDown={e => { if (e.key === "Enter") handleCalValidate() }}
+            className="w-20 h-7 rounded border border-border bg-background px-2 text-xs text-foreground focus:outline-none focus:ring-1 focus:ring-primary"
+            placeholder="m"
+          />
+          <span className="text-xs text-muted-foreground">m</span>
+          <button
+            onClick={handleCalValidate}
+            disabled={!calDistInput || parseFloat(calDistInput) <= 0}
+            className="h-7 px-3 rounded bg-primary text-primary-foreground text-xs font-medium hover:bg-primary/90 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+          >
+            Valider
+          </button>
+          <button
+            onClick={() => { setCalPoints([]); setCalDistInput("") }}
+            className="h-7 px-2 rounded text-xs text-muted-foreground hover:text-foreground transition-colors"
+          >
+            Reset
+          </button>
+        </div>
+      )}
     </div>
   )
 }
