@@ -468,10 +468,10 @@ export function FloorManager({
                             : ""}
                         </p>
                       </div>
-                      {hasLive && (
+                      {(hasLive || (eventsByFloor[floor.level]?.length ?? 0) > 0) && (
                         <div className="flex items-center gap-1 relative z-10">
-                          <span className="text-[9px] font-bold text-success">{live.count}</span>
-                          <Activity className="h-3 w-3 text-success animate-pulse shrink-0" />
+                          <span className="text-[9px] font-bold text-success">{eventsByFloor[floor.level]?.length ?? 0}</span>
+                          {hasLive && <Activity className="h-3 w-3 text-success animate-pulse shrink-0" />}
                         </div>
                       )}
                       {/* Direction bar: G | C | D */}
@@ -530,10 +530,10 @@ export function FloorManager({
                       </div>
                       <p className="text-[10px] font-medium text-foreground text-center truncate w-full relative z-10">{floor.label}</p>
                       <p className="text-[8px] text-muted-foreground relative z-10">{floorDevices.length} TX</p>
-                      {hasLive && (
+                      {(hasLive || (eventsByFloor[floor.level]?.length ?? 0) > 0) && (
                         <div className="flex items-center gap-1 relative z-10">
-                          <span className="text-[9px] font-bold text-success">{live.count}</span>
-                          <Activity className="h-3 w-3 text-success animate-pulse" />
+                          <span className="text-[9px] font-bold text-success">{eventsByFloor[floor.level]?.length ?? 0}</span>
+                          {hasLive && <Activity className="h-3 w-3 text-success animate-pulse" />}
                         </div>
                       )}
                       {hasLive && live.latest && typeof live.latest.distance === "number" && (

@@ -109,6 +109,7 @@ export default function MissionDetailPage() {
 
   const [drawingMode, setDrawingMode] = useState(false)
   const [calibrationMode, setCalibrationMode] = useState(false)
+  const [feedDeviceFilter, setFeedDeviceFilter] = useState<string>("all")
   const [zoneDialog, setZoneDialog] = useState(false)
   const [pendingPolygon, setPendingPolygon] = useState<[number, number][] | null>(null)
   const [zoneName, setZoneName] = useState("")
@@ -833,7 +834,9 @@ export default function MissionDetailPage() {
   const displayDetections: LiveDetection[] = [
     ...liveDetections,
     ...dbDetections.filter(d => !sseTimestamps.has(d.timestamp)),
-  ].filter(d => !mutedDeviceIds.has(d.device_id)).slice(0, 50)
+  ].filter(d => !mutedDeviceIds.has(d.device_id))
+   .filter(d => feedDeviceFilter === "all" || d.device_id === feedDeviceFilter)
+   .slice(0, 50)
 
   return (
     <>
@@ -959,7 +962,7 @@ export default function MissionDetailPage() {
                       FOV
                     </Button>
                   )}
-                  {!isPlanMode && missionDevices.length >= 2 && (
+                  {!isPlanMode && !isFloorMode && missionDevices.length >= 2 && (
                     <Button
                       variant={estimatePosition ? "default" : "outline"}
                       size="sm"
@@ -1347,7 +1350,7 @@ export default function MissionDetailPage() {
                             FOV
                           </Button>
                         )}
-                        {missionDevices.length >= 2 && (
+                        {!isFloorMode && missionDevices.length >= 2 && (
                           <Button
                             variant={estimatePosition ? "default" : "outline"}
                             size="sm"
@@ -1636,7 +1639,19 @@ export default function MissionDetailPage() {
                         <Zap className="h-3 w-3 text-warning" />
                         Detection Feed
                       </CardTitle>
-                      <div className="flex items-center gap-2">
+                      <div className="flex items-center gap-2 flex-wrap">
+                        {missionDevices.length > 1 && (
+                          <select
+                            value={feedDeviceFilter}
+                            onChange={e => setFeedDeviceFilter(e.target.value)}
+                            className="h-7 rounded border border-border bg-background px-1.5 text-[10px] text-foreground focus:outline-none focus:ring-1 focus:ring-primary"
+                          >
+                            <option value="all">Tous ({missionDevices.length})</option>
+                            {missionDevices.map(d => (
+                              <option key={d.id} value={d.id}>{d.name}</option>
+                            ))}
+                          </select>
+                        )}
                         {sensorPlacements.length > 0 && (
                           <Button
                             variant={showFov ? "default" : "outline"}
@@ -1649,7 +1664,7 @@ export default function MissionDetailPage() {
                             FOV
                           </Button>
                         )}
-                        {missionDevices.length >= 2 && (
+                        {!isFloorMode && missionDevices.length >= 2 && (
                           <Button
                             variant={estimatePosition ? "default" : "outline"}
                             size="sm"
