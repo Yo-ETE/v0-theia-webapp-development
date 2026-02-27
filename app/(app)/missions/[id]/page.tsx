@@ -380,7 +380,7 @@ export default function MissionDetailPage() {
   const handleCalibrationDone = useCallback(async (pxPerMeter: number) => {
     if (!mission) return
     try {
-      await fetch(`${API}/missions/${mission.id}`, {
+      await fetch(`/api/missions/${mission.id}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ plan_scale: pxPerMeter }),
