@@ -389,7 +389,7 @@ export function FloorManager({
           </h3>
         </div>
         <div className="flex items-center gap-1.5 shrink-0">
-          {onResetDetections && liveDetections.length > 0 && (
+          {onResetDetections && (
             <Button variant="ghost" size="sm" className="h-7 text-[10px] gap-1 text-muted-foreground hover:text-destructive" onClick={onResetDetections}>
               <Trash2 className="h-3 w-3" />
               Reset
