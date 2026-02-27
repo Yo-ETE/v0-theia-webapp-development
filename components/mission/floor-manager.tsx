@@ -338,7 +338,7 @@ export function FloorManager({
                     {devLive?.presence && (
                       <>
                         <span className="text-success font-semibold text-[9px]">
-                          {typeof devLive.distance === "number" ? `${devLive.distance.toFixed(1)}m` : "DETECT"}
+                          {typeof devLive.distance === "number" ? `${(devLive.distance / 100).toFixed(1)}m` : "DETECT"}
                         </span>
                         <span className={cn(
                           "text-[8px] font-mono px-1 py-0.5 rounded",
@@ -464,7 +464,7 @@ export function FloorManager({
                         <p className="text-[8px] text-muted-foreground">
                           {floorDevices.length} TX
                           {hasLive && live.latest && typeof live.latest.distance === "number"
-                            ? ` | ${live.latest.distance.toFixed(1)}m`
+                            ? ` | ${(live.latest.distance / 100).toFixed(1)}m`
                             : ""}
                         </p>
                       </div>
@@ -537,7 +537,7 @@ export function FloorManager({
                         </div>
                       )}
                       {hasLive && live.latest && typeof live.latest.distance === "number" && (
-                        <p className="text-[8px] font-mono text-success relative z-10">{live.latest.distance.toFixed(1)}m</p>
+                        <p className="text-[8px] font-mono text-success relative z-10">{(live.latest.distance / 100).toFixed(1)}m</p>
                       )}
                       {/* Direction bar: G | C | D */}
                       {hasLive && live.detections.length > 0 && (
