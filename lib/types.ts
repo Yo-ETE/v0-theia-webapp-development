@@ -80,6 +80,7 @@ export interface Mission {
   plan_width?: number | null  // image natural width in px
   plan_height?: number | null // image natural height in px
   plan_scale?: number | null  // calibrated scale: image pixels per metre
+  detection_reset_at?: string | null  // ISO timestamp: ignore events/detections before this
   device_count: number
   event_count: number
 }

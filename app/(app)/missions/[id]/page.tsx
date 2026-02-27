@@ -248,7 +248,11 @@ export default function MissionDetailPage() {
     if (events.length === lastEventCountRef.current) return
     lastEventCountRef.current = events.length
 
-    const dbDetections: LiveDetection[] = events.slice(0, 30).map((e: Record<string, unknown>) => {
+    // Filter out events before detection_reset_at
+    const ra = mission?.detection_reset_at ?? null
+    const filteredEvents = ra ? events.filter((e: Record<string, unknown>) => !e.timestamp || (e.timestamp as string) > ra) : events
+
+    const dbDetections: LiveDetection[] = filteredEvents.slice(0, 30).map((e: Record<string, unknown>) => {
       const p = (typeof e.payload === "string" ? (() => { try { return JSON.parse(e.payload as string) } catch { return {} } })() : (e.payload ?? {})) as Record<string, unknown>
       return {
         device_id: e.device_id as string ?? "",
@@ -720,7 +724,10 @@ export default function MissionDetailPage() {
 
   const statusCfg = missionStatusConfig[mission.status] ?? missionStatusConfig.draft
   const zones = mission.zones ?? []
-  const eventList = events ?? []
+  const resetAt = mission.detection_reset_at ?? null
+  const eventList = (events ?? []).filter(e =>
+    !resetAt || !e.timestamp || e.timestamp > resetAt
+  )
 
   // ── Environment / mode detection ──
   const env = mission?.environment ?? "habitation"
@@ -1144,11 +1151,20 @@ export default function MissionDetailPage() {
                         onFloorsChange={handleFloorsChange}
                         onDeviceAssign={handleFloorDeviceAssign}
                         onDeviceUnassign={handleFloorDeviceUnassign}
-                        onResetDetections={() => {
+                        onResetDetections={async () => {
                           setLiveDetections([])
                           setLiveByZone({})
                           setLiveByDevice({})
                           setReplayDetections({})
+                          // Persist reset timestamp so events stay hidden on reload
+                          try {
+                            await fetch(`/api/missions/${id}`, {
+                              method: "PATCH",
+                              headers: { "Content-Type": "application/json" },
+                              body: JSON.stringify({ detection_reset_at: new Date().toISOString() }),
+                            })
+                            mutate()
+                          } catch {}
                         }}
                       />
                     </CardContent>

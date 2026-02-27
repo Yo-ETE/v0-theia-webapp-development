@@ -203,6 +203,11 @@ async def init_tables(db: aiosqlite.Connection):
         await db.execute("ALTER TABLE missions ADD COLUMN plan_scale REAL DEFAULT NULL")
     except Exception:
         pass
+    # Mission detection_reset_at (ISO timestamp: ignore events before this)
+    try:
+        await db.execute("ALTER TABLE missions ADD COLUMN detection_reset_at TEXT DEFAULT NULL")
+    except Exception:
+        pass
     # Events columns
     for col in ["zone_id", "side"]:
         try:

@@ -44,6 +44,7 @@ class MissionUpdate(BaseModel):
     plan_width: int | None = None
     plan_height: int | None = None
     plan_scale: float | None = None
+    detection_reset_at: str | None = None
     started_at: str | None = None
     ended_at: str | None = None
     device_count: int | None = None
@@ -73,6 +74,7 @@ def _row_to_dict(row) -> dict:
     d.setdefault("plan_width", None)
     d.setdefault("plan_height", None)
     d.setdefault("plan_scale", None)
+    d.setdefault("detection_reset_at", None)
     return d
 
 
