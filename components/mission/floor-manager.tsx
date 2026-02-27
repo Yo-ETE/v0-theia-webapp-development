@@ -66,6 +66,7 @@ interface FloorManagerProps {
   onFloorsChange: (floors: Floor[]) => void
   onDeviceAssign: (deviceId: string, floor: number) => void
   onDeviceUnassign: (deviceId: string) => void
+  onResetDetections?: () => void
 }
 
 // ── Color palette per floor ──
@@ -85,6 +86,7 @@ export function FloorManager({
   onFloorsChange,
   onDeviceAssign,
   onDeviceUnassign,
+  onResetDetections,
 }: FloorManagerProps) {
   const [addDialog, setAddDialog] = useState(false)
   const [addLabel, setAddLabel] = useState("")
@@ -112,10 +114,6 @@ export function FloorManager({
 
   // Compute live detection state per floor (with direction/angle tracking)
   const liveByFloor = useMemo(() => {
-    if (liveDetections.length > 0) {
-      console.log("[v0] liveByFloor: liveDetections count=", liveDetections.length, "deviceFloorMap size=", deviceFloorMap.size, "floors=", floors.map(f => ({level: f.level, devices: f.devices})), "devices=", devices.map(d => ({id: d.id, floor: d.floor})))
-      console.log("[v0] liveByFloor: first det=", JSON.stringify(liveDetections[0]))
-    }
     const map: Record<number, {
       count: number
       latest: LiveDetection | null
@@ -135,10 +133,7 @@ export function FloorManager({
       if (floorLevel == null && det.floor != null) {
         floorLevel = Number(det.floor)
       }
-      if (floorLevel == null) {
-        console.log("[v0] liveByFloor: SKIPPED det, no floor found. did=", did, "dname=", dname, "det.floor=", det.floor, "deviceFloorMap.has=", deviceFloorMap.has(did))
-        continue
-      }
+      if (floorLevel == null) continue
       const pos = angleToPosition(det.angle != null ? Number(det.angle) : undefined)
       const prev = map[floorLevel]
       if (!prev) {
@@ -393,10 +388,18 @@ export function FloorManager({
             {modeLabel(mode, true)} ({floors.length})
           </h3>
         </div>
-        <Button variant="outline" size="sm" className="h-7 text-[10px] gap-1" onClick={openAddDialog}>
-          <Plus className="h-3 w-3" />
-          {mode === "floor" ? "Ajouter Etage" : "Ajouter Troncon"}
-        </Button>
+        <div className="flex items-center gap-1.5">
+          {onResetDetections && liveDetections.length > 0 && (
+            <Button variant="ghost" size="sm" className="h-7 text-[10px] gap-1 text-muted-foreground hover:text-destructive" onClick={onResetDetections}>
+              <Trash2 className="h-3 w-3" />
+              Reset
+            </Button>
+          )}
+          <Button variant="outline" size="sm" className="h-7 text-[10px] gap-1" onClick={openAddDialog}>
+            <Plus className="h-3 w-3" />
+            {mode === "floor" ? "Ajouter Etage" : "Ajouter Troncon"}
+          </Button>
+        </div>
       </div>
 
       {/* Empty state */}
