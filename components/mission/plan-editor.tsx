@@ -335,7 +335,7 @@ export function PlanEditor({
     }
   }, [dragIdx, editPoly, editingZoneId, onZonePolygonUpdate, toImgCoords])
 
-  // Build sensor positions on the SVG
+  // Build sensor positions on the SVG (with detection point projected along edge normal)
   const sensorMarkers = useMemo(() => {
     return sensorPlacements.map(sp => {
       const zone = zones.find(z => z.id === sp.zone_id)
@@ -346,9 +346,45 @@ export function PlanEditor({
       const [sx, sy] = toSvg(pt)
       const det = liveByDevice[sp.device_id]
       const isPresence = det?.presence && det?.distance > 0
-      return { ...sp, sx, sy, det, isPresence }
-    }).filter(Boolean) as (SensorPlacement & { sx: number; sy: number; det?: LiveDetection; isPresence?: boolean })[]
-  }, [sensorPlacements, zones, liveByDevice, toSvg])
+
+      // Compute detection point: project along edge normal by distance
+      let detSx: number | null = null
+      let detSy: number | null = null
+      if (isPresence && det && planScale) {
+        const a = zone.polygon[idx]
+        const b = zone.polygon[(idx + 1) % zone.polygon.length]
+        // Edge vector (in image row/col)
+        const dCol = b[1] - a[1]
+        const dRow = b[0] - a[0]
+        // Normal perpendicular (inward)
+        let nx = -dRow, ny = dCol
+        const len = Math.sqrt(nx * nx + ny * ny)
+        if (len > 0) { nx /= len; ny /= len }
+        // Check if normal points toward centroid (inward)
+        const cx = zone.polygon.reduce((s, p) => s + p[1], 0) / zone.polygon.length
+        const cy = zone.polygon.reduce((s, p) => s + p[0], 0) / zone.polygon.length
+        const midCol = (a[1] + b[1]) / 2
+        const midRow = (a[0] + b[0]) / 2
+        if (nx * (cx - midCol) + ny * (cy - midRow) < 0) { nx = -nx; ny = -ny }
+        if (sp.orientation === "outward") { nx = -nx; ny = -ny }
+        // Distance in image pixels
+        const distPx = (det.distance / 100) * planScale // cm -> m -> px
+        // Lateral offset for direction
+        let latNx = -ny, latNy = nx // perpendicular to normal
+        let lateralPx = 0
+        if (det.direction === "G" || det.direction === "Gauche") lateralPx = distPx * 0.5
+        else if (det.direction === "D" || det.direction === "Droite") lateralPx = -distPx * 0.5
+        // Detection point in image coords
+        const detImgCol = pt[1] + nx * distPx + latNx * lateralPx
+        const detImgRow = pt[0] + ny * distPx + latNy * lateralPx
+        const [dsx, dsy] = toSvg([detImgRow, detImgCol])
+        detSx = dsx
+        detSy = dsy
+      }
+
+      return { ...sp, sx, sy, det, isPresence, detSx, detSy }
+    }).filter(Boolean) as (SensorPlacement & { sx: number; sy: number; det?: LiveDetection; isPresence?: boolean; detSx?: number | null; detSy?: number | null })[]
+  }, [sensorPlacements, zones, liveByDevice, toSvg, planScale])
 
   // Calibration click handler
   const handleCalClick = useCallback((e: React.MouseEvent | React.TouchEvent) => {
@@ -590,40 +626,56 @@ export function PlanEditor({
         {/* Sensor markers */}
         {sensorMarkers.map(m => (
           <g key={m.device_id}>
-            {/* Detection pulse */}
-            {m.isPresence && (
-              <circle
-                cx={m.sx} cy={m.sy} r={16}
-                className="fill-warning/30 animate-ping"
+            {/* Dashed line from sensor to detection point */}
+            {m.isPresence && m.detSx != null && m.detSy != null && (
+              <line
+                x1={m.sx} y1={m.sy} x2={m.detSx} y2={m.detSy}
+                stroke="#22c55e" strokeWidth={2} strokeDasharray="4 3" strokeOpacity={0.8}
               />
             )}
-            {/* Sensor dot */}
+            {/* Detection point: green pulsing circle */}
+            {m.isPresence && m.detSx != null && m.detSy != null && (
+              <g>
+                <circle cx={m.detSx} cy={m.detSy} r={14} fill="#22c55e" fillOpacity={0.15} className="animate-ping" />
+                <circle cx={m.detSx} cy={m.detSy} r={7} fill="#22c55e" fillOpacity={0.7} stroke="#22c55e" strokeWidth={2} strokeOpacity={0.9} />
+                {/* Distance + direction label */}
+                <text
+                  x={m.detSx} y={m.detSy - 12}
+                  textAnchor="middle"
+                  className="text-[9px] font-mono font-bold pointer-events-none"
+                  style={{ fill: "#22c55e", paintOrder: "stroke", stroke: "hsl(var(--background))", strokeWidth: 3 }}
+                >
+                  {m.det!.distance}cm {m.det!.direction === "G" || m.det!.direction === "Gauche" ? "G" : m.det!.direction === "D" || m.det!.direction === "Droite" ? "D" : "C"}
+                </text>
+              </g>
+            )}
+            {/* Sensor dot (always visible) */}
             <circle
-              cx={m.sx} cy={m.sy} r={6}
+              cx={m.sx} cy={m.sy} r={5}
               className={cn(
                 "stroke-background",
-                m.isPresence ? "fill-warning" : m.det ? "fill-success" : "fill-primary"
+                m.isPresence ? "fill-emerald-500" : m.det ? "fill-success" : "fill-primary"
               )}
               strokeWidth={2}
             />
-            {/* Label */}
+            {/* Sensor label */}
             <text
               x={m.sx}
-              y={m.sy - 12}
+              y={m.sy - 10}
               textAnchor="middle"
               className="fill-foreground text-[9px] font-mono pointer-events-none"
               style={{ paintOrder: "stroke", stroke: "hsl(var(--background))", strokeWidth: 3 }}
             >
               {m.device_name}
             </text>
-            {/* Distance badge when detecting */}
-            {m.isPresence && m.det && (
+            {/* Fallback: no planScale -> show distance at sensor position */}
+            {m.isPresence && m.det && m.detSx == null && (
               <text
                 x={m.sx}
-                y={m.sy + 18}
+                y={m.sy + 16}
                 textAnchor="middle"
-                className="fill-warning text-[9px] font-mono font-bold pointer-events-none"
-                style={{ paintOrder: "stroke", stroke: "hsl(var(--background))", strokeWidth: 3 }}
+                className="text-[9px] font-mono font-bold pointer-events-none"
+                style={{ fill: "#22c55e", paintOrder: "stroke", stroke: "hsl(var(--background))", strokeWidth: 3 }}
               >
                 {m.det.distance}cm
               </text>
