@@ -107,6 +107,9 @@ export default function MissionDetailPage() {
   const { data: events, mutate: mutateEvents } = useEvents({ mission_id: id, event_type: "detection", limit: 10000 })
   const { data: allDevices, mutate: mutateDevices } = useDevices({ refreshInterval: 10000 })
 
+  // Force fresh device list on mount (in case devices were unassigned on another page)
+  useEffect(() => { mutateDevices() }, [mutateDevices])
+
   const [drawingMode, setDrawingMode] = useState(false)
   const [calibrationMode, setCalibrationMode] = useState(false)
   const [feedDeviceFilter, setFeedDeviceFilter] = useState<string>("all")
@@ -747,7 +750,8 @@ export default function MissionDetailPage() {
   // Available to assign: enabled devices not in this mission
   const unassigned = allDevices?.filter((d) => {
     if (!d.enabled) return false
-    if (d.mission_id === id) return false
+    // Only show truly free devices (no mission) -- not devices assigned to other missions
+    if (d.mission_id) return false
     return true
   }) ?? []
   // Use direct backend URL for plan image (avoids Next.js proxy multipart/binary issues)
