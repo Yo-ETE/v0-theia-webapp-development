@@ -8,6 +8,7 @@ import {
   Radio,
   ScrollText,
   Settings,
+  Info,
   RefreshCw,
   LogOut,
   User,
@@ -36,6 +37,7 @@ const navItems = [
   { title: "Devices", href: "/devices", icon: Radio, adminOnly: false },
   { title: "Logs", href: "/logs", icon: ScrollText, adminOnly: false },
   { title: "Administration", href: "/admin", icon: Settings, adminOnly: true },
+  { title: "A propos", href: "/about", icon: Info, adminOnly: false },
 ]
 
 export function AppSidebar() {
