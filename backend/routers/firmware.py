@@ -29,7 +29,19 @@ if not os.path.isdir(FIRMWARE_DIR):
 
 ARDUINO_CLI = shutil.which("arduino-cli") or "/usr/local/bin/arduino-cli"
 DATA_DIR = os.getenv("THEIA_DATA_DIR", "/opt/theia/data")
+# Persistent storage for user-uploaded custom firmware (survives git pull)
+CUSTOM_FIRMWARE_DIR = os.path.join(DATA_DIR, "firmware")
+os.makedirs(CUSTOM_FIRMWARE_DIR, exist_ok=True)
 RX_MAC_FILE = os.path.join(DATA_DIR, "rx_mac.txt")
+
+
+def _resolve_sketch_dir(name: str) -> str | None:
+    """Find a sketch directory by name, checking custom dir first then templates."""
+    for base in (CUSTOM_FIRMWARE_DIR, FIRMWARE_DIR):
+        candidate = os.path.join(base, name)
+        if os.path.isdir(candidate):
+            return candidate
+    return None
 # Heltec WiFi LoRa 32 V3 FQBN from standard ESP32 core
 # Uses RadioLib for LoRa -- no Heltec SDK dependency
 DEFAULT_FQBN = "esp32:esp32:heltec_wifi_lora_32_V3"
@@ -253,35 +265,40 @@ async def list_ports():
 
 @router.get("/sketches")
 async def list_sketches():
-    """List available firmware sketches."""
+    """List available firmware sketches from templates and custom uploads."""
     sketches = []
-    if not os.path.isdir(FIRMWARE_DIR):
-        return sketches
-    for entry in sorted(os.listdir(FIRMWARE_DIR)):
-        sketch_dir = os.path.join(FIRMWARE_DIR, entry)
-        if os.path.isdir(sketch_dir):
-            # Find .ino file inside
-            ino_files = [f for f in os.listdir(sketch_dir) if f.endswith(".ino")]
-            if ino_files:
-                # Check if it's a built-in template (has __TX_ID__ placeholder)
-                with open(os.path.join(sketch_dir, ino_files[0]), "r") as f:
-                    content = f.read()
-                is_template = "__TX_ID__" in content
-                sketches.append({
-                    "name": entry,
-                    "file": ino_files[0],
-                    "path": sketch_dir,
-                    "is_template": is_template,
-                    "sensor_type": "ld2450" if "LD2450" in entry else ("c4001" if "C4001" in entry else "unknown"),
-                })
+    seen_names: set[str] = set()
+    # Scan both directories: custom (persistent) first, then built-in templates
+    for base_dir, is_custom in [(CUSTOM_FIRMWARE_DIR, True), (FIRMWARE_DIR, False)]:
+        if not os.path.isdir(base_dir):
+            continue
+        for entry in sorted(os.listdir(base_dir)):
+            if entry in seen_names:
+                continue  # custom overrides template with same name
+            sketch_dir = os.path.join(base_dir, entry)
+            if os.path.isdir(sketch_dir):
+                ino_files = [f for f in os.listdir(sketch_dir) if f.endswith(".ino")]
+                if ino_files:
+                    with open(os.path.join(sketch_dir, ino_files[0]), "r") as f:
+                        content = f.read()
+                    is_template = "__TX_ID__" in content
+                    sketches.append({
+                        "name": entry,
+                        "file": ino_files[0],
+                        "path": sketch_dir,
+                        "is_template": is_template,
+                        "is_custom": is_custom,
+                        "sensor_type": "ld2450" if "LD2450" in entry else ("c4001" if "C4001" in entry else ("rx" if "RX" in entry.upper() else "unknown")),
+                    })
+                    seen_names.add(entry)
     return sketches
 
 
 @router.get("/sketches/{name}")
 async def get_sketch_content(name: str):
     """Get the source code of a firmware sketch."""
-    sketch_dir = os.path.join(FIRMWARE_DIR, name)
-    if not os.path.isdir(sketch_dir):
+    sketch_dir = _resolve_sketch_dir(name)
+    if not sketch_dir:
         raise HTTPException(status_code=404, detail="Firmware introuvable")
     ino_files = [f for f in os.listdir(sketch_dir) if f.endswith(".ino")]
     if not ino_files:
@@ -298,8 +315,8 @@ async def update_sketch_content(name: str, body: dict):
     content = body.get("content", "")
     if not content.strip():
         raise HTTPException(status_code=400, detail="Contenu vide")
-    sketch_dir = os.path.join(FIRMWARE_DIR, name)
-    if not os.path.isdir(sketch_dir):
+    sketch_dir = _resolve_sketch_dir(name)
+    if not sketch_dir:
         raise HTTPException(status_code=404, detail="Firmware introuvable")
     ino_files = [f for f in os.listdir(sketch_dir) if f.endswith(".ino")]
     if not ino_files:
@@ -313,8 +330,8 @@ async def update_sketch_content(name: str, body: dict):
 @router.delete("/sketches/{name}")
 async def delete_sketch(name: str):
     """Delete a firmware sketch directory."""
-    sketch_dir = os.path.join(FIRMWARE_DIR, name)
-    if not os.path.isdir(sketch_dir):
+    sketch_dir = _resolve_sketch_dir(name)
+    if not sketch_dir:
         raise HTTPException(status_code=404, detail="Firmware introuvable")
     shutil.rmtree(sketch_dir)
     return {"ok": True, "name": name}
@@ -325,14 +342,14 @@ async def upload_sketch(
     file: UploadFile = File(...),
     sensor_type: str = Form("unknown"),
 ):
-    """Upload a custom .ino sketch file."""
+    """Upload a custom .ino sketch file. Saved to persistent data dir (survives git pull)."""
     if not file.filename or not file.filename.endswith((".ino", ".cpp", ".c")):
         raise HTTPException(status_code=400, detail="Le fichier doit etre un .ino, .cpp, ou .c")
 
-    # Normalize: always save as .ino
+    # Normalize: always save as .ino in the persistent custom firmware dir
     base_name = file.filename.rsplit(".", 1)[0]
     sketch_name = f"custom_{base_name}"
-    sketch_dir = os.path.join(FIRMWARE_DIR, sketch_name)
+    sketch_dir = os.path.join(CUSTOM_FIRMWARE_DIR, sketch_name)
     os.makedirs(sketch_dir, exist_ok=True)
 
     content = await file.read()
@@ -531,18 +548,16 @@ async def flash_device(req: FlashRequest):
             detail=f"{req.tx_id} deja cree. Choisissez un autre identifiant."
         )
 
-    # Determine which sketch to use
+    # Determine which sketch to use (check custom dir first, then templates)
     if req.sketch_name:
-        sketch_dir = os.path.join(FIRMWARE_DIR, req.sketch_name)
+        sketch_dir = _resolve_sketch_dir(req.sketch_name)
     else:
         # Use built-in template based on sensor_type
-        if req.sensor_type == "c4001":
-            sketch_dir = os.path.join(FIRMWARE_DIR, "TX_C4001")
-        else:
-            sketch_dir = os.path.join(FIRMWARE_DIR, "TX_LD2450")
+        template_name = "TX_C4001" if req.sensor_type == "c4001" else "TX_LD2450"
+        sketch_dir = _resolve_sketch_dir(template_name)
 
-    if not os.path.isdir(sketch_dir):
-        raise HTTPException(status_code=404, detail=f"Sketch introuvable: {sketch_dir}")
+    if not sketch_dir:
+        raise HTTPException(status_code=404, detail=f"Sketch introuvable: {req.sketch_name or req.sensor_type}")
 
     # Find .ino file
     ino_files = [f for f in os.listdir(sketch_dir) if f.endswith(".ino")]
