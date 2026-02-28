@@ -538,10 +538,21 @@ class PortReader:
         self.packets_ok += 1
         angle = math.degrees(math.atan2(x, y)) if (x != 0 or y != 0) else 0.0
         presence = (x != 0 or y != 0) and 15 < d < 600
+        # Also detect presence when x==0 but d>15 (C4001 depth-only pattern)
+        if not presence and d > 15:
+            presence = True
+        # Detect sensor type
+        if x == 0 and y == d and d > 0:
+            sensor_type = "c4001"
+        else:
+            sensor_type = "ld2450"
+
+        if presence:
+            print(f"[THEIA-LD45] PRESENCE tx={tx_id} x={x} y={y} d={d} v={v} port={self.port}")
 
         # Phantom suppression handled in _handle_detection (single gate)
         await self._handle_detection(
-            tx_id=tx_id, sensor_type="ld2450",
+            tx_id=tx_id, sensor_type=sensor_type,
             x=x, y=y, d=d, v=v,
             angle=angle, presence=presence, vbatt=vbatt,
         )
