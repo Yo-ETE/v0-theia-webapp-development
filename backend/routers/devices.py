@@ -3,9 +3,12 @@ THEIA - Devices CRUD router (with PATCH support for zone/side/floor assignment)
 """
 import uuid
 from datetime import datetime, timezone, timedelta
+from zoneinfo import ZoneInfo
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 from backend.database import get_db
+
+LOCAL_TZ = ZoneInfo("Europe/Paris")
 
 
 def _compute_status(device: dict) -> dict:
@@ -19,10 +22,14 @@ def _compute_status(device: dict) -> dict:
         if last_seen.endswith("Z"):
             last_seen = last_seen[:-1] + "+00:00"
         if "+" not in last_seen and "T" in last_seen:
-            ls_dt = datetime.fromisoformat(last_seen).replace(tzinfo=timezone.utc)
+            # Old UTC format with T separator
+            ls_dt = datetime.fromisoformat(last_seen).replace(tzinfo=timezone.utc).astimezone(LOCAL_TZ)
+        elif "+" in last_seen:
+            ls_dt = datetime.fromisoformat(last_seen).astimezone(LOCAL_TZ)
         else:
-            ls_dt = datetime.fromisoformat(last_seen)
-        now = datetime.now(timezone.utc)
+            # New local format "YYYY-MM-DD HH:MM:SS" (already local time)
+            ls_dt = datetime.fromisoformat(last_seen).replace(tzinfo=LOCAL_TZ)
+        now = datetime.now(LOCAL_TZ)
         delta = now - ls_dt
         if delta < timedelta(seconds=60):
             d["status"] = "online"

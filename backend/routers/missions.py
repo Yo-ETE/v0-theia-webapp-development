@@ -5,7 +5,10 @@ Field names aligned with frontend: center_lat, center_lon, zoom, environment, lo
 import json
 import uuid
 from datetime import datetime, timezone
+from zoneinfo import ZoneInfo
 from fastapi import APIRouter, HTTPException, Request
+
+LOCAL_TZ = ZoneInfo("Europe/Paris")
 from pydantic import BaseModel, Field
 from backend.database import get_db
 
@@ -150,7 +153,7 @@ async def create_mission(body: MissionCreate):
     db = await get_db()
     # Use client-provided ID if present, otherwise generate one
     mid = body.id if body.id else str(uuid.uuid4())[:8]
-    now = datetime.now(timezone.utc).isoformat()
+    now = datetime.now(LOCAL_TZ).strftime("%Y-%m-%d %H:%M:%S")
     await db.execute(
         """INSERT INTO missions
            (id, name, description, location, environment, center_lat, center_lon, zoom, zones, floors,
@@ -202,7 +205,7 @@ async def patch_mission(mission_id: str, body: MissionUpdate):
         else:
             updates["visual_config"] = json.dumps(vc)
 
-    updates["updated_at"] = datetime.now(timezone.utc).isoformat()
+    updates["updated_at"] = datetime.now(LOCAL_TZ).strftime("%Y-%m-%d %H:%M:%S")
 
     if "status" in updates:
         print(f"[THEIA] Mission {mission_id} status -> {updates['status']}")
@@ -299,7 +302,7 @@ async def upload_plan_image(mission_id: str, request: Request):
     plan_url = f"/api/missions/{mission_id}/plan-image/file"
     await db.execute(
         "UPDATE missions SET plan_image=?, plan_width=?, plan_height=?, updated_at=? WHERE id=?",
-        (plan_url, plan_width, plan_height, datetime.now(timezone.utc).isoformat(), mission_id),
+        (plan_url, plan_width, plan_height, datetime.now(LOCAL_TZ).strftime("%Y-%m-%d %H:%M:%S"), mission_id),
     )
     await db.commit()
     print(f"[THEIA] Plan image DB updated: plan_url={plan_url}, w={plan_width}, h={plan_height}")

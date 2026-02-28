@@ -45,8 +45,8 @@ async def init_tables(db: aiosqlite.Connection):
             zoom INTEGER DEFAULT 19,
             zones TEXT DEFAULT '[]',
             floors TEXT DEFAULT '[]',
-            created_at TEXT DEFAULT (datetime('now')),
-            updated_at TEXT DEFAULT (datetime('now')),
+            created_at TEXT DEFAULT (datetime('now', 'localtime')),
+            updated_at TEXT DEFAULT (datetime('now', 'localtime')),
             started_at TEXT,
             ended_at TEXT,
             plan_image TEXT DEFAULT NULL,
@@ -75,7 +75,7 @@ async def init_tables(db: aiosqlite.Connection):
             snr REAL DEFAULT 0,
             battery REAL DEFAULT 100,
             last_seen TEXT,
-            created_at TEXT DEFAULT (datetime('now')),
+            created_at TEXT DEFAULT (datetime('now', 'localtime')),
             FOREIGN KEY (mission_id) REFERENCES missions(id) ON DELETE SET NULL
         );
 
@@ -90,7 +90,7 @@ async def init_tables(db: aiosqlite.Connection):
             rssi REAL,
             snr REAL,
             payload TEXT DEFAULT '{}',
-            timestamp TEXT DEFAULT (datetime('now')),
+            timestamp TEXT DEFAULT (datetime('now', 'localtime')),
             FOREIGN KEY (mission_id) REFERENCES missions(id) ON DELETE CASCADE,
             FOREIGN KEY (device_id) REFERENCES devices(id) ON DELETE SET NULL
         );
@@ -100,7 +100,7 @@ async def init_tables(db: aiosqlite.Connection):
             level TEXT DEFAULT 'info',
             source TEXT DEFAULT 'system',
             message TEXT NOT NULL,
-            timestamp TEXT DEFAULT (datetime('now'))
+            timestamp TEXT DEFAULT (datetime('now', 'localtime'))
         );
 
         CREATE TABLE IF NOT EXISTS notifications (
@@ -112,14 +112,14 @@ async def init_tables(db: aiosqlite.Connection):
             message TEXT NOT NULL,
             read INTEGER DEFAULT 0,
             dismissed INTEGER DEFAULT 0,
-            created_at TEXT DEFAULT (datetime('now'))
+            created_at TEXT DEFAULT (datetime('now', 'localtime'))
         );
 
         CREATE TABLE IF NOT EXISTS battery_history (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             device_id TEXT NOT NULL,
             voltage REAL NOT NULL,
-            timestamp TEXT DEFAULT (datetime('now')),
+            timestamp TEXT DEFAULT (datetime('now', 'localtime')),
             FOREIGN KEY (device_id) REFERENCES devices(id) ON DELETE CASCADE
         );
 
@@ -226,6 +226,16 @@ async def init_tables(db: aiosqlite.Connection):
         pass
     try:
         await db.execute("ALTER TABLE events ADD COLUMN orientation TEXT DEFAULT NULL")
+    except Exception:
+        pass
+    # Events: store floor level at detection time (for floor-mode replay without TX assigned)
+    try:
+        await db.execute("ALTER TABLE events ADD COLUMN floor INTEGER DEFAULT NULL")
+    except Exception:
+        pass
+    # Events: store device_name at detection time (so replay shows correct name even if TX reassigned)
+    try:
+        await db.execute("ALTER TABLE events ADD COLUMN device_name TEXT DEFAULT NULL")
     except Exception:
         pass
     # Mission visual_config (per-mission visual overrides as JSON)

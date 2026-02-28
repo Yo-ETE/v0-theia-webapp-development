@@ -19,6 +19,9 @@ import math
 import os
 import time
 from datetime import datetime, timezone
+from zoneinfo import ZoneInfo
+
+LOCAL_TZ = ZoneInfo("Europe/Paris")
 
 from backend.database import get_db
 from backend.sse import sse_manager
@@ -361,7 +364,7 @@ class PortReader:
             except (KeyError, IndexError):
                 pass
 
-        now_iso = datetime.now(timezone.utc).isoformat()
+        now_iso = datetime.now(LOCAL_TZ).strftime("%Y-%m-%d %H:%M:%S")
         if device_id:
             await db.execute(
                 "UPDATE devices SET battery=?, last_seen=?, rssi=?, serial_port=? WHERE id=?",
@@ -436,8 +439,8 @@ class PortReader:
                 payload_json = json.dumps(payload)
                 try:
                     await db.execute(
-                        "INSERT INTO events (mission_id, device_id, event_type, zone, zone_id, side, rssi, snr, payload, sensor_position, orientation) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
-                        (mission_id, device_id, "detection", zone, zone_id, side, self.last_rssi, 0, payload_json, sensor_position, device_orientation),
+                        "INSERT INTO events (mission_id, device_id, event_type, zone, zone_id, side, rssi, snr, payload, sensor_position, orientation, floor, device_name) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                        (mission_id, device_id, "detection", zone, zone_id, side, self.last_rssi, 0, payload_json, sensor_position, device_orientation, device_floor, device_name),
                     )
                 except Exception:
                     await db.execute(
@@ -578,16 +581,22 @@ class PortReader:
         db = await get_db()
         await db.execute(
             "UPDATE devices SET rssi=?, snr=?, last_seen=? WHERE dev_eui=?",
-            (rssi, snr, datetime.now(timezone.utc).isoformat(), dev_eui),
+            (rssi, snr, datetime.now(LOCAL_TZ).strftime("%Y-%m-%d %H:%M:%S"), dev_eui),
         )
 
         cursor = await db.execute(
-            "SELECT id, mission_id, zone FROM devices WHERE dev_eui=?", (dev_eui,),
+            "SELECT id, mission_id, zone, zone_id, side, name, floor, sensor_position, orientation FROM devices WHERE dev_eui=?", (dev_eui,),
         )
         row = await cursor.fetchone()
         device_id = row["id"] if row else None
         mission_id = row["mission_id"] if row else None
         zone = row["zone"] if row else ""
+        j_zone_id = row["zone_id"] if row else ""
+        j_side = row["side"] if row else ""
+        j_device_name = row["name"] if row else dev_eui
+        j_floor = row["floor"] if row else None
+        j_sensor_position = row["sensor_position"] if row else None
+        j_orientation = row["orientation"] if row else None
 
         # Check mission status for recording gate
         mission_active = False
@@ -622,10 +631,16 @@ class PortReader:
             last_insert_ts = self._last_insert_ts.get(device_key, 0)
             if now_ts - last_insert_ts >= 2.0:
                 self._last_insert_ts[device_key] = now_ts
-                await db.execute(
-                    "INSERT INTO events (mission_id, device_id, event_type, zone, rssi, snr, payload) VALUES (?, ?, ?, ?, ?, ?, ?)",
-                    (mission_id, device_id, event_type, zone, rssi, snr, json.dumps(payload)),
-                )
+                try:
+                    await db.execute(
+                        "INSERT INTO events (mission_id, device_id, event_type, zone, zone_id, side, rssi, snr, payload, sensor_position, orientation, floor, device_name) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                        (mission_id, device_id, event_type, zone, j_zone_id, j_side, rssi, snr, json.dumps(payload), j_sensor_position, j_orientation, j_floor, j_device_name),
+                    )
+                except Exception:
+                    await db.execute(
+                        "INSERT INTO events (mission_id, device_id, event_type, zone, rssi, snr, payload) VALUES (?, ?, ?, ?, ?, ?, ?)",
+                        (mission_id, device_id, event_type, zone, rssi, snr, json.dumps(payload)),
+                    )
         elif mission_id and event_type != "detection":
             await db.execute(
                 "INSERT INTO events (mission_id, device_id, event_type, zone, rssi, snr, payload) VALUES (?, ?, ?, ?, ?, ?, ?)",
@@ -645,7 +660,7 @@ class PortReader:
             "rssi": rssi,
             "snr": snr,
             "payload": payload,
-            "timestamp": datetime.now(timezone.utc).isoformat(),
+            "timestamp": datetime.now(LOCAL_TZ).strftime("%Y-%m-%d %H:%M:%S"),
         })
 
 

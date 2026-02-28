@@ -21,6 +21,9 @@ interface LiveDetection {
   vbatt_tx: number | null
   rssi: number | null
   sensor_type?: string
+  floor?: number | null
+  sensor_position?: number | null
+  orientation?: string | null
   timestamp: string
   mission_id?: string
 }
@@ -58,7 +61,10 @@ function parseEventToDetection(ev: DetectionEvent): LiveDetection | null {
     vbatt_tx: p.vbatt_tx ? Number(p.vbatt_tx) : null,
     rssi: ev.rssi,
     sensor_type: String(p.sensor_type ?? "ld2450"),
-    floor: p.floor != null ? Number(p.floor) : null,
+    // Prefer event-level fields (stored at recording time) over payload fields
+    floor: ev.floor != null ? Number(ev.floor) : (p.floor != null ? Number(p.floor) : null),
+    sensor_position: ev.sensor_position != null ? Number(ev.sensor_position) : null,
+    orientation: ev.orientation ?? null,
     timestamp: ev.timestamp,
     mission_id: ev.mission_id,
   }

@@ -147,6 +147,7 @@ export interface DetectionEvent {
   side: string | null
   sensor_position: number | null
   orientation: "inward" | "outward" | null
+  floor: number | null
   type: EventType
   payload: Record<string, unknown>
   rssi: number | null
