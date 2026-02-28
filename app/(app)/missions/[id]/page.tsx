@@ -495,7 +495,7 @@ export default function MissionDetailPage() {
         : z
     )
     // Persist device placement in mission history (for replay after unassignment)
-    const existingPlacements = (mission as Record<string, unknown>).device_placements as Record<string, unknown> ?? {}
+    const existingPlacements = mission.device_placements ?? {}
     const deviceObj = (allDevices ?? []).find(d => d.id === deviceId)
     const updatedPlacements = {
       ...existingPlacements,
@@ -508,7 +508,7 @@ export default function MissionDetailPage() {
       },
     }
     try {
-      const updated = await updateMission(id, { zones, device_placements: updatedPlacements } as Record<string, unknown>)
+      const updated = await updateMission(id, { zones, device_placements: updatedPlacements })
       mutate(updated, false)
     } catch (err) {
       console.warn("[THEIA] Failed to update mission during assign:", err)
@@ -517,7 +517,7 @@ export default function MissionDetailPage() {
     setAssignDialog(null)
     setAssignStep(null)
     setSensorPlaceMode(null)
-  }, [mission, id, mutate, mutateDevices])
+  }, [mission, id, mutate, mutateDevices, allDevices])
 
   // ── Handle click-to-place sensor on the map side ──
   const handleSensorPlace = useCallback((zoneId: string, side: string, position: number) => {
@@ -813,7 +813,7 @@ export default function MissionDetailPage() {
     }))
   // Reconstruct placements from historical events (preserves positions at time of recording)
   // Falls back to mission.device_placements (persisted at assignment time) for old events
-  const savedPlacements = (mission as Record<string, unknown>)?.device_placements as Record<string, Record<string, unknown>> ?? {}
+  const savedPlacements = mission?.device_placements ?? {}
   const historicalPlacements = (() => {
     if (!events || events.length === 0) return []
     const seen = new Map<string, (typeof livePlacements)[0]>()
@@ -824,10 +824,10 @@ export default function MissionDetailPage() {
       const saved = savedPlacements[did]
       seen.set(did, {
         device_id: did,
-        device_name: e.device_name ?? (saved?.device_name as string) ?? did,
+        device_name: e.device_name ?? saved?.device_name ?? did,
         zone_id: e.zone_id,
         side: e.side,
-        sensor_position: e.sensor_position ?? (saved?.sensor_position as number) ?? 0.5,
+        sensor_position: e.sensor_position ?? saved?.sensor_position ?? 0.5,
         device_type: "",
         orientation: (e.orientation ?? saved?.orientation ?? "inward") as "inward" | "outward",
       })
@@ -837,10 +837,10 @@ export default function MissionDetailPage() {
       if (!seen.has(did) && p.zone_id && p.side) {
         seen.set(did, {
           device_id: did,
-          device_name: (p.device_name as string) ?? did,
-          zone_id: p.zone_id as string,
-          side: p.side as string,
-          sensor_position: (p.sensor_position as number) ?? 0.5,
+          device_name: p.device_name ?? did,
+          zone_id: p.zone_id,
+          side: p.side,
+          sensor_position: p.sensor_position ?? 0.5,
           device_type: "",
           orientation: (p.orientation as "inward" | "outward") ?? "inward",
         })

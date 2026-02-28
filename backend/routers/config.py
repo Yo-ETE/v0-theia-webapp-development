@@ -9,7 +9,7 @@ import glob
 import shutil
 import time
 from datetime import datetime
-from fastapi import APIRouter
+from fastapi import APIRouter, Request
 
 router = APIRouter(prefix="/api/config")
 
@@ -666,10 +666,9 @@ async def get_timezone():
 
 
 @router.post("/timezone")
-async def set_timezone(request):
+async def set_timezone(request: Request):
     """Set system timezone (e.g. Europe/Paris)."""
     try:
-        from starlette.requests import Request
         body = await request.json()
         tz = body.get("timezone", "").strip()
         if not tz:

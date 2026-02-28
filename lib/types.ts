@@ -81,6 +81,7 @@ export interface Mission {
   plan_height?: number | null // image natural height in px
   plan_scale?: number | null  // calibrated scale: image pixels per metre
   detection_reset_at?: string | null  // ISO timestamp: ignore events/detections before this
+  device_placements?: Record<string, { zone_id: string; side: string; sensor_position: number; orientation: string; device_name: string }> // Persisted TX positions for timelapse replay
   device_count: number
   event_count: number
 }
