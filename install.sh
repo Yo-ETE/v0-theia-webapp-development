@@ -158,6 +158,15 @@ setup_env() {
     sed -i 's|^GPS_DEVICE=/dev/ttyUSB.*|GPS_DEVICE=|' "$env_file"
     sed -i 's|^LORA_SERIAL_PORT=/dev/ttyACM.*|LORA_SERIAL_PORT=|' "$env_file"
 
+    # Generate a fixed JWT_SECRET if not already set
+    local jwt_secret
+    jwt_secret=$(grep '^JWT_SECRET=' "$env_file" | cut -d'=' -f2)
+    if [[ -z "$jwt_secret" ]]; then
+        jwt_secret=$(python3 -c "import secrets; print(secrets.token_hex(32))")
+        sed -i "s|^JWT_SECRET=.*|JWT_SECRET=$jwt_secret|" "$env_file"
+        info "Generated JWT_SECRET"
+    fi
+
     # Ensure all required keys exist (add missing ones from example)
     while IFS= read -r line; do
         if [[ "$line" =~ ^[A-Z_]+= ]]; then
@@ -358,6 +367,11 @@ verify_install() {
     echo ""
     echo -e "  Dashboard:  ${GREEN}http://localhost:3000/dashboard${NC}"
     echo -e "  API Docs:   ${GREEN}http://localhost:8000/docs${NC}"
+    echo ""
+    echo -e "  ${YELLOW}Default login:${NC}"
+    echo -e "    Username: ${GREEN}admin${NC}"
+    echo -e "    Password: ${GREEN}admin${NC}"
+    echo -e "    ${RED}IMPORTANT: Change this password after first login!${NC}"
     echo ""
 
     # Service status

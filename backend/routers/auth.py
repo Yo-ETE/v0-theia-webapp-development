@@ -29,15 +29,25 @@ def _get_secret() -> str:
     global _jwt_secret
     if _jwt_secret:
         return _jwt_secret
+    # 1. Try env var first
+    env_secret = os.getenv("JWT_SECRET", "").strip()
+    if env_secret:
+        _jwt_secret = env_secret
+        return _jwt_secret
+    # 2. Try secret file
     if os.path.exists(_SECRET_PATH):
         with open(_SECRET_PATH, "r") as f:
             _jwt_secret = f.read().strip()
     else:
+        # 3. Generate and persist
         _jwt_secret = secrets.token_hex(32)
-        os.makedirs(os.path.dirname(_SECRET_PATH), exist_ok=True)
-        with open(_SECRET_PATH, "w") as f:
-            f.write(_jwt_secret)
-        os.chmod(_SECRET_PATH, 0o600)
+        try:
+            os.makedirs(os.path.dirname(_SECRET_PATH), exist_ok=True)
+            with open(_SECRET_PATH, "w") as f:
+                f.write(_jwt_secret)
+            os.chmod(_SECRET_PATH, 0o600)
+        except OSError:
+            pass  # Non-fatal: secret stays in memory only
     return _jwt_secret
 
 # ---------------------------------------------------------------------------
