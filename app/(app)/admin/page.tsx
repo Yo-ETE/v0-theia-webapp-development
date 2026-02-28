@@ -52,6 +52,7 @@ import { Alert, AlertDescription } from "@/components/ui/alert"
 import { Badge } from "@/components/ui/badge"
 import { ScrollArea } from "@/components/ui/scroll-area"
 import { cn } from "@/lib/utils"
+import { UserManagement } from "@/components/admin/user-management"
 
 
 // ── Types ──
@@ -1346,7 +1347,10 @@ export default function AdminPage() {
             </CardContent>
           </Card>
 
-          {/* ── Licence ── */}
+          {/* ── Comptes utilisateurs ── */}
+          <UserManagement />
+
+  {/* ── Licence ── */}
           <Card className="border-border/50 bg-card lg:col-span-2">
             <CardHeader>
               <div className="flex flex-wrap items-center justify-between gap-2">

@@ -137,8 +137,44 @@ async def init_tables(db: aiosqlite.Connection):
             key TEXT PRIMARY KEY,
             value TEXT NOT NULL
         );
+
+        CREATE TABLE IF NOT EXISTS users (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            username TEXT UNIQUE NOT NULL,
+            password_hash TEXT NOT NULL,
+            role TEXT NOT NULL DEFAULT 'viewer',
+            created_at TEXT DEFAULT (datetime('now','localtime')),
+            last_login TEXT
+        );
+
+        CREATE TABLE IF NOT EXISTS push_subscriptions (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            user_id INTEGER,
+            endpoint TEXT UNIQUE NOT NULL,
+            p256dh TEXT NOT NULL,
+            auth TEXT NOT NULL,
+            created_at TEXT DEFAULT (datetime('now','localtime')),
+            FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+        );
     """)
     await db.commit()
+
+    # Create default admin account if no users exist
+    cursor = await db.execute("SELECT COUNT(*) FROM users")
+    count = (await cursor.fetchone())[0]
+    if count == 0:
+        # PBKDF2 hash of "admin" -- same algorithm as auth.py _hash_password
+        import secrets as _secrets
+        import hashlib as _hashlib
+        _salt = _secrets.token_hex(16)
+        _dk = _hashlib.pbkdf2_hmac("sha256", b"admin", _salt.encode(), 100_000)
+        _hash = f"{_salt}${_dk.hex()}"
+        await db.execute(
+            "INSERT INTO users (username, password_hash, role) VALUES (?, ?, ?)",
+            ("admin", _hash, "admin")
+        )
+        await db.commit()
+        print("[THEIA] Default admin account created (username: admin, password: admin)")
 
     # Migrations for existing databases
     try:
@@ -246,6 +282,11 @@ async def init_tables(db: aiosqlite.Connection):
     # Mission device_placements (persists TX positions for replay after unassignment)
     try:
         await db.execute("ALTER TABLE missions ADD COLUMN device_placements TEXT DEFAULT '{}'")
+    except Exception:
+        pass
+    # Mission notification_config (JSON: notification rules per mission)
+    try:
+        await db.execute("ALTER TABLE missions ADD COLUMN notification_config TEXT DEFAULT NULL")
     except Exception:
         pass
     await db.commit()

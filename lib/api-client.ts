@@ -19,6 +19,7 @@ async function request<T>(path: string, options?: RequestInit): Promise<T> {
   const url = `${API_BASE}${path}`
   const res = await fetch(url, {
     ...options,
+    credentials: "include",
     headers: {
       "Content-Type": "application/json",
       ...options?.headers,
@@ -26,6 +27,10 @@ async function request<T>(path: string, options?: RequestInit): Promise<T> {
   })
 
   if (!res.ok) {
+    if (res.status === 401 && typeof window !== "undefined") {
+      window.location.href = "/login"
+      throw new Error("Session expired")
+    }
     const error = await res.json().catch(() => ({ error: res.statusText }))
     console.error(`[THEIA] API Error ${res.status} on ${url}:`, error)
     throw new Error(error.error || `API Error: ${res.status}`)
@@ -47,6 +52,7 @@ async function directBackendRequest<T>(path: string, options?: RequestInit): Pro
   console.log("[THEIA] Direct backend call:", options?.method ?? "GET", url)
   const res = await fetch(url, {
     ...options,
+    credentials: "include",
     headers: {
       "Content-Type": "application/json",
       ...options?.headers,
@@ -54,6 +60,10 @@ async function directBackendRequest<T>(path: string, options?: RequestInit): Pro
   })
 
   if (!res.ok) {
+    if (res.status === 401 && typeof window !== "undefined") {
+      window.location.href = "/login"
+      throw new Error("Session expired")
+    }
     const error = await res.json().catch(() => ({ error: res.statusText }))
     console.error(`[THEIA] Direct backend error ${res.status} on ${url}:`, error)
     throw new Error(error.error || `Backend Error: ${res.status}`)

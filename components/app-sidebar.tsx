@@ -1,7 +1,7 @@
 "use client"
 
 import Link from "next/link"
-import { usePathname } from "next/navigation"
+import { usePathname, useRouter } from "next/navigation"
 import {
   LayoutDashboard,
   Crosshair,
@@ -9,6 +9,9 @@ import {
   ScrollText,
   Settings,
   RefreshCw,
+  LogOut,
+  User,
+  Shield,
 } from "lucide-react"
 import {
   Sidebar,
@@ -24,17 +27,22 @@ import {
 } from "@/components/ui/sidebar"
 
 import { NotificationBell } from "@/components/notification-bell"
+import { useAuth } from "@/lib/auth-context"
 
 const navItems = [
-  { title: "Dashboard", href: "/dashboard", icon: LayoutDashboard },
-  { title: "Missions", href: "/missions", icon: Crosshair },
-  { title: "Devices", href: "/devices", icon: Radio },
-  { title: "Logs", href: "/logs", icon: ScrollText },
-  { title: "Administration", href: "/admin", icon: Settings },
+  { title: "Dashboard", href: "/dashboard", icon: LayoutDashboard, adminOnly: false },
+  { title: "Missions", href: "/missions", icon: Crosshair, adminOnly: false },
+  { title: "Devices", href: "/devices", icon: Radio, adminOnly: false },
+  { title: "Logs", href: "/logs", icon: ScrollText, adminOnly: false },
+  { title: "Administration", href: "/admin", icon: Settings, adminOnly: true },
 ]
 
 export function AppSidebar() {
   const pathname = usePathname()
+  const router = useRouter()
+  const { user, isAdmin, logout } = useAuth()
+
+  const visibleItems = navItems.filter((item) => !item.adminOnly || isAdmin)
 
   return (
     <Sidebar>
@@ -69,7 +77,7 @@ export function AppSidebar() {
           </SidebarGroupLabel>
           <SidebarGroupContent>
             <SidebarMenu>
-              {navItems.map((item) => {
+              {visibleItems.map((item) => {
                 const isActive =
                   pathname === item.href ||
                   (item.href !== "/dashboard" && pathname.startsWith(item.href))
@@ -94,13 +102,33 @@ export function AppSidebar() {
       </SidebarContent>
 
       <SidebarFooter className="border-t border-sidebar-border p-3">
+        {user && (
+          <div className="flex items-center gap-2 mb-2 px-1">
+            <div className="flex h-7 w-7 items-center justify-center rounded-full bg-primary/10 border border-primary/20 shrink-0">
+              {isAdmin ? <Shield className="h-3.5 w-3.5 text-primary" /> : <User className="h-3.5 w-3.5 text-muted-foreground" />}
+            </div>
+            <div className="flex flex-col min-w-0 flex-1">
+              <span className="text-xs font-medium text-sidebar-foreground truncate">{user.username}</span>
+              <span className="text-[9px] text-muted-foreground uppercase tracking-wider">{user.role}</span>
+            </div>
+            <button
+              onClick={async () => {
+                await logout()
+                router.replace("/login")
+              }}
+              className="flex items-center justify-center h-7 w-7 rounded text-muted-foreground hover:text-destructive hover:bg-destructive/10 transition-colors shrink-0"
+              title="Se deconnecter"
+            >
+              <LogOut className="h-3.5 w-3.5" />
+            </button>
+          </div>
+        )}
         <div className="flex items-center justify-between">
           <p className="text-[9px] text-muted-foreground/50 tracking-wider">
             THEIA Hub Control v1.0
           </p>
           <button
             onClick={async () => {
-              // Clear all caches (service workers, browser cache API)
               if ("serviceWorker" in navigator) {
                 const regs = await navigator.serviceWorker.getRegistrations()
                 for (const r of regs) await r.unregister()
