@@ -10,6 +10,7 @@ import shutil
 import time
 from datetime import datetime
 from fastapi import APIRouter, Request
+from fastapi.responses import JSONResponse
 
 router = APIRouter(prefix="/api/config")
 
@@ -434,6 +435,27 @@ async def git_branches():
         return data
     except Exception as e:
         return {"current": "main", "branches": ["main"], "error": str(e)}
+
+
+@router.post("/git/fetch")
+async def git_fetch(body: dict = None):
+    """Fetch latest commits from remote for a given branch."""
+    branch = (body or {}).get("branch", "")
+    try:
+        repo_dir = os.getenv("THEIA_REPO", os.path.expanduser("~/theia"))
+
+        def _fetch():
+            # git fetch origin
+            cmd = ["git", "fetch", "--quiet", "origin"]
+            if branch:
+                cmd.append(branch)
+            subprocess.run(cmd, capture_output=True, text=True, cwd=repo_dir, timeout=30)
+            return {"status": "success", "message": f"Fetched origin{(' ' + branch) if branch else ''}"}
+
+        data = await asyncio.get_event_loop().run_in_executor(None, _fetch)
+        return data
+    except Exception as e:
+        return JSONResponse(status_code=500, content={"status": "error", "message": str(e)})
 
 
 @router.post("/git/update")
