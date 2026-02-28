@@ -421,24 +421,50 @@ export default function AdminPage() {
         await fetchVersionInfo()
         // Clear auth token (will be invalid after restart)
         localStorage.removeItem("theia_token")
+        // Clear chunk reload guard so error.tsx auto-reloads cleanly
+        sessionStorage.removeItem("theia_chunk_reload")
+
+        const backendBase = `http://${window.location.hostname}:8000`
+        const _t = localStorage.getItem("theia_token")
+        const _h: Record<string, string> = _t ? { Authorization: `Bearer ${_t}` } : {}
+
         setTimeout(async () => {
           try {
-            await fetch("/api/admin/restart-services", { method: "POST" })
-            setSystemMessage("Services redemarres. Reconnexion en cours...")
-            // Poll until the new frontend is available, then redirect to login
-            const pollUntilReady = async (retries = 30) => {
+            // Restart services via the backend directly (Next.js might be down)
+            await fetch(`${backendBase}/api/admin/restart-services`, {
+              method: "POST", credentials: "include", headers: _h,
+            }).catch(() => {})
+
+            setSystemMessage("Services en cours de redemarrage...")
+
+            // Poll the backend health endpoint (FastAPI restarts faster than Next.js)
+            const pollUntilReady = async (retries = 40) => {
+              // Wait 5s for services to actually stop before polling
+              await new Promise(r => setTimeout(r, 5000))
+
               for (let i = 0; i < retries; i++) {
-                await new Promise(r => setTimeout(r, 3000))
                 setSystemMessage(`Attente du redemarrage... (${i + 1}/${retries})`)
+                await new Promise(r => setTimeout(r, 3000))
                 try {
-                  const r = await fetch("/login", { method: "HEAD", cache: "no-store" })
+                  // Check if frontend is back (Next.js rebuilt)
+                  const r = await fetch(`/login?_t=${Date.now()}`, {
+                    method: "HEAD",
+                    cache: "no-store",
+                    headers: { "Cache-Control": "no-cache" },
+                  })
                   if (r.ok) {
-                    window.location.href = "/login"
+                    setSystemMessage("THEIA est pret. Redirection...")
+                    // Clear caches before redirect
+                    if ("caches" in window) {
+                      const keys = await caches.keys()
+                      await Promise.all(keys.map(k => caches.delete(k)))
+                    }
+                    window.location.href = `/login?_t=${Date.now()}`
                     return
                   }
                 } catch { /* service not ready yet */ }
               }
-              setSystemMessage("Timeout -- rechargez la page manuellement.")
+              setSystemMessage("Timeout -- rechargez la page manuellement (Ctrl+Shift+R).")
             }
             await pollUntilReady()
           } catch { setSystemMessage("Veuillez redemarrer les services manuellement.") }

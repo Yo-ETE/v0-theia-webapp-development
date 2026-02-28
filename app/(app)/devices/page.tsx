@@ -21,11 +21,14 @@ import {
 import { useDevices, useMissions } from "@/hooks/use-api"
 import { BatteryChart } from "@/components/battery-chart"
 import { FirmwareManager } from "@/components/admin/firmware-manager"
+import { useAuth } from "@/lib/auth-context"
 import { createDevice, deleteDevice, updateDevice } from "@/lib/api-client"
 import { deviceStatusConfig, formatRelative } from "@/lib/format"
 import { cn } from "@/lib/utils"
 
 export default function DevicesPage() {
+  const { user } = useAuth()
+  const isAdmin = user?.role === "admin"
   const { data: devices, isLoading, mutate } = useDevices({ includeDisabled: true })
   const { data: missions } = useMissions()
   const [enrollOpen, setEnrollOpen] = useState(false)
@@ -572,8 +575,8 @@ export default function DevicesPage() {
           {/* Battery consumption chart */}
           <BatteryChart />
 
-          {/* Firmware manager */}
-          <FirmwareManager />
+          {/* Firmware manager (admin only) */}
+          {isAdmin && <FirmwareManager />}
         </div>
       </main>
 

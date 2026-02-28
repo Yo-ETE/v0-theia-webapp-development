@@ -141,7 +141,10 @@ export function AppSidebar() {
                 const names = await caches.keys()
                 for (const n of names) await caches.delete(n)
               }
-              window.location.reload()
+              // Hard redirect with cache-bust to force fresh assets
+              const url = new URL(window.location.href)
+              url.searchParams.set("_t", String(Date.now()))
+              window.location.replace(url.toString())
             }}
             className="flex items-center gap-1 text-[9px] text-muted-foreground/50 hover:text-foreground transition-colors min-h-[32px] min-w-[32px] justify-center rounded"
             title="Vider le cache et recharger"

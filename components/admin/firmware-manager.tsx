@@ -41,7 +41,7 @@ function _bH(): Record<string, string> {
 export function FirmwareManager() {
   const [sketches, setSketches] = useState<Sketch[]>([])
   const [loading, setLoading] = useState(true)
-  const [expanded, setExpanded] = useState(false)
+  const [expanded, setExpanded] = useState(true)
 
   // View / edit state
   const [viewSketch, setViewSketch] = useState<{ name: string; file: string; content: string } | null>(null)
