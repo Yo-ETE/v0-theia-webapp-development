@@ -325,43 +325,6 @@ async def tailscale_exit_node(body: dict):
         return {"status": "error", "message": str(e)}
 
 
-# ── Visual Settings (key-value store) ────────────────────────────
-
-from backend.database import get_db as _get_db
-from fastapi import Body
-
-
-@router.get("/settings")
-async def get_all_settings():
-    """Return all settings as a {key: value} dict."""
-    db = await _get_db()
-    cursor = await db.execute("SELECT key, value FROM settings")
-    rows = await cursor.fetchall()
-    return {row["key"]: row["value"] for row in rows}
-
-
-@router.put("/settings")
-async def put_settings(payload: dict = Body(...)):
-    """Upsert multiple settings at once.  Body: { key: value, ... }"""
-    db = await _get_db()
-    for key, value in payload.items():
-        await db.execute(
-            "INSERT INTO settings (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value=excluded.value",
-            (str(key), str(value)),
-        )
-    await db.commit()
-    return {"ok": True, "updated": list(payload.keys())}
-
-
-@router.delete("/settings")
-async def reset_settings():
-    """Delete ALL settings (revert to defaults)."""
-    db = await _get_db()
-    await db.execute("DELETE FROM settings")
-    await db.commit()
-    return {"ok": True}
-
-
 # ── Backups ───────────────────────────────────────────────────────
 
 BACKUP_DIR = os.getenv("THEIA_BACKUP_DIR", "/opt/theia/backups")

@@ -29,7 +29,6 @@ Capteurs MW (TX LoRa)  --433MHz-->  Heltec RX (USB)  -->  Raspberry Pi 5
 | Frontend | Next.js 16 + shadcn/ui + Tailwind CSS 4 | 3000 |
 | Backend | FastAPI + SQLite + pyserial + gpsd | 8000 |
 | Firmware | Arduino (ESP32 Heltec WiFi LoRa V3) | - |
-| Preview | Vercel (mock data statique) | - |
 
 ## Fonctionnalites
 

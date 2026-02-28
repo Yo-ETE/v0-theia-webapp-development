@@ -2,9 +2,16 @@
 __v0_runtime_loader.js
 __v0_devtools.tsx
 __v0_jsx-dev-runtime.ts
+v0_plans/
 
 # Common ignores
 node_modules/
 .next/
+.env
 .env*.local
 .DS_Store
+*.pyc
+__pycache__/
+*.db
+*.db-journal
+/backend/.venv/

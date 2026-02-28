@@ -1,9 +1,0 @@
-<svg viewBox="0 0 300 300" xmlns="http://www.w3.org/2000/svg">
-  <circle cx="150" cy="150" r="100" stroke="currentColor" stroke-width="4" fill="none"/>
-  <circle cx="150" cy="150" r="60" stroke="currentColor" stroke-width="2" fill="none" opacity="2"/>
-  <line x1="150" y1="150" x2="230" y2="120" stroke="currentColor" stroke-width="3"/>
-  <circle cx="150" cy="150" r="10" fill="currentColor"/>
-  <text x="150" y="280" text-anchor="middle" fill="currentColor" font-family="Arial" font-size="26" letter-spacing="5">
-    THEIA
-  </text>
-</svg>

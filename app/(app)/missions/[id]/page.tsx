@@ -1706,27 +1706,29 @@ export default function MissionDetailPage() {
                             Position
                           </Button>
                         )}
-                        {/* Visual config popover */}
-                        <Popover>
-                          <PopoverTrigger asChild>
-                            <Button
-                              variant={hasMissionOverrides ? "default" : "outline"}
-                              size="sm"
-                              className="min-h-[36px] text-[10px] px-2.5 gap-1"
-                              title="Apparence visuelle"
-                            >
-                              <Palette className="h-3.5 w-3.5" />
-                            </Button>
-                          </PopoverTrigger>
-                          <PopoverContent align="end" className="w-80 max-h-[70vh] overflow-y-auto p-3">
-                            <VisualConfigPopover
-                              raw={visualRaw}
-                              updateConfig={updateVisualConfig}
-                              resetAll={resetVisualConfig}
-                              hasMissionOverrides={hasMissionOverrides}
-                            />
-                          </PopoverContent>
-                        </Popover>
+                        {/* Visual config popover (only for map/plan modes, not floor/parking) */}
+                        {!isFloorMode && (
+                          <Popover>
+                            <PopoverTrigger asChild>
+                              <Button
+                                variant={hasMissionOverrides ? "default" : "outline"}
+                                size="sm"
+                                className="min-h-[36px] text-[10px] px-2.5 gap-1"
+                                title="Apparence visuelle"
+                              >
+                                <Palette className="h-3.5 w-3.5" />
+                              </Button>
+                            </PopoverTrigger>
+                            <PopoverContent align="end" className="w-80 max-h-[70vh] overflow-y-auto p-3">
+                              <VisualConfigPopover
+                                raw={visualRaw}
+                                updateConfig={updateVisualConfig}
+                                resetAll={resetVisualConfig}
+                                hasMissionOverrides={hasMissionOverrides}
+                              />
+                            </PopoverContent>
+                          </Popover>
+                        )}
                         {liveDetections.length > 0 && (
                           <span className="text-[9px] font-mono text-success animate-pulse">LIVE</span>
                         )}
