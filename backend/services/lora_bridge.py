@@ -754,11 +754,10 @@ class LoRaBridge:
                         continue
                     try:
                         if last_seen_str.endswith("Z"):
-                            last_seen_str = last_seen_str[:-1] + "+00:00"
-                        if "+" not in last_seen_str and "T" in last_seen_str:
-                            ls_dt = datetime.fromisoformat(last_seen_str).replace(tzinfo=timezone.utc)
-                        else:
-                            ls_dt = datetime.fromisoformat(last_seen_str)
+                            last_seen_str = last_seen_str[:-1]
+                        # Normalize to naive local time string
+                        last_seen_str = last_seen_str.replace("T", " ").split("+")[0].split(".")[0]
+                        ls_dt = datetime.fromisoformat(last_seen_str)
                         delta_s = now_ts - ls_dt.timestamp()
                     except Exception:
                         continue
