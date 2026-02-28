@@ -1,6 +1,7 @@
 """
 THEIA - SQLite database layer (async via aiosqlite)
 """
+import asyncio
 import os
 import aiosqlite
 from dotenv import load_dotenv
@@ -29,6 +30,46 @@ async def close_db():
     if _db:
         await _db.close()
         _db = None
+
+
+# ── Data retention ──────────────────────────────────────────
+# Purge thresholds (days). Override via env: RETENTION_EVENTS_DAYS etc.
+RETENTION_EVENTS = int(os.getenv("RETENTION_EVENTS_DAYS", "90"))
+RETENTION_LOGS = int(os.getenv("RETENTION_LOGS_DAYS", "30"))
+RETENTION_BATTERY = int(os.getenv("RETENTION_BATTERY_DAYS", "60"))
+RETENTION_NOTIFS = int(os.getenv("RETENTION_NOTIFS_DAYS", "30"))
+
+_PURGE_INTERVAL = 6 * 3600  # run every 6 hours
+
+
+async def _purge_old_data():
+    """Delete rows older than retention thresholds to keep SD card healthy."""
+    while True:
+        await asyncio.sleep(_PURGE_INTERVAL)
+        try:
+            db = await get_db()
+            deleted = 0
+            for table, col, days in [
+                ("events", "timestamp", RETENTION_EVENTS),
+                ("logs", "timestamp", RETENTION_LOGS),
+                ("battery_history", "timestamp", RETENTION_BATTERY),
+                ("notifications", "created_at", RETENTION_NOTIFS),
+            ]:
+                cur = await db.execute(
+                    f"DELETE FROM {table} WHERE {col} < datetime('now', 'localtime', '-{days} days')"
+                )
+                deleted += cur.rowcount
+            if deleted > 0:
+                await db.commit()
+                await db.execute("PRAGMA wal_checkpoint(TRUNCATE)")
+                print(f"[THEIA] Retention purge: {deleted} old rows deleted")
+        except Exception as e:
+            print(f"[THEIA] Retention purge error: {e}")
+
+
+def start_retention_job():
+    """Call once at app startup to schedule periodic purges."""
+    asyncio.ensure_future(_purge_old_data())
 
 
 async def init_tables(db: aiosqlite.Connection):

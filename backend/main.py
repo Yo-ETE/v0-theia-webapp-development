@@ -12,7 +12,7 @@ load_dotenv()
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from backend.database import get_db, close_db
+from backend.database import get_db, close_db, start_retention_job
 from backend.services.system_monitor import system_monitor
 from backend.services.gps_reader import gps_reader
 from backend.services.lora_bridge import lora_bridge
@@ -46,6 +46,13 @@ async def lifespan(app: FastAPI):
     # LoRa bridge: always start -- it auto-scans for USB serial ports
     _tasks.append(asyncio.create_task(lora_bridge.start()))
     print("[THEIA] LoRa bridge started (auto-scan mode)")
+
+    start_retention_job()
+    print("[THEIA] Data retention job scheduled (events={0}d, logs={1}d, battery={2}d)".format(
+        os.getenv("RETENTION_EVENTS_DAYS", "90"),
+        os.getenv("RETENTION_LOGS_DAYS", "30"),
+        os.getenv("RETENTION_BATTERY_DAYS", "60"),
+    ))
 
     yield
 

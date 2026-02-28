@@ -454,8 +454,8 @@ class PortReader:
                             "INSERT INTO battery_history (device_id, voltage, timestamp) VALUES (?, ?, ?)",
                             (device_id, vbatt, now_iso),
                         )
-                    except Exception:
-                        pass  # table might not exist yet
+                    except Exception as e:
+                        print(f"[THEIA] battery_history insert error: {e}")
 
         direction = "D" if angle > 30 else ("G" if angle < -30 else "C")
         effective_distance = d if presence else 0
@@ -669,103 +669,41 @@ class PortReader:
 
         self.packets_ok += 1
         dev_eui = frame.get("dev_eui", "")
-        event_type = frame.get("type", "unknown")
         rssi = frame.get("rssi", 0)
-        snr = frame.get("snr", 0)
         payload = frame.get("payload", {})
         self.last_rssi = rssi
 
-        db = await get_db()
-        await db.execute(
-            "UPDATE devices SET rssi=?, snr=?, last_seen=? WHERE dev_eui=?",
-            (rssi, snr, datetime.now().strftime("%Y-%m-%d %H:%M:%S"), dev_eui),
-        )
-
-        cursor = await db.execute(
-            "SELECT id, mission_id, zone, zone_id, side, name, floor, sensor_position, orientation FROM devices WHERE dev_eui=?", (dev_eui,),
-        )
-        row = await cursor.fetchone()
-        device_id = row["id"] if row else None
-        mission_id = row["mission_id"] if row else None
-        zone = row["zone"] if row else ""
-        j_zone_id = row["zone_id"] if row else ""
-        j_side = row["side"] if row else ""
-        j_device_name = row["name"] if row else dev_eui
-        j_floor = row["floor"] if row else None
-        j_sensor_position = row["sensor_position"] if row else None
-        j_orientation = row["orientation"] if row else None
-
-        # Check mission status for recording gate
-        mission_active = False
-        if mission_id and mission_id.strip():
-            mc = await db.execute("SELECT status FROM missions WHERE id=?", (mission_id,))
-            mrow = await mc.fetchone()
-            mission_active = (mrow["status"] == "active") if mrow else False
-        else:
-            mission_id = None
-
         presence = payload.get("presence", False) if isinstance(payload, dict) else False
         distance = 0
+        x_val = 0
+        y_val = 0
+        v_val = 0
         if isinstance(payload, dict):
             distance = int(payload.get("distance", 0) or 0)
-        # Phantom gate for JSON path (same logic as _handle_detection)
-        phantom_key = dev_eui or self.port
-        window = self._presence_window.get(phantom_key, [])
-        window.append(presence)
-        if len(window) > 6:
-            window = window[-6:]
-        self._presence_window[phantom_key] = window
+            x_val = int(payload.get("x", 0) or 0)
+            y_val = int(payload.get("y", 0) or 0)
+            v_val = int(payload.get("speed", payload.get("v", 0)) or 0)
 
-        if presence and not self._tx_validated.get(phantom_key, False):
-            count = self._presence_count.get(phantom_key, 0) + 1
-            self._presence_count[phantom_key] = count
-            presence_in_window = sum(1 for v in window if v)
-            if count >= 2 or presence_in_window >= 3:
-                self._tx_validated[phantom_key] = True
-                print(f"[THEIA] TX {phantom_key} auto-validated (JSON path, consec={count}, window={presence_in_window}/{len(window)})")
-            else:
-                presence = False
-                distance = 0
-        elif not presence:
-            self._presence_count[phantom_key] = 0
-        # For presence-only sensors, allow distance == 0 (C4001 / gravity_mw)
-        if mission_id and mission_active and event_type == "detection" and presence:
-            device_key = device_id or dev_eui
-            now_ts = time.time()
-            last_insert_ts = self._last_insert_ts.get(device_key, 0)
-            if now_ts - last_insert_ts >= 2.0:
-                self._last_insert_ts[device_key] = now_ts
-                try:
-                    await db.execute(
-                        "INSERT INTO events (mission_id, device_id, event_type, zone, zone_id, side, rssi, snr, payload, sensor_position, orientation, floor, device_name) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
-                        (mission_id, device_id, event_type, zone, j_zone_id, j_side, rssi, snr, json.dumps(payload), j_sensor_position, j_orientation, j_floor, j_device_name),
-                    )
-                except Exception:
-                    await db.execute(
-                        "INSERT INTO events (mission_id, device_id, event_type, zone, rssi, snr, payload) VALUES (?, ?, ?, ?, ?, ?, ?)",
-                        (mission_id, device_id, event_type, zone, rssi, snr, json.dumps(payload)),
-                    )
-        elif mission_id and event_type != "detection":
-            await db.execute(
-                "INSERT INTO events (mission_id, device_id, event_type, zone, rssi, snr, payload) VALUES (?, ?, ?, ?, ?, ?, ?)",
-                (mission_id, device_id, event_type, zone, rssi, snr, json.dumps(payload)),
-            )
+        angle = math.degrees(math.atan2(x_val, y_val)) if (x_val != 0 or y_val != 0) else 0.0
+        sensor_type = "ld2450"
+        if x_val == 0 and y_val == distance and distance > 0:
+            sensor_type = "c4001"
+        elif distance > 0 and x_val == 0 and y_val == 0:
+            sensor_type = "gravity_mw"
 
-        await db.commit()
+        vbatt = None
+        if isinstance(payload, dict):
+            vbatt_raw = payload.get("vbatt") or payload.get("battery")
+            if vbatt_raw is not None:
+                try: vbatt = float(vbatt_raw)
+                except (ValueError, TypeError): pass
 
-        await sse_manager.broadcast(event_type, {
-            "device_id": device_id,
-            "dev_eui": dev_eui,
-            "mission_id": mission_id,
-            "zone": zone,
-            "event_type": event_type,
-            "presence": presence,
-            "distance": distance,
-            "rssi": rssi,
-            "snr": snr,
-            "payload": payload,
-            "timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
-        })
+        # Delegate to unified _handle_detection (phantom gate, event insert, SSE broadcast)
+        await self._handle_detection(
+            tx_id=dev_eui, sensor_type=sensor_type,
+            x=x_val, y=y_val, d=distance, v=v_val,
+            angle=angle, presence=presence, vbatt=vbatt,
+        )
 
 
 class LoRaBridge:
