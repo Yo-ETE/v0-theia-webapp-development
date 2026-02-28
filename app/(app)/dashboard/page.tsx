@@ -1,5 +1,6 @@
 "use client"
 
+import { useRef } from "react"
 import {
   Cpu,
   MemoryStick,
@@ -56,6 +57,19 @@ function getBackendBase(): string | null {
 export default function DashboardPage() {
   const { data: status, isLoading } = useStatus()
   const { data: allNotifs, mutate: mutateNotifs } = useNotifications()
+
+  // Smooth RSSI with exponential moving average to avoid jumpy display
+  const rssiEmaRef = useRef<number | null>(null)
+  const rawRssi = status?.lora?.rssi ?? null
+  if (rawRssi !== null && rawRssi !== -120) {
+    if (rssiEmaRef.current === null) {
+      rssiEmaRef.current = rawRssi
+    } else {
+      // EMA alpha=0.3 : 30% new value, 70% previous (smooths TX-to-TX jumps)
+      rssiEmaRef.current = Math.round(0.3 * rawRssi + 0.7 * rssiEmaRef.current)
+    }
+  }
+  const smoothRssi = rssiEmaRef.current
 
   // Filter only warning/critical non-dismissed
   const alerts = (allNotifs ?? []).filter(
@@ -456,14 +470,14 @@ export default function DashboardPage() {
                 <CardContent className="flex flex-col gap-2">
                   <div className="grid grid-cols-2 gap-x-6 gap-y-2">
                     <div>
-                      <span className="text-[10px] text-muted-foreground">RSSI</span>
+                      <span className="text-[10px] text-muted-foreground">RSSI (moy.)</span>
                       <p className={cn(
                         "font-mono text-lg font-semibold",
-                        lora.rssi !== null
-                          ? (lora.rssi >= -70 ? "text-success" : lora.rssi >= -85 ? "text-warning" : "text-destructive")
+                        smoothRssi !== null
+                          ? (smoothRssi >= -70 ? "text-success" : smoothRssi >= -85 ? "text-warning" : "text-destructive")
                           : "text-muted-foreground"
                       )}>
-                        {lora.rssi !== null ? `${lora.rssi} dBm` : "---"}
+                        {smoothRssi !== null ? `${smoothRssi} dBm` : "---"}
                       </p>
                     </div>
                     <div>
