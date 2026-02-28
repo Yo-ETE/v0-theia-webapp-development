@@ -35,8 +35,9 @@ Capteurs MW (TX LoRa)  --868MHz-->  Heltec RX (USB)  -->  Raspberry Pi 5
 ### Dashboard
 - Monitoring Raspberry Pi en temps reel (CPU, RAM, disque, temperature)
 - Etat des connexions : Wi-Fi, Ethernet, GPS, LoRa RX
+- RSSI lisse par moyenne glissante exponentielle (EMA) pour stabiliser l'affichage
 - Alertes actives (batterie faible, signal RSSI faible, device offline)
-- Notifications en temps reel via SSE
+- Notifications systeme en temps reel via SSE
 
 ### Missions
 - Creation et gestion de missions de surveillance
@@ -47,6 +48,7 @@ Capteurs MW (TX LoRa)  --868MHz-->  Heltec RX (USB)  -->  Raspberry Pi 5
 - Mode timelapse pour replay des detections
 - Heatmap des evenements
 - Sourdine par capteur (masquer un TX du feed de detection)
+- Son de detection en temps reel (ping radar synthetique, toggle on/off par mission)
 - Export CSV des evenements
 
 ### Devices (Capteurs)
@@ -75,20 +77,29 @@ Capteurs MW (TX LoRa)  --868MHz-->  Heltec RX (USB)  -->  Raspberry Pi 5
 - Lien Tailscale integre pour inviter des utilisateurs externes
 
 ### Notifications et Alertes
-- Cloche de notification dans le sidebar avec badge
-- Alertes automatiques :
-  - Batterie critique (< 3.3V) ou faible (< 3.5V)
-  - Signal RSSI faible (< -90dBm)
-  - Device offline (pas de signal > 120s)
-  - Reconnexion de device
+
+**Cloche (sidebar)** -- notifications systeme uniquement :
+- Batterie critique (< 3.3V) ou faible (< 3.5V)
+- Signal RSSI faible (< -90dBm)
+- Device offline (pas de signal > 120s), reconnexion
 - Anti-spam : 1 notification par type/device par heure
-- Section alertes actives sur le dashboard
 - Dismiss individuel ou global
-- **Notifications Push par mission** :
-  - Configuration par mission (bouton cloche) : canaux, cooldown, zones filtrees
-  - Web Push via VAPID (service worker) : notifications systeme en arriere-plan
-  - SMS/ntfy : 3 providers supportes (Free Mobile, Twilio, ntfy.sh)
-  - Configuration globale SMS dans l'admin avec bouton de test
+- Les alertes de detection n'apparaissent PAS dans la cloche (voir missions)
+
+**Son de detection (missions)** :
+- Bouton Volume2/VolumeX dans chaque mission
+- Ping radar synthetique via Web Audio API (pas de fichier MP3)
+- Throttle 1x / 2s pour eviter le spam sonore
+- Etat on/off persiste en localStorage
+
+**Notifications Push par mission** :
+- Configuration par mission (bouton cloche) : canaux, cooldown, zones filtrees
+- Web Push via VAPID (service worker) : notifications systeme en arriere-plan
+- SMS/ntfy : 3 providers supportes (Free Mobile, Twilio, ntfy.sh)
+- Configuration globale SMS dans l'admin avec bouton de test
+- Bouton "Test push" dans la config de notification de chaque mission
+- Statut de souscription push affiche dans le panneau de notification
+- Sur iPhone : necessite d'ajouter THEIA a l'ecran d'accueil (PWA)
 
 ### Administration
 - Gestion des comptes utilisateurs (admin/viewer) avec lien Tailscale
@@ -97,11 +108,17 @@ Capteurs MW (TX LoRa)  --868MHz-->  Heltec RX (USB)  -->  Raspberry Pi 5
 - Configuration Ethernet
 - Tailscale VPN (up/down, exit node, peers)
 - Gestion Git (branches, commits, pull, mise a jour)
-- Mise a jour automatique depuis la webapp (stash + pull + install + restart)
+- Mise a jour SSE streaming (stash + pull + install.sh + restart) avec progression temps reel
 - Sauvegardes (creation, restauration, suppression)
 - Redemarrage / arret du Raspberry Pi
+- Retention automatique des donnees (purge periodique configurable par env vars)
 - Guide d'utilisation integre
 - Licence
+
+### A propos
+- Page `/about` accessible a tous les utilisateurs (admins et viewers)
+- Logo radar anime, tagline et description mythologique de THEIA
+- Contact : theiahub.contact@gmail.com
 
 ## Arborescence
 
@@ -114,6 +131,7 @@ theia/
       devices/            # Capteurs TX (provisioning, flash, monitoring)
       logs/               # Viewer logs (applicatifs + systeme Pi)
       admin/              # Configuration reseau, Git, sauvegardes
+      about/              # Page A propos (visible de tous)
     api/                  # API Routes (proxy vers FastAPI backend)
   components/             # Composants UI (shadcn + custom)
     dashboard/            # Cards status, alertes
@@ -121,7 +139,8 @@ theia/
     ui/                   # shadcn/ui
     notification-bell.tsx # Cloche de notifications globale
     theia-footer.tsx      # Footer copyright global
-  hooks/                  # use-api (SWR), use-sse (EventSource)
+  hooks/                  # use-api (SWR), use-sse (EventSource),
+                          # use-notification-sound, use-push-subscription
   lib/                    # Types, api-client, format, utilitaires
   firmware/               # Sketches Arduino ESP32
     TX_LD2450/            # Template capteur HLK-LD2450
@@ -133,9 +152,8 @@ theia/
     middleware/            # auth.py (JWT verification middleware)
     services/             # system_monitor, gps_reader, lora_bridge,
                           # push_service, sms_service
-    database.py           # SQLite init + schema (devices, events, logs,
-                          #   missions, zones, sensor_placements,
-                          #   notifications, users, push_subscriptions)
+    database.py           # SQLite init + schema + retention job
+                          #   (events, logs, battery_history, notifications)
     main.py               # App FastAPI + startup + CORS + auth middleware
     sse.py                # SSE broadcast manager
     requirements.txt
@@ -222,11 +240,13 @@ Le script est **idempotent** : relancez-le autant de fois que necessaire.
 2. Selectionner la branche
 3. Cliquer sur **Mettre a jour**
 
-La webapp execute automatiquement :
+La webapp execute automatiquement avec progression en temps reel (SSE streaming) :
 ```
-git stash -> git pull -> chmod +x install.sh -> sudo bash install.sh
--> pip install -r requirements.txt -> systemctl restart theia-api theia-web
+git stash -> git fetch -> git pull -> chmod +x install.sh -> sudo bash install.sh
+-> restart services (via nohup, decouple du processus API)
 ```
+Chaque etape s'affiche en temps reel dans l'interface. Apres le redemarrage,
+la page redirige automatiquement vers le login.
 
 ### Depuis le terminal
 
@@ -288,6 +308,12 @@ LORA_BAUD_RATE=115200
 # Carte : online ou offline
 MAP_MODE=online
 MAP_TILE_DIR=/opt/theia/tiles
+
+# Retention des donnees (jours) -- purge automatique toutes les 6h
+RETENTION_EVENTS_DAYS=90
+RETENTION_LOGS_DAYS=30
+RETENTION_BATTERY_DAYS=60
+RETENTION_NOTIFS_DAYS=30
 ```
 
 ## Format des trames LoRa
@@ -436,4 +462,4 @@ sudo systemctl restart theia-api
 
 ## Licence
 
-Projet prive - (c) 2026 Yoann ETE - Tous droits reserves.
+Projet prive - (c) 2026 Yoann ETE - theiahub.contact@gmail.com - Tous droits reserves.

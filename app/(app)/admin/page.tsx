@@ -1553,9 +1553,9 @@ CONTACT : theiahub.contact@gmail.com`}
 - Etat Raspberry Pi : CPU, RAM, disque, temperature (seuils vert/orange/rouge)
 - Connexion internet : debit, ping, IP locale
 - Etat GPS : satellites, precision, position
-- Etat LoRa RX : port serie, RSSI, paquets recus/erreurs
+- Etat LoRa RX : port serie, RSSI lisse (moyenne glissante), paquets recus/erreurs
 - Section alertes actives : batterie faible, signal faible, device offline
-- Notifications temps reel via la cloche dans le sidebar`
+- Notifications systeme via la cloche dans le sidebar (pas les detections)`
                     },
                     {
                       id: "missions", icon: Terminal, title: "Missions",
@@ -1570,6 +1570,8 @@ CONTACT : theiahub.contact@gmail.com`}
 - Mode timelapse : replay des detections sur une plage horaire
 - Heatmap des evenements accumules
 - Sourdine : masquer un capteur du feed sans le retirer de la mission
+- Son de detection : bouton volume (on/off) pour jouer un ping radar a chaque detection
+  Le son est genere via Web Audio API, throttle 1x/2s. Etat persiste en localStorage.
 - Export CSV de tous les evenements de la mission
 - Detection temps reel : distance, direction, vitesse par capteur`
                     },
@@ -1602,31 +1604,34 @@ CONTACT : theiahub.contact@gmail.com`}
                       id: "notifications", icon: AlertTriangle, title: "Notifications et Alertes",
                       content: `Systeme d'alertes multi-canal :
 
-Alertes automatiques (sidebar) :
-- Cloche dans le sidebar : badge avec nombre de notifications non lues
+Cloche (sidebar) -- systeme uniquement :
+- Badge avec nombre de notifications non lues
 - Batterie critique (< 3.3V), batterie faible (< 3.5V)
 - Signal RSSI faible (< -90dBm), device hors ligne (> 120s)
 - Anti-spam : max 1 notification du meme type par device par heure
+- Les alertes de detection n'apparaissent PAS dans la cloche
+
+Son de detection (missions) :
+- Bouton volume dans chaque mission (a cote de la cloche push)
+- Ping radar synthetique a chaque detection en temps reel
+- Throttle 1x/2s, etat on/off persiste
 
 Notifications Push (par mission) :
 - Activer dans chaque mission via le bouton cloche (icone)
 - Configurer : canaux (Web Push, SMS), cooldown anti-spam, zones filtrees
-- Web Push : cliquer "Activer Push" dans la sidebar pour souscrire
-  Le navigateur demandera l'autorisation, puis les detections declencheront
-  des notifications systeme meme si le navigateur est en arriere-plan
-- Le service worker (sw.js) gere l'affichage et le clic pour ouvrir la mission
+- Web Push : le panneau affiche le statut de souscription et un bouton "Test push"
+- Sur iPhone, ajoutez THEIA a l'ecran d'accueil pour les notifications en arriere-plan
+- Le service worker gere l'affichage et le clic pour ouvrir la mission
 
 SMS / ntfy :
 - Configurer dans Administration > Configuration SMS/Notifications
 - 3 providers : Free Mobile (gratuit), Twilio, ntfy.sh
 - Bouton "Test" pour verifier que les SMS arrivent
-- Les SMS sont envoyes automatiquement quand une detection est inseree
-  et que la mission a les notifications SMS activees
 
-Inviter un utilisateur externe :
-- L'utilisateur doit etre sur votre reseau Tailscale
-- Invitez-le via https://login.tailscale.com/admin/users
-- Creez-lui un compte viewer ou admin dans la section Gestion des comptes`
+Retention des donnees :
+- Purge automatique toutes les 6h (events 90j, logs 30j, batterie 60j, notifications 30j)
+- Configurable via variables d'environnement RETENTION_*_DAYS
+- Protege la carte SD du Pi contre la saturation sur le terrain`
                     },
                     {
                       id: "auth", icon: Shield, title: "Authentification et Comptes",
@@ -1658,13 +1663,15 @@ Securite :
 - Ethernet : statut et IP
 - Tailscale VPN : activation/desactivation, exit node, peers connectes
 - Gestion Git : branches, historique des commits, mise a jour
-- Mise a jour : git stash + pull + install.sh + pip install + restart services
+- Mise a jour SSE : git stash + pull + install.sh + restart (progression temps reel)
 - Sauvegardes : creation, restauration, suppression des backups de la base
+- Retention des donnees : purge automatique configurable (env vars RETENTION_*_DAYS)
 - Gestion des comptes : creer/supprimer des utilisateurs, changer roles et mots de passe
 - Configuration SMS/Notifications : choisir le provider et tester
 - Systeme : redemarrage des services, reboot, arret du Pi
 - Guide d'utilisation (cette section)
-- Licence logicielle`
+- Licence logicielle
+- Page A propos (accessible a tous les utilisateurs)`
                     },
                   ].map((section) => (
                     <button
