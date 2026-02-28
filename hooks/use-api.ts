@@ -14,14 +14,24 @@ const fetcher = async (url: string) => {
   if (backendBase && url.startsWith("/api/")) {
     try {
       const directUrl = `${backendBase}${url}`
-      const r = await fetch(directUrl, { headers: { "Content-Type": "application/json" } })
+      const r = await fetch(directUrl, {
+        credentials: "include",
+        headers: { "Content-Type": "application/json" },
+      })
       if (r.ok) return r.json()
-    } catch {
+      // If 401, don't fallback -- redirect to login
+      if (r.status === 401) {
+        window.location.href = "/login"
+        throw new Error("Session expired")
+      }
+    } catch (e) {
+      // If it's our own 401 redirect, rethrow
+      if (e instanceof Error && e.message === "Session expired") throw e
       // Backend unreachable -- fall through to Next.js route
     }
   }
   // Fallback: Next.js API route
-  const r = await fetch(url)
+  const r = await fetch(url, { credentials: "include" })
   if (!r.ok) throw new Error(`API Error: ${r.status}`)
   return r.json()
 }
