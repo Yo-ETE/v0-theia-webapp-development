@@ -1465,6 +1465,46 @@ export default function AdminPage() {
           {/* ── Configuration SMS ── */}
           <SmsConfig />
 
+  {/* ── A propos de THEIA ── */}
+          <Card className="border-border/50 bg-card lg:col-span-2 overflow-hidden">
+            <div className="relative">
+              <div className="absolute inset-0 bg-gradient-to-br from-primary/5 via-transparent to-transparent pointer-events-none" />
+              <CardHeader className="relative">
+                <div className="flex items-start gap-4">
+                  <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl bg-primary/10 border border-primary/20">
+                    <svg viewBox="0 0 300 300" className="h-7 w-7 text-primary" xmlns="http://www.w3.org/2000/svg">
+                      <circle cx="150" cy="150" r="100" stroke="currentColor" strokeWidth="12" fill="none" />
+                      <circle cx="150" cy="150" r="60" stroke="currentColor" strokeWidth="8" fill="none" opacity="0.6" />
+                      <line x1="150" y1="150" x2="230" y2="120" stroke="currentColor" strokeWidth="10" />
+                      <circle cx="150" cy="150" r="18" fill="currentColor" />
+                    </svg>
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <CardTitle className="text-lg tracking-wider mb-1">THEIA</CardTitle>
+                    <p className="text-sm italic text-primary/80 leading-relaxed">
+                      {"La ou l'oeil est aveugle, l'onde revele."}
+                    </p>
+                  </div>
+                </div>
+              </CardHeader>
+              <CardContent className="relative pt-0">
+                <div className="space-y-3 text-sm text-muted-foreground leading-relaxed">
+                  <p>
+                    {"A l'image de Theia, Titanide de la lumiere et de la vision, l'application incarne la capacite de voir au-dela du perceptible."}
+                  </p>
+                  <p>
+                    {"Comme la mere du Soleil et de la Lune eclaire le monde, THEIA revele ce que l'ombre dissimule et transforme l'invisible en connaissance."}
+                  </p>
+                </div>
+                <div className="mt-4 pt-3 border-t border-border/30">
+                  <p className="text-[10px] text-muted-foreground/60 tracking-wider">
+                    {"(c) 2026 Yoann ETE -- theiahub.contact@gmail.com"}
+                  </p>
+                </div>
+              </CardContent>
+            </div>
+          </Card>
+
   {/* ── Licence ── */}
           <Card className="border-border/50 bg-card lg:col-span-2">
             <CardHeader>
@@ -1517,7 +1557,7 @@ LIMITATION DE RESPONSABILITE
 
 LE LOGICIEL EST FOURNI "EN L'ETAT", SANS GARANTIE D'AUCUNE SORTE.
 
-CONTACT : contact@yoann-ete.fr`}
+CONTACT : theiahub.contact@gmail.com`}
                   </pre>
                 </ScrollArea>
               </CardContent>
