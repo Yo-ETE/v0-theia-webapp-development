@@ -41,17 +41,21 @@ export default function LogsPage() {
     search: search || undefined,
   })
 
-  // Fetch Pi system logs
+  // Fetch Pi system logs -- only when tab is active and page is visible
   useEffect(() => {
     if (tab !== "system") return
     let cancelled = false
     async function load() {
+      // Skip if page is hidden (user navigated away)
+      if (document.hidden) return
       setSystemLoading(true)
       try {
+        const base = getBackendBase()
+        if (!base) return
         const token = localStorage.getItem("theia_token")
-        const res = await fetch(`${getBackendBase()}/api/logs/system?unit=${systemUnit}&lines=300`, {
+        const res = await fetch(`${base}/api/logs/system?unit=${systemUnit}&lines=300`, {
           credentials: "include",
-          headers: token ? { "Authorization": `Bearer ${token}` } : {},
+          headers: token ? { Authorization: `Bearer ${token}` } : {},
         })
         if (res.ok) {
           const data = await res.json()
@@ -62,7 +66,10 @@ export default function LogsPage() {
     }
     load()
     const iv = setInterval(load, 10000)
-    return () => { cancelled = true; clearInterval(iv) }
+    // Also pause/resume on visibility change
+    const onVis = () => { if (!document.hidden && !cancelled) load() }
+    document.addEventListener("visibilitychange", onVis)
+    return () => { cancelled = true; clearInterval(iv); document.removeEventListener("visibilitychange", onVis) }
   }, [tab, systemUnit])
 
   function handleExport() {
