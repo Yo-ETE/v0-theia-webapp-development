@@ -11,22 +11,15 @@ export const metadata: Metadata = {
     template: "%s | THEIA",
   },
   description: 'IoT Surveillance Hub Control Interface',
+  manifest: '/manifest.json',
   icons: {
-    icon: [
-      {
-        url: '/icon-light-32x32.png',
-        media: '(prefers-color-scheme: light)',
-      },
-      {
-        url: '/icon-dark-32x32.png',
-        media: '(prefers-color-scheme: dark)',
-      },
-      {
-        url: '/icon.svg',
-        type: 'image/svg+xml',
-      },
-    ],
-    apple: '/apple-icon.png',
+    icon: '/icon-512x512.jpg',
+    apple: '/icon-512x512.jpg',
+  },
+  appleWebApp: {
+    capable: true,
+    title: 'THEIA',
+    statusBarStyle: 'black-translucent',
   },
 }
 
@@ -34,6 +27,7 @@ export const viewport: Viewport = {
   themeColor: "#1a1a2e",
   width: "device-width",
   initialScale: 1,
+  maximumScale: 1,
 }
 
 export default function RootLayout({
@@ -42,7 +36,7 @@ export default function RootLayout({
   children: React.ReactNode
 }>) {
   return (
-    <html lang="fr" className="dark">
+    <html lang="fr" className="dark bg-background">
       <body className="font-sans antialiased">
         <script dangerouslySetInnerHTML={{ __html: `
           // Auto-reload on ChunkLoadError (stale cache after Pi rebuild)
