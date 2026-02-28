@@ -538,6 +538,10 @@ export default function MissionDetailPage() {
     const updatedFloors = (mission.floors ?? []).map((f) => ({
       ...f,
       devices: (f.devices ?? []).filter((did: string) => did !== deviceId),
+      // Preserve device in history for timelapse replay after unassignment
+      device_history: (f.devices ?? []).includes(deviceId)
+        ? [...new Set([...(f.device_history || []), deviceId])]
+        : (f.device_history || []),
     }))
     const newDeviceCount = Math.max(0, (mission.device_count ?? 1) - 1)
 
@@ -1210,6 +1214,7 @@ export default function MissionDetailPage() {
                               angle: Number(d.angle ?? 0),
                               speed: Number(d.speed ?? 0),
                               floor: d.floor != null ? Number(d.floor) : null,
+                              zone_label: String(d.zone_label ?? ""),
                             }))
                           : liveDetections
                         }

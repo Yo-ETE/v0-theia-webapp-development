@@ -94,30 +94,58 @@ export function FloorManager({
   const [assignDialog, setAssignDialog] = useState<number | null>(null)
   const [selectedDevice, setSelectedDevice] = useState("")
 
-  // Build device_id -> floor level map from three sources:
-  // 1. Device history (oldest fallback -- persists after unassignment for replay)
-  // 2. Current floor config (floors[].devices[])
-  // 3. Live devices (most recent, override)
+  // Build device_id -> floor level map from four sources (lowest to highest priority):
+  // 1. Historical events: match event zone_label to floor labels
+  // 2. Device history: persists after unassignment for replay
+  // 3. Current floor config: floors[].devices[]
+  // 4. Live devices: current assignment (highest priority)
   const deviceFloorMap = useMemo(() => {
     const map = new Map<string, number>()
-    // From device_history (oldest data, for replay of unassigned devices)
+    // Build label->level lookup for matching events to floors
+    const labelToLevel = new Map<string, number>()
+    for (const f of floors) {
+      labelToLevel.set(f.label.toLowerCase(), f.level)
+      // Also map "Troncon X" / "Etage X" patterns
+      labelToLevel.set(String(f.level), f.level)
+    }
+    // Source 1: Reconstruct from historical events (lowest priority)
+    for (const evt of events) {
+      const did = evt.device_id ?? ""
+      if (!did || map.has(did)) continue
+      // Try event-level floor first
+      if (evt.floor != null) {
+        map.set(did, Number(evt.floor))
+        continue
+      }
+      // Try matching zone_label / zone_name to floor labels
+      const zoneLabel = (evt.zone_label ?? evt.zone_name ?? "").toLowerCase()
+      if (zoneLabel) {
+        for (const [label, level] of labelToLevel) {
+          if (zoneLabel.includes(label) || label.includes(zoneLabel)) {
+            map.set(did, level)
+            break
+          }
+        }
+      }
+    }
+    // Source 2: Device history (persists after unassignment)
     for (const f of floors) {
       for (const did of (f.device_history || [])) {
         map.set(did, f.level)
       }
     }
-    // From floors config (current assignments)
+    // Source 3: Current floor config
     for (const f of floors) {
       for (const did of f.devices) {
         map.set(did, f.level)
       }
     }
-    // From live devices (override with current assignment)
+    // Source 4: Live devices (override with current assignment)
     for (const d of devices) {
       if (d.floor != null) map.set(d.id, d.floor)
     }
     return map
-  }, [floors, devices])
+  }, [floors, devices, events])
 
   // Compute live detection state per floor (with direction/angle tracking)
   const liveByFloor = useMemo(() => {
@@ -149,6 +177,20 @@ export function FloorManager({
       if (floorLevel == null && det.floor != null) {
         floorLevel = Number(det.floor)
       }
+      // Ultimate fallback: match zone_label from detection to floor labels
+      if (floorLevel == null) {
+        const detLabel = String(det.zone_label ?? "").toLowerCase()
+        if (detLabel) {
+          for (const f of floors) {
+            if (f.label.toLowerCase() === detLabel || detLabel.includes(f.label.toLowerCase()) || f.label.toLowerCase().includes(detLabel)) {
+              floorLevel = f.level
+              // Cache this mapping for future lookups
+              if (did) deviceFloorMap.set(did, f.level)
+              break
+            }
+          }
+        }
+      }
       if (floorLevel == null) continue
       const pos = angleToPosition(det.angle != null ? Number(det.angle) : undefined)
       const prev = map[floorLevel]
@@ -167,7 +209,7 @@ export function FloorManager({
       }
     }
     return map
-  }, [liveDetections, deviceFloorMap, devices])
+  }, [liveDetections, deviceFloorMap, devices, floors])
 
   // Recent events per floor (uses deviceFloorMap for unassigned devices too)
   const eventsByFloor = useMemo(() => {
@@ -179,12 +221,28 @@ export function FloorManager({
         const p = evt.payload as Record<string, unknown> | undefined
         if (p && p.floor != null) fl = Number(p.floor)
       }
+      // Fallback: floor stored on event row itself
+      if (fl == null && (evt as Record<string, unknown>).floor != null) {
+        fl = Number((evt as Record<string, unknown>).floor)
+      }
+      // Fallback: match zone_label to floor labels
+      if (fl == null) {
+        const zl = (evt.zone_label ?? evt.zone_name ?? "").toLowerCase()
+        if (zl) {
+          for (const f of floors) {
+            if (f.label.toLowerCase() === zl || zl.includes(f.label.toLowerCase()) || f.label.toLowerCase().includes(zl)) {
+              fl = f.level
+              break
+            }
+          }
+        }
+      }
       if (fl == null) continue
       if (!map[fl]) map[fl] = []
       map[fl].push(evt)
     }
     return map
-  }, [events, deviceFloorMap])
+  }, [events, deviceFloorMap, floors])
 
   // Available (unassigned) devices -- any device not already assigned to a floor in this mission
   const assignedDeviceIds = useMemo(() => {
