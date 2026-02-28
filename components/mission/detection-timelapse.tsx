@@ -249,7 +249,7 @@ export function DetectionTimelapse({ missionId, onDetection, onClose }: Detectio
               min={0}
               max={Math.max(0, events.length - 1)}
               value={currentIdx}
-              onChange={(e) => { setCurrentIdx(parseInt(e.target.value)); setPlaying(false) }}
+              onChange={(e) => { lastDetByDeviceRef.current = {}; onDetection({}); setCurrentIdx(parseInt(e.target.value)); setPlaying(false) }}
               className="w-full h-2 accent-primary"
             />
             <div className="flex items-center justify-between mt-1">
@@ -271,7 +271,7 @@ export function DetectionTimelapse({ missionId, onDetection, onClose }: Detectio
             <div className="flex items-center gap-1">
               <Button
                 variant="ghost" size="sm" className="h-10 w-10 sm:h-8 sm:w-8 p-0"
-                onClick={() => setCurrentIdx(0)}
+                onClick={() => { lastDetByDeviceRef.current = {}; onDetection({}); setCurrentIdx(0); setPlaying(false) }}
               >
                 <SkipBack className="h-4 w-4" />
               </Button>
@@ -284,7 +284,7 @@ export function DetectionTimelapse({ missionId, onDetection, onClose }: Detectio
               </Button>
               <Button
                 variant="ghost" size="sm" className="h-10 w-10 sm:h-8 sm:w-8 p-0"
-                onClick={() => setCurrentIdx(events.length - 1)}
+                onClick={() => { lastDetByDeviceRef.current = {}; onDetection({}); setCurrentIdx(events.length - 1) }}
               >
                 <SkipForward className="h-4 w-4" />
               </Button>
