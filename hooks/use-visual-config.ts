@@ -118,7 +118,7 @@ export function useVisualConfig(opts?: UseVisualConfigOptions) {
   // Update: if missionId is provided, save to per-mission overrides; otherwise save to global
   const updateConfig = useCallback(async (key: VisualConfigKey, value: string) => {
     if (missionId) {
-      // Save to mission's visual_config
+      // Save to mission's visual_config (send as dict, backend handles JSON serialisation)
       const newOverrides = { ...(missionOverrides ?? {}), [key]: value }
       const base = getBackendBase()
       const url = base
@@ -128,7 +128,7 @@ export function useVisualConfig(opts?: UseVisualConfigOptions) {
         await fetch(url, {
           method: "PATCH",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ visual_config: JSON.stringify(newOverrides) }),
+          body: JSON.stringify({ visual_config: newOverrides }),
         })
       } catch { /* ignore */ }
       onMissionMutate?.()

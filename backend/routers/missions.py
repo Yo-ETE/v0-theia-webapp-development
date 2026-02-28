@@ -47,7 +47,7 @@ class MissionUpdate(BaseModel):
     detection_reset_at: str | None = None
     started_at: str | None = None
     ended_at: str | None = None
-    visual_config: str | None = None
+    visual_config: dict | str | None = None
     device_count: int | None = None
     event_count: int | None = None
 

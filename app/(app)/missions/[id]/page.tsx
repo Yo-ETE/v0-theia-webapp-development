@@ -2443,22 +2443,21 @@ function VisualConfigPopover({
     <div className="flex flex-col gap-3">
       <div className="flex items-center justify-between">
         <p className="text-xs font-semibold text-foreground">Apparence</p>
-        {hasMissionOverrides && (
-          <button
-            onClick={resetAll}
-            className="flex items-center gap-1 text-[10px] text-muted-foreground hover:text-foreground transition-colors"
-            title="Revenir aux parametres globaux"
-          >
-            <RotateCw className="h-3 w-3" />
-            Global
-          </button>
-        )}
+        <button
+          onClick={resetAll}
+          className="flex items-center gap-1 text-[10px] text-muted-foreground hover:text-foreground transition-colors"
+          title={hasMissionOverrides ? "Revenir aux parametres globaux" : "Reinitialiser les valeurs par defaut"}
+        >
+          <RotateCw className="h-3 w-3" />
+          {hasMissionOverrides ? "Global" : "Defaut"}
+        </button>
       </div>
 
       {/* Colors */}
       <div className="grid grid-cols-1 gap-1.5">
         {VC_COLOR_ROWS.map(({ key, label }) => {
           const val = (raw[key] ?? VISUAL_DEFAULTS[key]) as string
+          const isCustom = val !== VISUAL_DEFAULTS[key]
           return (
             <div key={key} className="flex items-center gap-2">
               <label className="relative cursor-pointer shrink-0">
@@ -2473,7 +2472,16 @@ function VisualConfigPopover({
                   className="absolute inset-0 h-full w-full cursor-pointer opacity-0"
                 />
               </label>
-              <span className="text-[10px] text-muted-foreground truncate">{label}</span>
+              <span className="text-[10px] text-muted-foreground truncate flex-1">{label}</span>
+              {isCustom && (
+                <button
+                  onClick={() => updateConfig(key, VISUAL_DEFAULTS[key])}
+                  className="text-[9px] text-muted-foreground/60 hover:text-foreground transition-colors shrink-0"
+                  title="Reinitialiser"
+                >
+                  <RotateCw className="h-2.5 w-2.5" />
+                </button>
+              )}
             </div>
           )
         })}
@@ -2483,6 +2491,7 @@ function VisualConfigPopover({
       <div className="flex flex-col gap-1.5 pt-1 border-t border-border/30">
         {VC_OPACITY_ROWS.map(({ key, label }) => {
           const val = parseFloat(raw[key] ?? VISUAL_DEFAULTS[key])
+          const isCustom = (raw[key] ?? VISUAL_DEFAULTS[key]) !== VISUAL_DEFAULTS[key]
           return (
             <div key={key} className="flex items-center gap-2">
               <input
@@ -2496,6 +2505,15 @@ function VisualConfigPopover({
               />
               <span className="text-[10px] text-muted-foreground truncate flex-1">{label}</span>
               <span className="text-[10px] font-mono text-muted-foreground w-8 text-right">{Math.round(val * 100)}%</span>
+              {isCustom && (
+                <button
+                  onClick={() => updateConfig(key, VISUAL_DEFAULTS[key])}
+                  className="text-[9px] text-muted-foreground/60 hover:text-foreground transition-colors shrink-0"
+                  title="Reinitialiser"
+                >
+                  <RotateCw className="h-2.5 w-2.5" />
+                </button>
+              )}
             </div>
           )
         })}

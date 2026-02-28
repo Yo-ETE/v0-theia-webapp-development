@@ -639,10 +639,9 @@ export function PlanEditor({
                 stroke={vc.detection_line_color} strokeWidth={2} strokeDasharray="4 3" strokeOpacity={0.8}
               />
             )}
-            {/* Detection point: pulsing circle */}
+            {/* Detection point: solid circle (no pulsing) */}
             {m.isPresence && m.detSx != null && m.detSy != null && (
               <g>
-                <circle cx={m.detSx} cy={m.detSy} r={14} fill={vc.detection_dot_live} fillOpacity={0.15} className="animate-ping" />
                 <circle cx={m.detSx} cy={m.detSy} r={7} fill={vc.detection_dot_live} fillOpacity={0.7} stroke={vc.detection_dot_live} strokeWidth={2} strokeOpacity={0.9} />
                 {/* Distance + direction label */}
                 <text
