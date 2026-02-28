@@ -50,6 +50,8 @@ class PortReader:
         self._device_last_seen: dict[str, float] = {}
         # Anti-spam: {(type, device_id): last_notif_ts}
         self._notif_cooldown: dict[tuple[str, str], float] = {}
+        # Detection notification cooldown: {mission_id: last_detection_notif_ts}
+        self._detection_notif_ts: dict[str, float] = {}
 
     async def _create_notification(self, ntype: str, severity: str, device_id: str | None, device_name: str, message: str):
         """Create a notification with 1-hour anti-spam per (type, device_id)."""
@@ -76,6 +78,79 @@ class PortReader:
             })
         except Exception as e:
             print(f"[THEIA] Failed to create notification: {e}")
+
+    async def _check_notification_rules(self, mission_id: str, device_name: str, zone_id: str, distance: int, direction: str):
+        """Check mission notification config and send push/SMS if rules match."""
+        try:
+            db = await get_db()
+            cursor = await db.execute(
+                "SELECT name, notification_config FROM missions WHERE id=?", (mission_id,)
+            )
+            row = await cursor.fetchone()
+            if not row or not row["notification_config"]:
+                return
+
+            config = json.loads(row["notification_config"]) if isinstance(row["notification_config"], str) else row["notification_config"]
+            if not config.get("enabled", False):
+                return
+
+            # Zone filter
+            zones = config.get("zones", ["all"])
+            if zones != ["all"] and zone_id not in zones:
+                return
+
+            # Cooldown check
+            cooldown_min = config.get("cooldown_minutes", 5)
+            now = time.time()
+            last = self._detection_notif_ts.get(mission_id, 0)
+            if now - last < cooldown_min * 60:
+                return
+            self._detection_notif_ts[mission_id] = now
+
+            mission_name = row["name"] or mission_id
+            msg = f"Detection sur {mission_name} - {device_name} ({direction}, {distance}cm)"
+            channels = config.get("channels", [])
+
+            # 1. In-app notification
+            await db.execute(
+                "INSERT INTO notifications (type, severity, device_name, message) VALUES (?, ?, ?, ?)",
+                ("detection_alert", "warning", device_name, msg),
+            )
+            await db.commit()
+            await sse_manager.broadcast("notification", {
+                "type": "detection_alert", "severity": "warning",
+                "device_name": device_name, "message": msg,
+            })
+
+            # 2. Web Push
+            if "web_push" in channels:
+                try:
+                    from backend.services.push_service import broadcast_push
+                    await broadcast_push(
+                        title=f"THEIA - {mission_name}",
+                        body=f"{device_name}: detection {direction} a {distance}cm",
+                        data={"mission_id": mission_id, "type": "detection_alert"},
+                        tag=f"theia-{mission_id}",
+                    )
+                except Exception as e:
+                    print(f"[THEIA-NOTIF] Push error: {e}")
+
+            # 3. SMS
+            if "sms" in channels:
+                try:
+                    from backend.services.sms_service import send_sms
+                    # Load SMS provider config from settings
+                    cursor2 = await db.execute("SELECT value FROM settings WHERE key='sms_config'")
+                    sms_row = await cursor2.fetchone()
+                    if sms_row:
+                        sms_config = json.loads(sms_row["value"]) if isinstance(sms_row["value"], str) else sms_row["value"]
+                        await send_sms(msg, sms_config)
+                except Exception as e:
+                    print(f"[THEIA-NOTIF] SMS error: {e}")
+
+            print(f"[THEIA-NOTIF] Alert sent for mission {mission_name}: {msg}")
+        except Exception as e:
+            print(f"[THEIA-NOTIF] Error checking notification rules: {e}")
 
     async def start(self):
         import serial
@@ -460,6 +535,8 @@ class PortReader:
                         (mission_id, device_id, "detection", zone, self.last_rssi, 0, payload_json),
                     )
                 print(f"[THEIA-DB] INSERT event: d={d} dir={direction} zone_id={zone_id} mission={mission_id}")
+                # Check notification rules for this mission
+                await self._check_notification_rules(mission_id, device_name or device_id or "", zone_id or "", d, direction if presence else "C")
         elif presence and mission_id and not mission_active:
             pass  # Mission paused/completed -- SSE still broadcasts but no DB insert
         elif presence and not mission_id:

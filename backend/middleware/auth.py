@@ -12,6 +12,7 @@ from backend.routers.auth import jwt_decode
 PUBLIC_ROUTES = {
     ("POST", "/api/auth/login"),
     ("GET", "/api/health"),
+    ("GET", "/api/push/vapid-key"),
     ("GET", "/"),
 }
 

@@ -27,6 +27,7 @@ import {
 } from "@/components/ui/sidebar"
 
 import { NotificationBell } from "@/components/notification-bell"
+import { PushToggle } from "@/components/push-toggle"
 import { useAuth } from "@/lib/auth-context"
 
 const navItems = [
@@ -66,7 +67,10 @@ export function AppSidebar() {
               </span>
             </div>
           </Link>
-          <NotificationBell />
+          <div className="flex items-center gap-1">
+            <PushToggle />
+            <NotificationBell />
+          </div>
         </div>
       </SidebarHeader>
 

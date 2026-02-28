@@ -67,9 +67,10 @@ class MissionUpdate(BaseModel):
     started_at: str | None = None
     ended_at: str | None = None
     visual_config: dict | str | None = None
-    device_placements: dict | str | None = None
-    device_count: int | None = None
-    event_count: int | None = None
+  device_placements: dict | str | None = None
+  notification_config: dict | str | None = None
+  device_count: int | None = None
+  event_count: int | None = None
 
 
 def _row_to_dict(row) -> dict:
@@ -110,6 +111,13 @@ def _row_to_dict(row) -> dict:
     d.setdefault("detection_reset_at", None)
     d.setdefault("visual_config", None)
     d.setdefault("device_placements", {})
+    # Parse notification_config JSON
+    if "notification_config" in d and isinstance(d["notification_config"], str):
+        try:
+            d["notification_config"] = json.loads(d["notification_config"])
+        except Exception:
+            d["notification_config"] = None
+    d.setdefault("notification_config", None)
     return d
 
 
@@ -236,6 +244,14 @@ async def patch_mission(mission_id: str, body: MissionUpdate):
             updates["device_placements"] = dp
         else:
             updates["device_placements"] = json.dumps(dp)
+    if "notification_config" in updates:
+        nc = updates["notification_config"]
+        if nc is None:
+            updates["notification_config"] = None
+        elif isinstance(nc, str):
+            updates["notification_config"] = nc
+        else:
+            updates["notification_config"] = json.dumps(nc)
 
     updates["updated_at"] = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
 

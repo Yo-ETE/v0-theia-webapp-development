@@ -27,6 +27,7 @@ import {
 } from "@/components/ui/table"
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { MissionMap } from "@/components/mission/mission-map"
+import { NotificationConfig } from "@/components/mission/notification-config"
 import { PlanEditor } from "@/components/mission/plan-editor"
 import { StaticMiniMap } from "@/components/mission/static-mini-map"
 import { FloorManager } from "@/components/mission/floor-manager"
@@ -145,6 +146,7 @@ export default function MissionDetailPage() {
   }, [id])
 
   const [activeTab, setActiveTab] = useState("live")
+  const [showNotifConfig, setShowNotifConfig] = useState(false)
   const [timelapseMode, setTimelapseMode] = useState(false)
   const [heatmapMode, setHeatmapMode] = useState(false)
   const [estimatePosition, setEstimatePosition] = useState(false)
@@ -944,6 +946,15 @@ export default function MissionDetailPage() {
               <Button variant="ghost" size="sm" asChild className="text-muted-foreground hover:text-foreground active:text-foreground min-h-[44px] min-w-[44px]">
                 <Link href="/missions"><ArrowLeft className="mr-1.5 h-4 w-4" />Missions</Link>
               </Button>
+              <Button
+                variant={showNotifConfig ? "secondary" : "ghost"}
+                size="sm"
+                className="min-h-[44px] min-w-[44px] text-muted-foreground"
+                onClick={() => setShowNotifConfig(v => !v)}
+                title="Configurer les notifications"
+              >
+                <Bell className="h-4 w-4" />
+              </Button>
             </div>
             <Tabs value={activeTab} onValueChange={(val) => {
               setActiveTab(val)
@@ -968,6 +979,17 @@ export default function MissionDetailPage() {
               </TabsList>
             </Tabs>
           </div>
+
+          {/* Notification config panel (collapsible) */}
+          {showNotifConfig && mission && (
+            <NotificationConfig
+              missionId={mission.id}
+              missionName={mission.name}
+              zones={(mission.zones || []).map((z: { id: string; label?: string; name?: string }) => ({ id: z.id, label: z.label || z.name || z.id }))}
+              initialConfig={mission.notification_config}
+              onSaved={() => mutate()}
+            />
+          )}
 
           {/* Mission info bar */}
           <Card className="border-border/50 bg-card py-3">

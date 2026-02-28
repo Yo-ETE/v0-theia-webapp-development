@@ -133,3 +133,64 @@ async def update():
         return {"status": "success", "message": "Mise a jour terminee", "output": output}
     except Exception as e:
         return {"status": "error", "message": str(e)}
+
+
+# ── SMS Configuration ──
+
+import json
+from fastapi import Request, HTTPException
+
+@router.get("/sms-config")
+async def get_sms_config():
+    """Get SMS provider configuration."""
+    from backend.database import get_db
+    db = await get_db()
+    cursor = await db.execute("SELECT value FROM settings WHERE key='sms_config'")
+    row = await cursor.fetchone()
+    if not row:
+        return {"provider": ""}
+    try:
+        return json.loads(row["value"])
+    except Exception:
+        return {"provider": ""}
+
+
+@router.post("/sms-config")
+async def save_sms_config(request: Request):
+    """Save SMS provider configuration."""
+    from backend.database import get_db
+    body = await request.json()
+    db = await get_db()
+    config_json = json.dumps(body)
+    # Upsert
+    existing = await db.execute("SELECT key FROM settings WHERE key='sms_config'")
+    if await existing.fetchone():
+        await db.execute("UPDATE settings SET value=? WHERE key='sms_config'", (config_json,))
+    else:
+        await db.execute("INSERT INTO settings (key, value) VALUES ('sms_config', ?)", (config_json,))
+    await db.commit()
+    return {"ok": True}
+
+
+@router.post("/sms-test")
+async def test_sms():
+    """Send a test SMS using the configured provider."""
+    from backend.database import get_db
+    db = await get_db()
+    cursor = await db.execute("SELECT value FROM settings WHERE key='sms_config'")
+    row = await cursor.fetchone()
+    if not row:
+        raise HTTPException(status_code=400, detail="Aucun provider SMS configure")
+    try:
+        config = json.loads(row["value"])
+    except Exception:
+        raise HTTPException(status_code=400, detail="Configuration SMS invalide")
+
+    if not config.get("provider"):
+        raise HTTPException(status_code=400, detail="Aucun provider SMS selectionne")
+
+    from backend.services.sms_service import send_sms
+    ok = await send_sms("THEIA - Notification test. Tout fonctionne !", config)
+    if ok:
+        return {"ok": True}
+    raise HTTPException(status_code=500, detail="Echec de l'envoi du SMS de test")

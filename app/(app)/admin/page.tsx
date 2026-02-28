@@ -53,6 +53,7 @@ import { Badge } from "@/components/ui/badge"
 import { ScrollArea } from "@/components/ui/scroll-area"
 import { cn } from "@/lib/utils"
 import { UserManagement } from "@/components/admin/user-management"
+import { SmsConfig } from "@/components/admin/sms-config"
 
 
 // ── Types ──
@@ -1349,6 +1350,9 @@ export default function AdminPage() {
 
           {/* ── Comptes utilisateurs ── */}
           <UserManagement />
+
+          {/* ── Configuration SMS ── */}
+          <SmsConfig />
 
   {/* ── Licence ── */}
           <Card className="border-border/50 bg-card lg:col-span-2">
