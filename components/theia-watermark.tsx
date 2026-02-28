@@ -3,13 +3,16 @@
 export function TheiaWatermark() {
   return (
     <div
-      className="pointer-events-none fixed bottom-6 right-6 z-0 opacity-[0.06] select-none"
+      className="pointer-events-none fixed bottom-6 right-6 z-0 select-none"
+      style={{ opacity: 0.06 }}
       aria-hidden="true"
     >
       <svg
         viewBox="0 0 300 300"
         xmlns="http://www.w3.org/2000/svg"
-        className="h-[200px] w-[200px] text-foreground"
+        className="text-foreground"
+        width={200}
+        height={200}
       >
         <circle cx="150" cy="150" r="100" stroke="currentColor" strokeWidth="4" fill="none" />
         <circle cx="150" cy="150" r="60" stroke="currentColor" strokeWidth="2" fill="none" opacity="0.6" />
