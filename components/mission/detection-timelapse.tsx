@@ -35,8 +35,10 @@ interface DetectionTimelapseProps {
 function parseEventToDetection(ev: DetectionEvent): LiveDetection | null {
   const p = ev.payload ?? {}
   const distance = Number(p.distance ?? p.dist ?? 0)
-  // Allow distance 0 for presence-only events (e.g. C4001 in floor mode)
-  if (distance === 0 && !p.presence) return null
+  // Check presence: can be boolean true, string "1", or number 1
+  const hasPresence = p.presence === true || p.presence === 1 || p.presence === "1" || p.presence === "true"
+  // Skip events with no distance AND no presence flag (non-detection events)
+  if (distance === 0 && !hasPresence) return null
   // zone_id and side come from the event row directly (new schema)
   // or fall back to payload / device join fields
   const zoneId = ev.zone_id || (p.zone_id as string) || null
@@ -48,7 +50,7 @@ function parseEventToDetection(ev: DetectionEvent): LiveDetection | null {
     zone_id: zoneId,
     zone_label: ev.zone_label || String(p.zone ?? ""),
     side,
-    presence: true,
+    presence: hasPresence || distance > 0,
     distance,
     speed: Number(p.speed ?? 0),
     angle: Number(p.angle ?? 0),
@@ -88,7 +90,6 @@ export function DetectionTimelapse({ missionId, onDetection, onClose }: Detectio
   // then filter by date range client-side to avoid timezone mismatch issues
   const fetchParams = loaded ? {
     mission_id: missionId,
-    event_type: "detection",
     limit: 10000,
   } : null
 

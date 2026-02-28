@@ -425,7 +425,9 @@ class PortReader:
         # Store detection in DB (rate-limited: 1 per 2s per device)
         # Only record when mission status is "active" (Pause stops recording)
         # Muted devices skip event creation entirely
-        if mission_id and mission_active and presence and d > 15 and not is_muted:
+        # For presence-only / C4001 sensors, distance can be 0 -- just check presence
+        distance_ok = d > 15 or sensor_type in ("gravity_mw", "c4001")
+        if mission_id and mission_active and presence and distance_ok and not is_muted:
             device_key = device_id or self.port
             now_ts = time.time()
             last_insert_ts = self._last_insert_ts.get(device_key, 0)
@@ -613,7 +615,8 @@ class PortReader:
                 distance = 0
         elif not presence:
             self._presence_count[phantom_key] = 0
-        if mission_id and mission_active and event_type == "detection" and presence and distance > 15:
+        # For presence-only sensors, allow distance == 0 (C4001 / gravity_mw)
+        if mission_id and mission_active and event_type == "detection" and presence:
             device_key = device_id or dev_eui
             now_ts = time.time()
             last_insert_ts = self._last_insert_ts.get(device_key, 0)

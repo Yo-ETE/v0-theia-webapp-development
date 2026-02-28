@@ -107,7 +107,7 @@ function getSideDistanceM(polygon: [number, number][], side: string, sensorPos: 
 export default function MissionDetailPage() {
   const { id } = useParams<{ id: string }>()
   const { data: mission, isLoading, mutate } = useMission(id)
-  const { data: events, mutate: mutateEvents } = useEvents({ mission_id: id, event_type: "detection", limit: 10000 })
+  const { data: events, mutate: mutateEvents } = useEvents({ mission_id: id, limit: 10000 })
   const { data: allDevices, mutate: mutateDevices } = useDevices({ refreshInterval: 10000 })
 
   // Force fresh device list on mount (in case devices were unassigned on another page)
@@ -230,7 +230,8 @@ export default function MissionDetailPage() {
     if (d.device_id && mutedIdsRef.current.has(d.device_id)) return
 
     // Only add to feed if it's a real presence event
-    if (d.presence && d.distance > 0) {
+    // Allow distance 0 for presence-only sensors (C4001, gravity_mw)
+    if (d.presence && (d.distance > 0 || d.sensor_type === "c4001" || d.sensor_type === "gravity_mw")) {
       setLiveDetections(prev => {
         const next = [d, ...prev]
         return next.slice(0, 50)
@@ -1958,6 +1959,7 @@ export default function MissionDetailPage() {
                       <TableHeader>
                         <TableRow className="border-border/50">
                           <TableHead className="text-[10px]">Time</TableHead>
+                          <TableHead className="text-[10px]">Type</TableHead>
                           <TableHead className="text-[10px]">Device</TableHead>
                           <TableHead className="text-[10px]">Zone</TableHead>
                           <TableHead className="text-[10px]">Distance</TableHead>
@@ -1973,6 +1975,7 @@ export default function MissionDetailPage() {
                           return (
                             <TableRow key={evt.id} className="border-border/30">
                               <TableCell className="font-mono text-[11px] text-muted-foreground">{formatDateTime(evt.timestamp)}</TableCell>
+                              <TableCell className="font-mono text-[10px] text-muted-foreground">{evt.type ?? "detection"}</TableCell>
                               <TableCell className="font-mono text-xs text-foreground">{evt.device_name}</TableCell>
                               <TableCell className="text-xs text-muted-foreground">{evt.zone_label ?? "---"}</TableCell>
                               <TableCell className="font-mono text-[11px] text-foreground">{p.distance ? `${p.distance}cm` : "---"}</TableCell>
