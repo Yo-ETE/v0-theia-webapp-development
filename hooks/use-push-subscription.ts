@@ -31,15 +31,41 @@ export function usePushSubscription() {
   useEffect(() => {
     const supported = "serviceWorker" in navigator && "PushManager" in window && "Notification" in window
     setIsSupported(supported)
-    if (supported) {
-      setPermission(Notification.permission)
-      // Check if already subscribed
-      navigator.serviceWorker.ready.then((reg) => {
-        reg.pushManager.getSubscription().then((sub) => {
-          setIsSubscribed(!!sub)
-        })
+    if (!supported) return
+
+    setPermission(Notification.permission)
+
+    // Register/update SW on every load to keep it fresh
+    navigator.serviceWorker
+      .register("/sw.js", { scope: "/" })
+      .then((reg) => {
+        // Force update check so mobile browsers pick up new SW versions
+        reg.update().catch(() => {})
+        return navigator.serviceWorker.ready
       })
-    }
+      .then((reg) => {
+        return reg.pushManager.getSubscription()
+      })
+      .then((sub) => {
+        setIsSubscribed(!!sub)
+        // If user already granted permission and has a subscription,
+        // silently re-send it to backend (in case DB was wiped / subscription lost)
+        if (sub && Notification.permission === "granted") {
+          const subJson = sub.toJSON()
+          fetch(`${_getApi()}/api/push/subscribe`, {
+            method: "POST",
+            credentials: "include",
+            headers: { "Content-Type": "application/json", ..._bH() },
+            body: JSON.stringify({
+              endpoint: subJson.endpoint,
+              keys: subJson.keys,
+            }),
+          }).catch(() => {})
+        }
+      })
+      .catch((err) => {
+        console.error("[THEIA] SW registration error:", err)
+      })
   }, [])
 
   const subscribe = useCallback(async () => {

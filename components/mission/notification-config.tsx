@@ -1,8 +1,9 @@
 "use client"
 
 import { useState, useEffect, useCallback } from "react"
-import { Bell, BellOff, Save, Loader2 } from "lucide-react"
+import { Bell, BellOff, Save, Loader2, Smartphone, SendHorizonal } from "lucide-react"
 import { Button } from "@/components/ui/button"
+import { usePushSubscription } from "@/hooks/use-push-subscription"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Switch } from "@/components/ui/switch"
@@ -33,6 +34,23 @@ interface Props {
 }
 
 export function NotificationConfig({ missionId, missionName, zones = [], initialConfig, onSaved }: Props) {
+  const { isSupported: pushSupported, isSubscribed: pushSubscribed, permission: pushPermission, subscribe: pushSubscribe } = usePushSubscription()
+  const [testingSend, setTestingSend] = useState(false)
+
+  const sendTestPush = useCallback(async () => {
+    setTestingSend(true)
+    try {
+      await fetch(`${_getApi()}/api/push/test`, {
+        method: "POST",
+        credentials: "include",
+        headers: { "Content-Type": "application/json", ..._bH() },
+      })
+    } catch (e) {
+      console.error("[THEIA] Test push error:", e)
+    }
+    setTestingSend(false)
+  }, [])
+
   const [config, setConfig] = useState<NotificationConfigData>(
     initialConfig || {
       enabled: false,
@@ -142,6 +160,48 @@ export function NotificationConfig({ missionId, missionName, zones = [], initial
                   SMS
                 </label>
               </div>
+
+              {/* Push subscription status */}
+              {config.channels.includes("web_push") && (
+                <div className="rounded-md border border-border/50 bg-muted/30 p-2.5 space-y-2">
+                  <div className="flex items-center gap-2">
+                    <Smartphone className="h-3.5 w-3.5 text-muted-foreground" />
+                    <span className="text-[11px] text-muted-foreground">
+                      {!pushSupported
+                        ? "Push non supporte sur ce navigateur"
+                        : pushPermission === "denied"
+                          ? "Notifications bloquees dans les parametres du navigateur"
+                          : pushSubscribed
+                            ? "Push actif sur cet appareil"
+                            : "Push non active sur cet appareil"
+                      }
+                    </span>
+                    {pushSupported && pushPermission !== "denied" && !pushSubscribed && (
+                      <button
+                        onClick={pushSubscribe}
+                        className="text-[10px] text-primary hover:underline cursor-pointer ml-auto"
+                      >
+                        Activer
+                      </button>
+                    )}
+                  </div>
+                  {pushSubscribed && (
+                    <button
+                      onClick={sendTestPush}
+                      disabled={testingSend}
+                      className="flex items-center gap-1.5 text-[10px] text-primary hover:underline cursor-pointer disabled:opacity-50"
+                    >
+                      {testingSend ? <Loader2 className="h-3 w-3 animate-spin" /> : <SendHorizonal className="h-3 w-3" />}
+                      Envoyer un push de test
+                    </button>
+                  )}
+                  {pushSupported && pushPermission !== "denied" && (
+                    <p className="text-[10px] text-muted-foreground/60 leading-relaxed">
+                      {"Sur iPhone, ajoutez THEIA a l'ecran d'accueil pour recevoir les notifications en arriere-plan."}
+                    </p>
+                  )}
+                </div>
+              )}
             </div>
 
             {/* Zones filter */}
