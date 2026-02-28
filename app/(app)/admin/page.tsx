@@ -41,8 +41,7 @@ import {
   Scale,
   ChevronDown,
   ChevronRight,
-  Palette,
-  RotateCw,
+
 } from "lucide-react"
 import { TopHeader } from "@/components/top-header"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
@@ -53,8 +52,7 @@ import { Alert, AlertDescription } from "@/components/ui/alert"
 import { Badge } from "@/components/ui/badge"
 import { ScrollArea } from "@/components/ui/scroll-area"
 import { cn } from "@/lib/utils"
-import { useVisualConfig, VISUAL_DEFAULTS, type VisualConfigKey } from "@/hooks/use-visual-config"
-import { Switch } from "@/components/ui/switch"
+
 
 // ── Types ──
 
@@ -1139,9 +1137,6 @@ export default function AdminPage() {
             </CardContent>
           </Card>
 
-          {/* ── Apparence Carte ── */}
-          <VisualConfigCard />
-
           {/* ── Backups ── */}
           <Card className="border-border/50 bg-card">
             <CardHeader>
@@ -1430,141 +1425,4 @@ CONTACT : contact@yoann-ete.fr`}
 }
 
 
-// ── Visual Configuration Card ──────────────────────────────────
 
-type ColorRow = { key: VisualConfigKey; label: string }
-type OpacityRow = { key: VisualConfigKey; label: string }
-type BoolRow = { key: VisualConfigKey; label: string }
-
-const COLOR_ROWS: ColorRow[] = [
-  { key: "zone_fill_color",      label: "Couleur remplissage zone" },
-  { key: "detection_dot_live",   label: "Point detection (live)" },
-  { key: "detection_dot_hold",   label: "Point detection (maintien)" },
-  { key: "detection_line_color", label: "Ligne detection" },
-  { key: "fov_overlay_color",    label: "FOV capteur" },
-  { key: "sensor_dot_idle",      label: "Point capteur (inactif)" },
-  { key: "estimated_pos_color",  label: "Position estimee" },
-]
-
-const OPACITY_ROWS: OpacityRow[] = [
-  { key: "zone_fill_opacity",    label: "Opacite zone (remplissage)" },
-  { key: "zone_stroke_opacity",  label: "Opacite zone (contour)" },
-  { key: "fov_fill_opacity",     label: "Opacite FOV" },
-]
-
-const BOOL_ROWS: BoolRow[] = [
-  { key: "fov_default_visible",  label: "FOV visible par defaut" },
-]
-
-function VisualConfigCard() {
-  const { config, raw, updateConfig, resetAll } = useVisualConfig()
-  const [expanded, setExpanded] = useState(true)
-
-  return (
-    <Card className="border-border/50 bg-card">
-      <CardHeader className="cursor-pointer" onClick={() => setExpanded(e => !e)}>
-        <div className="flex items-center gap-3">
-          <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-primary/10">
-            <Palette className="h-5 w-5 text-primary" />
-          </div>
-          <div className="flex-1">
-            <CardTitle className="text-base">Apparence Carte</CardTitle>
-            <CardDescription>Couleurs, opacites et options visuelles des cartes et plans</CardDescription>
-          </div>
-          <ChevronDown className={cn("h-4 w-4 text-muted-foreground transition-transform", !expanded && "-rotate-90")} />
-        </div>
-      </CardHeader>
-      {expanded && (
-        <CardContent className="flex flex-col gap-6">
-
-          {/* Colors */}
-          <div>
-            <p className="text-[10px] text-muted-foreground font-medium uppercase tracking-wider mb-2">Couleurs</p>
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-              {COLOR_ROWS.map(({ key, label }) => {
-                const val = (raw[key] ?? VISUAL_DEFAULTS[key]) as string
-                return (
-                  <div key={key} className="flex items-center gap-3 rounded-md border border-border/30 px-3 py-2">
-                    <label className="relative cursor-pointer shrink-0">
-                      <span
-                        className="block h-7 w-7 rounded-md border border-border/50"
-                        style={{ backgroundColor: val }}
-                      />
-                      <input
-                        type="color"
-                        value={val}
-                        onChange={(e) => updateConfig(key, e.target.value)}
-                        className="absolute inset-0 h-full w-full cursor-pointer opacity-0"
-                      />
-                    </label>
-                    <div className="flex-1 min-w-0">
-                      <p className="text-xs font-medium text-foreground truncate">{label}</p>
-                      <p className="text-[10px] text-muted-foreground font-mono">{val}</p>
-                    </div>
-                  </div>
-                )
-              })}
-            </div>
-          </div>
-
-          {/* Opacities */}
-          <div>
-            <p className="text-[10px] text-muted-foreground font-medium uppercase tracking-wider mb-2">Opacites</p>
-            <div className="flex flex-col gap-3">
-              {OPACITY_ROWS.map(({ key, label }) => {
-                const val = parseFloat(raw[key] ?? VISUAL_DEFAULTS[key])
-                return (
-                  <div key={key} className="flex items-center gap-4 rounded-md border border-border/30 px-3 py-2">
-                    <div className="flex-1 min-w-0">
-                      <p className="text-xs font-medium text-foreground">{label}</p>
-                    </div>
-                    <input
-                      type="range"
-                      min={0}
-                      max={100}
-                      step={1}
-                      value={Math.round(val * 100)}
-                      onChange={(e) => updateConfig(key, String(parseInt(e.target.value) / 100))}
-                      className="w-28 accent-primary"
-                    />
-                    <span className="text-[11px] font-mono text-muted-foreground w-10 text-right">
-                      {Math.round(val * 100)}%
-                    </span>
-                  </div>
-                )
-              })}
-            </div>
-          </div>
-
-          {/* Toggles */}
-          <div>
-            <p className="text-[10px] text-muted-foreground font-medium uppercase tracking-wider mb-2">Options</p>
-            <div className="flex flex-col gap-3">
-              {BOOL_ROWS.map(({ key, label }) => {
-                const checked = (raw[key] ?? VISUAL_DEFAULTS[key]) === "true"
-                return (
-                  <div key={key} className="flex items-center justify-between gap-4 rounded-md border border-border/30 px-3 py-2">
-                    <p className="text-xs font-medium text-foreground">{label}</p>
-                    <Switch
-                      checked={checked}
-                      onCheckedChange={(v) => updateConfig(key, v ? "true" : "false")}
-                    />
-                  </div>
-                )
-              })}
-            </div>
-          </div>
-
-          {/* Reset */}
-          <div className="flex justify-end pt-2 border-t border-border/30">
-            <Button variant="outline" size="sm" className="gap-1.5 text-[11px]" onClick={resetAll}>
-              <RotateCw className="h-3 w-3" />
-              Reinitialiser les valeurs par defaut
-            </Button>
-          </div>
-
-        </CardContent>
-      )}
-    </Card>
-  )
-}

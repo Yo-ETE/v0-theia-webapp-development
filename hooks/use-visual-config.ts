@@ -1,11 +1,10 @@
 "use client"
 
-import useSWR from "swr"
 import { useCallback, useMemo } from "react"
 
 // ── Default visual settings ──────────────────────────────────────
 
-export const VISUAL_DEFAULTS = {
+export const VISUAL_DEFAULTS: Record<string, string> = {
   zone_fill_color:       "#3b82f6",
   zone_fill_opacity:     "0.08",
   zone_stroke_opacity:   "0.7",
@@ -17,7 +16,7 @@ export const VISUAL_DEFAULTS = {
   fov_default_visible:   "false",
   sensor_dot_idle:       "#6366f1",
   estimated_pos_color:   "#3b82f6",
-} as const
+}
 
 export type VisualConfigKey = keyof typeof VISUAL_DEFAULTS
 
@@ -33,26 +32,6 @@ export interface VisualConfig {
   fov_default_visible: boolean
   sensor_dot_idle: string
   estimated_pos_color: string
-}
-
-// ── Fetcher ──────────────────────────────────────────────────────
-
-function getBackendBase(): string | null {
-  if (typeof window === "undefined") return null
-  return `http://${window.location.hostname}:8000`
-}
-
-const fetcher = async (url: string) => {
-  const base = getBackendBase()
-  if (base && url.startsWith("/api/")) {
-    try {
-      const r = await fetch(`${base}${url}`, { headers: { "Content-Type": "application/json" } })
-      if (r.ok) return r.json()
-    } catch { /* fall through */ }
-  }
-  const r = await fetch(url)
-  if (!r.ok) throw new Error(`Settings fetch error: ${r.status}`)
-  return r.json()
 }
 
 // ── Resolve raw string values to typed VisualConfig ──────────────
@@ -73,16 +52,23 @@ function resolve(r: Record<string, string>): VisualConfig {
   }
 }
 
+// ── Helpers ──────────────────────────────────────────────────────
+
+function getBackendBase(): string | null {
+  if (typeof window === "undefined") return null
+  return `http://${window.location.hostname}:8000`
+}
+
 // ── Hook ─────────────────────────────────────────────────────────
-// When `missionOverrides` is provided, the priority is:
-//   per-mission override > global settings > VISUAL_DEFAULTS
+// Each mission has its own independent visual_config.
+// Merge: VISUAL_DEFAULTS < mission.visual_config overrides.
 
 interface UseVisualConfigOptions {
-  /** Per-mission visual_config object from mission.visual_config (pass-through from useMission) */
+  /** Per-mission visual_config from mission record */
   missionOverrides?: Record<string, string> | null
-  /** Mission ID -- needed to save per-mission overrides via PATCH */
+  /** Mission ID for saving overrides via PATCH */
   missionId?: string | null
-  /** Callback when mission visual_config changes (to mutate useMission SWR) */
+  /** Callback after saving (to re-fetch mission SWR) */
   onMissionMutate?: () => void
 }
 
@@ -91,93 +77,58 @@ export function useVisualConfig(opts?: UseVisualConfigOptions) {
   const missionId = opts?.missionId ?? null
   const onMissionMutate = opts?.onMissionMutate
 
-  // Global settings
-  const { data: globalRaw, mutate: mutateGlobal } = useSWR<Record<string, string>>(
-    "/api/config/settings",
-    fetcher,
-    { revalidateOnFocus: false, dedupingInterval: 30_000, fallbackData: {} },
-  )
-
-  // 3-layer merge: defaults < global < per-mission
+  // Merge: defaults < per-mission overrides
   const merged: Record<string, string> = useMemo(() => {
     const base: Record<string, string> = { ...VISUAL_DEFAULTS }
-    const g = globalRaw ?? {}
-    for (const k of Object.keys(VISUAL_DEFAULTS)) {
-      if (g[k] != null) base[k] = g[k]
-    }
     if (missionOverrides) {
       for (const k of Object.keys(VISUAL_DEFAULTS)) {
         if (missionOverrides[k] != null) base[k] = missionOverrides[k]
       }
     }
     return base
-  }, [globalRaw, missionOverrides])
+  }, [missionOverrides])
 
   const config: VisualConfig = useMemo(() => resolve(merged), [merged])
 
-  // Update: if missionId is provided, save to per-mission overrides; otherwise save to global
+  // Save a single key to mission's visual_config
   const updateConfig = useCallback(async (key: VisualConfigKey, value: string) => {
-    if (missionId) {
-      // Save to mission's visual_config (send as dict, backend handles JSON serialisation)
-      const newOverrides = { ...(missionOverrides ?? {}), [key]: value }
-      const base = getBackendBase()
-      const url = base
-        ? `${base}/api/missions/${missionId}`
-        : `/api/missions/${missionId}`
-      try {
-        await fetch(url, {
-          method: "PATCH",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ visual_config: newOverrides }),
-        })
-      } catch { /* ignore */ }
-      onMissionMutate?.()
-    } else {
-      // Save to global settings
-      mutateGlobal((prev) => ({ ...prev, [key]: value }), false)
-      const base = getBackendBase()
-      const url = base ? `${base}/api/config/settings` : "/api/config/settings"
-      try {
-        await fetch(url, {
-          method: "PUT",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ [key]: value }),
-        })
-      } catch { /* ignore */ }
-    }
-  }, [missionId, missionOverrides, mutateGlobal, onMissionMutate])
+    if (!missionId) return
+    const newOverrides = { ...(missionOverrides ?? {}), [key]: value }
+    const base = getBackendBase()
+    const url = base
+      ? `${base}/api/missions/${missionId}`
+      : `/api/missions/${missionId}`
+    try {
+      await fetch(url, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ visual_config: newOverrides }),
+      })
+    } catch { /* ignore */ }
+    onMissionMutate?.()
+  }, [missionId, missionOverrides, onMissionMutate])
 
-  // Reset: if missionId, clear per-mission overrides; otherwise clear global
+  // Reset: clear all per-mission overrides (revert to defaults)
   const resetAll = useCallback(async () => {
-    if (missionId) {
-      const base = getBackendBase()
-      const url = base
-        ? `${base}/api/missions/${missionId}`
-        : `/api/missions/${missionId}`
-      try {
-        await fetch(url, {
-          method: "PATCH",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ visual_config: null }),
-        })
-      } catch { /* ignore */ }
-      onMissionMutate?.()
-    } else {
-      mutateGlobal({}, false)
-      const base = getBackendBase()
-      const url = base ? `${base}/api/config/settings` : "/api/config/settings"
-      try {
-        await fetch(url, { method: "DELETE" })
-      } catch { /* ignore */ }
-      mutateGlobal()
-    }
-  }, [missionId, mutateGlobal, onMissionMutate])
+    if (!missionId) return
+    const base = getBackendBase()
+    const url = base
+      ? `${base}/api/missions/${missionId}`
+      : `/api/missions/${missionId}`
+    try {
+      await fetch(url, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ visual_config: null }),
+      })
+    } catch { /* ignore */ }
+    onMissionMutate?.()
+  }, [missionId, onMissionMutate])
 
-  // Check if this mission has any per-mission overrides
   const hasMissionOverrides = useMemo(
     () => missionOverrides != null && Object.keys(missionOverrides).length > 0,
     [missionOverrides],
   )
 
-  return { config, raw: merged, updateConfig, resetAll, mutate: mutateGlobal, hasMissionOverrides }
+  return { config, raw: merged, updateConfig, resetAll, hasMissionOverrides }
 }
