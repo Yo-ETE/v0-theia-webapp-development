@@ -66,7 +66,15 @@ Capteurs MW (TX LoRa)  --433MHz-->  Heltec RX (USB)  -->  Raspberry Pi 5
 - Logs device (connexions, deconnexions, alertes)
 - Recherche, filtrage et export
 
-### Notifications
+### Authentification et Comptes
+- Compte admin par defaut : `admin` / `admin` (a changer apres premiere connexion)
+- Deux roles : `admin` (acces complet) et `viewer` (lecture seule)
+- Tokens JWT (cookie HTTP-only + header Authorization Bearer)
+- Mots de passe hashes en PBKDF2-SHA256 avec salt aleatoire
+- Gestion des comptes depuis l'admin (creer, supprimer, changer role/mot de passe)
+- Lien Tailscale integre pour inviter des utilisateurs externes
+
+### Notifications et Alertes
 - Cloche de notification dans le sidebar avec badge
 - Alertes automatiques :
   - Batterie critique (< 3.3V) ou faible (< 3.5V)
@@ -76,8 +84,15 @@ Capteurs MW (TX LoRa)  --433MHz-->  Heltec RX (USB)  -->  Raspberry Pi 5
 - Anti-spam : 1 notification par type/device par heure
 - Section alertes actives sur le dashboard
 - Dismiss individuel ou global
+- **Notifications Push par mission** :
+  - Configuration par mission (bouton cloche) : canaux, cooldown, zones filtrees
+  - Web Push via VAPID (service worker) : notifications systeme en arriere-plan
+  - SMS/ntfy : 3 providers supportes (Free Mobile, Twilio, ntfy.sh)
+  - Configuration globale SMS dans l'admin avec bouton de test
 
 ### Administration
+- Gestion des comptes utilisateurs (admin/viewer) avec lien Tailscale
+- Configuration SMS/Notifications (Free Mobile, Twilio, ntfy.sh)
 - Configuration Wi-Fi (scan, connexion, reseaux sauvegardes)
 - Configuration Ethernet
 - Tailscale VPN (up/down, exit node, peers)
@@ -113,11 +128,15 @@ theia/
     TX_C4001/             # Template capteur DFRobot C4001
   backend/                # FastAPI Python
     routers/              # health, missions, devices, events, logs, stream,
-                          # tiles, admin, config, notifications, firmware
-    services/             # system_monitor, gps_reader, lora_bridge
+                          # tiles, admin, config, notifications, firmware,
+                          # auth, push
+    middleware/            # auth.py (JWT verification middleware)
+    services/             # system_monitor, gps_reader, lora_bridge,
+                          # push_service, sms_service
     database.py           # SQLite init + schema (devices, events, logs,
-                          #   missions, zones, sensor_placements, notifications)
-    main.py               # App FastAPI + startup + CORS
+                          #   missions, zones, sensor_placements,
+                          #   notifications, users, push_subscriptions)
+    main.py               # App FastAPI + startup + CORS + auth middleware
     sse.py                # SSE broadcast manager
     requirements.txt
   services/               # Fichiers systemd
@@ -182,6 +201,11 @@ Le script est **idempotent** : relancez-le autant de fois que necessaire.
   Tailscale:  http://100.x.x.x:3000
   API Docs:   http://localhost:8000/docs
 
+  Default login:
+    Username: admin
+    Password: admin
+    IMPORTANT: Change this password after first login!
+
   Service Status:
     theia-api            active
     theia-web            active
@@ -244,6 +268,12 @@ Le fichier `.env` est cree automatiquement par `install.sh` :
 NEXT_PUBLIC_MODE=pi
 NEXT_PUBLIC_API_URL=/api
 THEIA_BACKEND_URL=http://localhost:8000
+
+# Authentification
+JWT_SECRET=           # Auto-genere par install.sh si vide
+
+# Web Push (VAPID) - auto-genere au premier demarrage
+VAPID_CONTACT_EMAIL=admin@theia.local
 
 # Base SQLite
 DB_PATH=/opt/theia/data/theia.db
@@ -332,6 +362,9 @@ L'app sera accessible sur le reseau local ET via l'adresse Tailscale (100.x.x.x)
 | Firmware | Arduino ESP32 (Heltec WiFi LoRa V3) |
 | Flash | arduino-cli (compile + upload depuis la webapp) |
 | Monitoring | psutil (CPU, RAM, disk, temperature) |
+| Auth | PyJWT, PBKDF2-SHA256, cookies HTTP-only |
+| Push | pywebpush, VAPID, Service Worker |
+| SMS | httpx (Free Mobile, Twilio, ntfy.sh) |
 | Deploiement | systemd (2 services) |
 
 ## Troubleshooting
@@ -370,6 +403,29 @@ sudo dpkg-reconfigure gpsd
 curl -v http://localhost:8000/api/health
 ss -tlnp | grep 8000
 ```
+
+### Mot de passe admin oublie
+
+```bash
+# Reset le mot de passe admin depuis le Pi
+sudo /opt/theia/.venv/bin/python3 -c "
+import sqlite3, hashlib, os
+db = sqlite3.connect('/opt/theia/data/theia.db')
+salt = os.urandom(32).hex()
+pw = hashlib.pbkdf2_hmac('sha256', b'admin', bytes.fromhex(salt), 100000).hex()
+db.execute('UPDATE users SET password_hash=?, salt=? WHERE username=?', (pw, salt, 'admin'))
+db.commit(); print('Password reset to: admin')
+"
+sudo systemctl restart theia-api
+```
+
+### Notifications Push ne fonctionnent pas
+
+1. Verifier que le navigateur a autorise les notifications (icone cadenas dans la barre d'adresse)
+2. Cliquer "Activer Push" dans la sidebar (bouton cloche)
+3. Verifier que la mission a les notifications activees (bouton cloche dans la mission)
+4. Verifier les logs : `sudo journalctl -u theia-api -f | grep PUSH`
+5. Si `pywebpush not installed` : `sudo /opt/theia/.venv/bin/pip install pywebpush cryptography`
 
 ### Erreur `python-multipart` ou import Python
 

@@ -66,9 +66,11 @@ app = FastAPI(
     lifespan=lifespan,
 )
 
+# CORS: allow_origins=["*"] + allow_credentials=True is spec-invalid.
+# Use allow_origin_regex to match any origin while keeping credentials.
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origin_regex=r".*",
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],

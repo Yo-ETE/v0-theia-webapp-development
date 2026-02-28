@@ -1488,18 +1488,57 @@ CONTACT : contact@yoann-ete.fr`}
   - Utile pour diagnostiquer les problemes de demarrage ou de crash`
                     },
                     {
-                      id: "notifications", icon: AlertTriangle, title: "Notifications",
-                      content: `Systeme d'alertes automatiques :
+                      id: "notifications", icon: AlertTriangle, title: "Notifications et Alertes",
+                      content: `Systeme d'alertes multi-canal :
+
+Alertes automatiques (sidebar) :
 - Cloche dans le sidebar : badge avec nombre de notifications non lues
-- Types d'alertes :
-  - Batterie critique (< 3.3V) : alerte rouge
-  - Batterie faible (< 3.5V) : alerte orange
-  - Signal RSSI faible (< -90dBm) : alerte orange
-  - Device hors ligne (> 120s sans signal) : alerte orange
-  - Reconnexion d'un device : notification info
-- Anti-spam : maximum 1 notification du meme type par device par heure
-- Actions : marquer comme lu, supprimer individuellement ou tout effacer
-- Section alertes actives en haut du Dashboard`
+- Batterie critique (< 3.3V), batterie faible (< 3.5V)
+- Signal RSSI faible (< -90dBm), device hors ligne (> 120s)
+- Anti-spam : max 1 notification du meme type par device par heure
+
+Notifications Push (par mission) :
+- Activer dans chaque mission via le bouton cloche (icone)
+- Configurer : canaux (Web Push, SMS), cooldown anti-spam, zones filtrees
+- Web Push : cliquer "Activer Push" dans la sidebar pour souscrire
+  Le navigateur demandera l'autorisation, puis les detections declencheront
+  des notifications systeme meme si le navigateur est en arriere-plan
+- Le service worker (sw.js) gere l'affichage et le clic pour ouvrir la mission
+
+SMS / ntfy :
+- Configurer dans Administration > Configuration SMS/Notifications
+- 3 providers : Free Mobile (gratuit), Twilio, ntfy.sh
+- Bouton "Test" pour verifier que les SMS arrivent
+- Les SMS sont envoyes automatiquement quand une detection est inseree
+  et que la mission a les notifications SMS activees
+
+Inviter un utilisateur externe :
+- L'utilisateur doit etre sur votre reseau Tailscale
+- Invitez-le via https://login.tailscale.com/admin/users
+- Creez-lui un compte viewer ou admin dans la section Gestion des comptes`
+                    },
+                    {
+                      id: "auth", icon: Shield, title: "Authentification et Comptes",
+                      content: `Systeme d'authentification integre :
+
+Comptes utilisateurs :
+- Compte admin par defaut : admin / admin (changez le mot de passe !)
+- Deux roles : admin (acces complet) et viewer (lecture seule)
+- Les viewers n'ont pas acces a l'administration, au firmware, ni au reboot
+- Gestion des comptes dans Administration > Gestion des comptes
+
+Acces reseau :
+- THEIA est accessible sur le reseau local (WiFi/Ethernet du Pi)
+- Pour un acces distant, utilisez Tailscale (VPN) :
+  1. Invitez l'utilisateur sur votre tailnet (login.tailscale.com/admin/users)
+  2. Il installe Tailscale sur son appareil
+  3. Creez-lui un compte THEIA (admin ou viewer)
+  4. Il accede au dashboard via l'IP Tailscale du Pi (100.x.x.x:3000)
+
+Securite :
+- Tokens JWT stockes en cookie HTTP-only + header Authorization
+- Mots de passe hashes en PBKDF2-SHA256 avec salt
+- Session expire apres 7 jours`
                     },
                     {
                       id: "config", icon: Terminal, title: "Administration",
@@ -1510,6 +1549,8 @@ CONTACT : contact@yoann-ete.fr`}
 - Gestion Git : branches, historique des commits, mise a jour
 - Mise a jour : git stash + pull + install.sh + pip install + restart services
 - Sauvegardes : creation, restauration, suppression des backups de la base
+- Gestion des comptes : creer/supprimer des utilisateurs, changer roles et mots de passe
+- Configuration SMS/Notifications : choisir le provider et tester
 - Systeme : redemarrage des services, reboot, arret du Pi
 - Guide d'utilisation (cette section)
 - Licence logicielle`
