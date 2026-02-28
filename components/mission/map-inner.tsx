@@ -3,7 +3,8 @@
 import { useEffect, useState, useCallback, useRef } from "react"
 import type { Zone, DetectionEvent } from "@/lib/types"
 import { cn } from "@/lib/utils"
-import { useVisualConfig } from "@/hooks/use-visual-config"
+import type { VisualConfig } from "@/hooks/use-visual-config"
+import { VISUAL_DEFAULTS } from "@/hooks/use-visual-config"
 import HeatmapCanvas from "./heatmap-canvas"
 
 /** Group polygon edges by outward-normal bearing so colinear walls share the same facade letter */
@@ -145,6 +146,8 @@ interface MapInnerProps {
   onZonePolygonUpdate?: (zoneId: string, polygon: [number, number][]) => void
   showFov?: boolean
   replayMode?: boolean
+  /** Visual configuration (colors, opacities) from per-mission settings */
+  visualConfig?: VisualConfig | null
 }
 
 // ── Geodesic measurement helpers ──────────────────────────────
@@ -218,16 +221,30 @@ export default function MapInner({
   onZonePolygonUpdate,
   showFov = false,
   replayMode = false,
+  visualConfig,
 }: MapInnerProps) {
   const centerLat = Number.isFinite(rawLat) ? rawLat : 48.8566
   const centerLon = Number.isFinite(rawLon) ? rawLon : 2.3522
   const zoom = Number.isFinite(rawZoom) ? rawZoom : 19
 
+  // Use provided visual config or fall back to defaults
+  const vc: VisualConfig = visualConfig ?? {
+    zone_fill_color: VISUAL_DEFAULTS.zone_fill_color,
+    zone_fill_opacity: parseFloat(VISUAL_DEFAULTS.zone_fill_opacity),
+    zone_stroke_opacity: parseFloat(VISUAL_DEFAULTS.zone_stroke_opacity),
+    detection_dot_live: VISUAL_DEFAULTS.detection_dot_live,
+    detection_dot_hold: VISUAL_DEFAULTS.detection_dot_hold,
+    detection_line_color: VISUAL_DEFAULTS.detection_line_color,
+    fov_overlay_color: VISUAL_DEFAULTS.fov_overlay_color,
+    fov_fill_opacity: parseFloat(VISUAL_DEFAULTS.fov_fill_opacity),
+    fov_default_visible: VISUAL_DEFAULTS.fov_default_visible === "true",
+    sensor_dot_idle: VISUAL_DEFAULTS.sensor_dot_idle,
+    estimated_pos_color: VISUAL_DEFAULTS.estimated_pos_color,
+  }
+
   const [mounted, setMounted] = useState(false)
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const [RL, setRL] = useState<Record<string, any> | null>(null)
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const { config: vc } = useVisualConfig()
   const [leafletL, setLeafletL] = useState<any>(null)
   const [drawPoints, setDrawPoints] = useState<[number, number][]>([])
   const mapRef = useRef<unknown>(null)

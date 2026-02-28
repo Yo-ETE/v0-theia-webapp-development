@@ -1037,6 +1037,7 @@ export default function MissionDetailPage() {
   calibrationMode={calibrationMode}
   onCalibrationDone={handleCalibrationDone}
   planScale={mission?.plan_scale ?? null}
+  visualConfig={visualConfig}
   className="rounded-lg overflow-hidden border border-border/50 h-[calc(100vh-310px)]"
             />
           ) : (
@@ -1066,6 +1067,7 @@ export default function MissionDetailPage() {
                   onZonePolygonUpdate={() => {}}
                   showFov={showFov}
                   replayMode={false}
+                  visualConfig={visualConfig}
                 />
               </ErrorBoundary>
           )}
@@ -1291,6 +1293,7 @@ export default function MissionDetailPage() {
                       calibrationMode={calibrationMode}
                       onCalibrationDone={handleCalibrationDone}
                       planScale={mission?.plan_scale ?? null}
+                      visualConfig={visualConfig}
                       className="rounded-lg overflow-hidden border border-border/50"
                     />
                   </div>
@@ -1356,6 +1359,7 @@ export default function MissionDetailPage() {
                       onZonePolygonUpdate={updateZonePolygon}
                       showFov={showFov}
                       replayMode={timelapseMode}
+                      visualConfig={visualConfig}
                     />
                   </ErrorBoundary>
                   </div>

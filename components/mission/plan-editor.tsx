@@ -3,7 +3,8 @@
 import { useState, useRef, useCallback, useEffect, useMemo } from "react"
 import type { Zone, DetectionEvent } from "@/lib/types"
 import { cn } from "@/lib/utils"
-import { useVisualConfig } from "@/hooks/use-visual-config"
+import type { VisualConfig } from "@/hooks/use-visual-config"
+import { VISUAL_DEFAULTS } from "@/hooks/use-visual-config"
 
 // ── Types ────────────────────────────────────────────────────
 
@@ -74,6 +75,8 @@ interface PlanEditorProps {
   onCalibrationDone?: (scalePixelsPerMeter: number) => void
   /** Calibrated scale in image-pixels per metre */
   planScale?: number | null
+  /** Visual configuration (colors, opacities) from per-mission settings */
+  visualConfig?: VisualConfig | null
 }
 
 /** Group polygon edges by bearing -- simplified for pixel coords */
@@ -122,8 +125,22 @@ export function PlanEditor({
   calibrationMode = false,
   onCalibrationDone,
   planScale,
+  visualConfig,
 }: PlanEditorProps) {
-  const { config: vc } = useVisualConfig()
+  // Use provided visual config or fall back to defaults
+  const vc: VisualConfig = useMemo(() => visualConfig ?? {
+    zone_fill_color: VISUAL_DEFAULTS.zone_fill_color,
+    zone_fill_opacity: parseFloat(VISUAL_DEFAULTS.zone_fill_opacity),
+    zone_stroke_opacity: parseFloat(VISUAL_DEFAULTS.zone_stroke_opacity),
+    detection_dot_live: VISUAL_DEFAULTS.detection_dot_live,
+    detection_dot_hold: VISUAL_DEFAULTS.detection_dot_hold,
+    detection_line_color: VISUAL_DEFAULTS.detection_line_color,
+    fov_overlay_color: VISUAL_DEFAULTS.fov_overlay_color,
+    fov_fill_opacity: parseFloat(VISUAL_DEFAULTS.fov_fill_opacity),
+    fov_default_visible: VISUAL_DEFAULTS.fov_default_visible === "true",
+    sensor_dot_idle: VISUAL_DEFAULTS.sensor_dot_idle,
+    estimated_pos_color: VISUAL_DEFAULTS.estimated_pos_color,
+  }, [visualConfig])
   const resolvedImage = planImage || imageUrl || ""
   const handlePolygonDone = onPolygonDrawn ?? onZoneCreated
   const containerRef = useRef<HTMLDivElement>(null)

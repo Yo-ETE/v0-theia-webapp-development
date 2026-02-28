@@ -1,6 +1,7 @@
 "use client"
 
 import type { Zone, DetectionEvent } from "@/lib/types"
+import type { VisualConfig } from "@/hooks/use-visual-config"
 import { cn } from "@/lib/utils"
 import MapInner from "./map-inner"
 
@@ -50,6 +51,7 @@ interface MissionMapProps {
   estimatePosition?: boolean
   showFov?: boolean
   replayMode?: boolean
+  visualConfig?: VisualConfig | null
 }
 
 export function MissionMap({ className, ...props }: MissionMapProps) {
