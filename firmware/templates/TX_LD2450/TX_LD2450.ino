@@ -5,134 +5,342 @@
  * - RX ESP  = GPIO19 (recoit TX du LD2450)
  * - TX ESP  = GPIO21 (envoie vers RX du LD2450)
  *
- * Batterie:
- * - Module "Voltage Sensor 0-25V" (pont diviseur ~5:1)
- *   Bornier: VCC<25V = Batt+, GND = Batt-
- *   Pins:    S -> ADC (GPIO4),  - -> GND Heltec,  + (inutile)
- *
- * LoRa payload (format LD45):
+ * LoRa payload (format LD45, INCHANGE):
  * - Absent : LD45;__TX_ID__;0;0;0;0;4.02
  * - Present: LD45;__TX_ID__;X;Y;D;V;4.02   (X,Y,D en cm, V en cm/s)
  *
- * Detection (Option B):
- * - Presence basee sur mouvement humain:
- *   - vitesse >= V_MIN_CM_S  OU variation position >= 3cm
- *   - CONFIRM_FRAMES frames consecutives avant passage en presence
- *   - HOLD_MS maintien apres dernier mouvement
+ * --- v2 : reecriture robuste tous environnements ---
+ * [FIX 1] Radio.Send() 1x/s avec timer (pas dans chaque loop)
+ * [FIX 2] RadioEvents propres (OnTxDone/OnTxTimeout) + Standby
+ * [FIX 3] Trajectoire NETTE (trajNetM) anti-fantomes multipath
+ * [FIX 4] Filtre EMA distance + vitesse
+ * [FIX 5] Streak ON/OFF pour eviter flashs parasites
+ * [FIX 6] Detection filtre bloque (echo fixe prolonge)
+ * [FIX 7] Multi-cibles: on choisit la cible la plus mobile
+ * [FIX 8] Suppression double-decodage ld2450_decode_signed15
+ *         (la lib LD2450 decode deja les coordonnees signees)
  *
- * TX_ID is replaced at flash time by the THEIA provisioning system.
+ * NOTE: __TX_ID__ is automatically replaced by the webapp during flash.
  * (c) 2026 Yoann ETE - THEIA Project
  */
 
 #include <Arduino.h>
 #include <LD2450.h>
 #include "LoRaWan_APP.h"
-#include "HT_SSD1306Wire.h"
 #include <math.h>
 
-// ================= CONFIG =================
-#define TX_ID "__TX_ID__"
+// ===================== CONFIG =====================
+static const char* TX_ID = "__TX_ID__";
 
 // --- Radar UART ---
-#define RADAR_UART_RX 19
-#define RADAR_UART_TX 21
-#define RADAR_BAUD    115200
+#define RADAR_UART_RX     19
+#define RADAR_UART_TX     21
+#define RADAR_BAUD        115200
 
-#define BUTTON_PRG 0
-
-// --- Batterie (aligne TX02) ---
+// --- Batterie ---
 #define ADC_BATT_PIN        4
 #define VOLT_SAMPLES        8
 #define VOLT_READ_PERIOD_MS 1000UL
 #define VOLT_DIV_RATIO      5.00f
 
-#define BUFFER_SIZE 96
-char txpacket[BUFFER_SIZE];
+// --- LoRa ---
+#define LORA_FREQ         868000000
+#define SEND_PERIOD_MS    1000UL
 
-// ===== OPTION B (mouvement humain) =====
-#define V_MIN_CM_S      8
-#define HOLD_MS         2500UL
-#define CONFIRM_FRAMES  2
-// ========================================
+// --- Presence / filtrage ---
+#define PRESENCE_HOLD_MS  1500UL
+#define DIST_ALPHA        0.25f
+#define SPD_ALPHA         0.25f
+
+// --- Garde-fous distance ---
+#define DIST_MIN_CM       20.0f    // ignore ce qui est trop proche (bruit)
+#define DIST_MAX_CM       800.0f   // 8m max utile
+
+// --- Mouvement / sensibilite ---
+#define SPD_MIN_CMS       10.0f    // 10 cm/s mini (tolerant)
+#define POS_DELTA_MIN_CM  3.0f     // delta position brute mini (cm)
+
+// --- Seuil d'entree (plus strict que maintien) ---
+#define SPD_ENTRY_CMS     15.0f    // pour ENTRER en presence
+#define TRAJ_ENTRY_NET_CM 20.0f    // OU deplacement net 20cm
+
+// --- Trajectoire NETTE anti-fantomes ---
+#define TRAJ_NOISE_CM     3.0f     // ignore jitter < 3cm
+#define MIN_TRAJ_NET_CM   15.0f    // 15cm net mini pour valider
+#define MIN_TRAJ_FRAMES   3        // sur 3 trames mini
+
+// --- Detection filtre bloque (echo fixe) ---
+#define FILT_STABLE_THRESH_CM  4.0f
+#define FILT_STABLE_LOCK_MS    5000UL
+
+// --- Streaks ---
+#define VALID_STREAK_ON   2
+#define VALID_STREAK_OFF  3
+#define FAST_SPD_CMS      50.0f    // passage rapide => 1 seule trame suffit
+
+// --- Anti-sauts ---
+#define JUMP_MAX_CM       250.0f   // saut > 2.5m entre 2 trames = corruption
+
+// --- Mapping LD45 ---
+#define BUFFER_SIZE       96
+// ===================================================
 
 LD2450 radar;
-SSD1306Wire screen(0x3c, 500000, SDA_OLED, SCL_OLED, GEOMETRY_128_64, RST_OLED);
+static RadioEvents_t RadioEvents;
 
-// Batterie cache
-static float g_battV = 0.0f;
-static float g_battPct = 0.0f;
+// Buffers LoRa
+static char txpacket[BUFFER_SIZE];
+
+// Batterie
+static float    g_battV   = 0.0f;
 static uint32_t g_lastBattMs = 0;
 
-// Mouvement / presence
-static bool presenceState = false;
-static unsigned long lastMoveMs = 0;
-static int consecutiveMove = 0;
+// Filtres EMA
+static bool   filtInit    = false;
+static float  distFiltCm  = 0.0f;
+static float  spdFiltCms  = 0.0f;
+static float  xFiltCm     = 0.0f;
+static float  yFiltCm     = 0.0f;
 
-static bool havePrev = false;
-static int prevX = 0, prevY = 0;
+// Historique brut (pour delta position)
+static float  lastRawDistCm = NAN;
+static float  prevRawDistCm = NAN;
+static float  lastRawXCm    = NAN;
+static float  lastRawYCm    = NAN;
 
-static int lastX = 0, lastY = 0, lastD = 0, lastV = 0;
+// Trajectoire NETTE
+static float  trajStartDistCm = NAN;
+static float  trajNetCm       = 0.0f;
+static uint8_t trajFrames     = 0;
 
-// ------------------ Batterie ------------------
-static float batteryPercentCurve(float v) {
-  if (v >= 4.20f) return 100;
-  if (v >= 4.10f) return 90;
-  if (v >= 4.00f) return 80;
-  if (v >= 3.92f) return 70;
-  if (v >= 3.85f) return 60;
-  if (v >= 3.80f) return 50;
-  if (v >= 3.75f) return 40;
-  if (v >= 3.70f) return 30;
-  if (v >= 3.60f) return 20;
-  if (v >= 3.50f) return 10;
-  return 0;
-}
+// Filtre bloque
+static float  filtPrevSnapCm = NAN;
+static uint32_t filtLastMoveMs = 0;
 
-static float readBatteryVoltage(float* out_vpin = nullptr, uint32_t* out_mv = nullptr) {
+// Streaks
+static uint8_t validStreak   = 0;
+static uint8_t invalidStreak = 0;
+
+// Etat presence
+static bool   presenceState  = false;
+static uint32_t lastGoodMs   = 0;
+
+// Timers
+static uint32_t lastSendMs   = 0;
+static uint32_t lastBeatMs   = 0;
+
+// Batterie
+static float readBatteryVoltage() {
   analogReadResolution(12);
   analogSetPinAttenuation(ADC_BATT_PIN, ADC_11db);
-
   uint32_t acc = 0;
   for (int i = 0; i < VOLT_SAMPLES; ++i) {
     delayMicroseconds(150);
     acc += analogReadMilliVolts(ADC_BATT_PIN);
   }
-
-  uint32_t mv = (uint32_t)lround(acc / (float)VOLT_SAMPLES);
-  float v_pin = mv / 1000.0f;
-  float v_batt = v_pin * VOLT_DIV_RATIO;
-
-  if (out_vpin) *out_vpin = v_pin;
-  if (out_mv)   *out_mv   = mv;
-
-  return v_batt;
+  return (acc / (float)VOLT_SAMPLES / 1000.0f) * VOLT_DIV_RATIO;
 }
 
-static void updateBatteryIfNeeded(uint32_t now) {
+static void updateBattery(uint32_t now) {
   if (g_lastBattMs == 0 || (now - g_lastBattMs) >= VOLT_READ_PERIOD_MS) {
     g_lastBattMs = now;
-
-    float vpin = 0.0f;
-    uint32_t mv = 0;
-    g_battV = readBatteryVoltage(&vpin, &mv);
-    g_battPct = batteryPercentCurve(g_battV);
-
-    Serial.printf("[BATT] mv=%lumV vpin=%.3fV vbatt=%.3fV pct=%.0f%% ratio=%.2f\n",
-                  (unsigned long)mv, vpin, g_battV, g_battPct, (float)VOLT_DIV_RATIO);
+    g_battV = readBatteryVoltage();
   }
 }
 
-// ------------------ LD2450 helpers ------------------
-static int16_t ld2450_decode_signed15(uint16_t raw) {
-  if (raw & 0x8000) return (int16_t)(raw - 0x8000);
-  return -(int16_t)raw;
+// Trajectoire NETTE
+static void trajUpdate(float distCm) {
+  if (isnan(prevRawDistCm)) return;
+
+  float step = distCm - prevRawDistCm;
+  if (fabsf(step) < TRAJ_NOISE_CM) return;
+
+  if (isnan(trajStartDistCm)) {
+    trajStartDistCm = distCm;
+    trajNetCm  = 0.0f;
+    trajFrames = 0;
+    return;
+  }
+
+  trajNetCm = distCm - trajStartDistCm;
+  if (trajFrames < 255) trajFrames++;
 }
 
-static inline int iabs(int v) { return v < 0 ? -v : v; }
+static void trajReset() {
+  trajStartDistCm = NAN;
+  trajNetCm  = 0.0f;
+  trajFrames = 0;
+}
 
-// ===================== SETUP =====================
+static bool trajValid() {
+  return (trajFrames >= MIN_TRAJ_FRAMES) && (fabsf(trajNetCm) >= MIN_TRAJ_NET_CM);
+}
+
+// Anti-saut (trame corrompue)
+static bool jumpGuard(float distCm) {
+  if (isnan(lastRawDistCm)) return true;
+  return fabsf(distCm - lastRawDistCm) <= JUMP_MAX_CM;
+}
+
+// Detection filtre bloque (echo fixe prolonge)
+static void checkFiltStable(uint32_t now) {
+  if (!presenceState || !filtInit) {
+    filtLastMoveMs  = now;
+    filtPrevSnapCm  = distFiltCm;
+    return;
+  }
+  if (isnan(filtPrevSnapCm)) {
+    filtPrevSnapCm = distFiltCm;
+    filtLastMoveMs = now;
+    return;
+  }
+  if (fabsf(distFiltCm - filtPrevSnapCm) > FILT_STABLE_THRESH_CM) {
+    filtPrevSnapCm = distFiltCm;
+    filtLastMoveMs = now;
+  } else if ((now - filtLastMoveMs) > FILT_STABLE_LOCK_MS) {
+    Serial.println("[TRAJ] Filtre bloque => reset presence (echo fixe)");
+    presenceState = false;
+    filtInit      = false;
+    validStreak   = 0;
+    trajReset();
+    filtLastMoveMs = now;
+    filtPrevSnapCm = NAN;
+  }
+}
+
+// Mise a jour filtre EMA
+static void onGoodMeasurement(float xCm, float yCm, float distCm, float spdCms) {
+  if (!filtInit) {
+    filtInit   = true;
+    xFiltCm    = xCm;
+    yFiltCm    = yCm;
+    distFiltCm = distCm;
+    spdFiltCms = spdCms;
+  } else {
+    xFiltCm    += DIST_ALPHA * (xCm    - xFiltCm);
+    yFiltCm    += DIST_ALPHA * (yCm    - yFiltCm);
+    distFiltCm += DIST_ALPHA * (distCm - distFiltCm);
+    spdFiltCms += SPD_ALPHA  * (spdCms - spdFiltCms);
+  }
+  lastGoodMs = millis();
+}
+
+// Selection de la meilleure cible parmi les cibles valides
+static bool pickBestTarget(int targets,
+                            float& outX, float& outY,
+                            float& outDist, float& outSpd) {
+  float bestScore = -1.0f;
+  bool found = false;
+
+  for (int i = 0; i < targets; i++) {
+    LD2450::RadarTarget t = radar.getTarget(i);
+    if (!t.valid) continue;
+
+    // [FIX 8] La lib LD2450 retourne deja des mm signes
+    float xCm   = t.x / 10.0f;
+    float yCm   = t.y / 10.0f;
+    float spdCms = t.speed / 10.0f;
+    float distCm = sqrtf(xCm*xCm + yCm*yCm);
+
+    if (distCm < DIST_MIN_CM || distCm > DIST_MAX_CM) continue;
+
+    float score = fabsf(spdCms) * 10.0f + (DIST_MAX_CM - distCm);
+    if (score > bestScore) {
+      bestScore = score;
+      outX    = xCm;
+      outY    = yCm;
+      outDist = distCm;
+      outSpd  = spdCms;
+      found   = true;
+    }
+  }
+  return found;
+}
+
+// Traitement d'une trame radar
+static void handleRadarFrame(int targets) {
+
+  float xCm = 0, yCm = 0, distCm = 0, spdCms = 0;
+  bool haveTarget = pickBestTarget(targets, xCm, yCm, distCm, spdCms);
+
+  if (!haveTarget) {
+    validStreak = 0;
+    trajReset();
+    if (invalidStreak < 255) invalidStreak++;
+    if (invalidStreak >= VALID_STREAK_OFF) presenceState = false;
+    prevRawDistCm = lastRawDistCm;
+    lastRawDistCm = NAN;
+    lastRawXCm = lastRawYCm = NAN;
+    return;
+  }
+
+  if (!jumpGuard(distCm)) {
+    validStreak = 0;
+    trajReset();
+    if (invalidStreak < 255) invalidStreak++;
+    if (invalidStreak >= VALID_STREAK_OFF) presenceState = false;
+    return;
+  }
+
+  bool posDelta = false;
+  if (!isnan(lastRawXCm) && !isnan(lastRawYCm)) {
+    float dx = fabsf(xCm - lastRawXCm);
+    float dy = fabsf(yCm - lastRawYCm);
+    posDelta = (dx >= POS_DELTA_MIN_CM || dy >= POS_DELTA_MIN_CM);
+  }
+
+  bool spdMoves = (fabsf(spdCms) >= SPD_MIN_CMS);
+  bool moves    = spdMoves || posDelta;
+
+  prevRawDistCm = lastRawDistCm;
+  lastRawDistCm = distCm;
+  lastRawXCm    = xCm;
+  lastRawYCm    = yCm;
+
+  if (!moves) {
+    validStreak = 0;
+    trajReset();
+    if (invalidStreak < 255) invalidStreak++;
+    if (invalidStreak >= VALID_STREAK_OFF) presenceState = false;
+    return;
+  }
+
+  trajUpdate(distCm);
+
+  if (!trajValid()) {
+    return;
+  }
+
+  if (!presenceState) {
+    bool fastEnough = (fabsf(spdCms) >= SPD_ENTRY_CMS);
+    bool longEnough = (fabsf(trajNetCm) >= TRAJ_ENTRY_NET_CM);
+    if (!fastEnough && !longEnough) return;
+  }
+
+  invalidStreak = 0;
+
+  bool fastPass = (fabsf(spdCms) >= FAST_SPD_CMS);
+  if (validStreak < 255) validStreak++;
+
+  uint8_t need = fastPass ? 1 : VALID_STREAK_ON;
+  if (validStreak >= need) {
+    presenceState = true;
+    onGoodMeasurement(xCm, yCm, distCm, spdCms);
+  }
+}
+
+// LoRa callbacks
+static void OnTxDone()    { Radio.Standby(); }
+static void OnTxTimeout() { Radio.Standby(); }
+
+// SETUP
 void setup() {
   Serial.begin(115200);
+  delay(600);
+
+  Serial.println();
+  Serial.println("--- THEIA TX LD2450 v2 ---");
+  Serial.printf("TX_ID=%s  RX=%d TX=%d\n", TX_ID, RADAR_UART_RX, RADAR_UART_TX);
 
   // Radar
   Serial2.begin(RADAR_BAUD, SERIAL_8N1, RADAR_UART_RX, RADAR_UART_TX);
@@ -140,116 +348,90 @@ void setup() {
 
   // LoRa
   Mcu.begin(HELTEC_BOARD, SLOW_CLK_TPYE);
-  Radio.Init(nullptr);
-  Radio.SetChannel(868000000);
-  Radio.SetTxConfig(MODEM_LORA, 10, 0, 0, 7, 1, 8, false, true, 0, 0, false, 3000);
+  RadioEvents.TxDone    = OnTxDone;
+  RadioEvents.TxTimeout = OnTxTimeout;
+  Radio.Init(&RadioEvents);
+  Radio.SetChannel(LORA_FREQ);
+  Radio.SetTxConfig(MODEM_LORA,
+                    14, 0, 0,
+                    7, 1, 8,
+                    false, true, 0, 0,
+                    false, 3000);
+  Radio.Standby();
+  Serial.println("[LORA] OK");
 
-  // OLED
-  screen.init();
-  screen.setFont(ArialMT_Plain_10);
-  screen.clear();
-  screen.drawString(0, 0, "LD2450 TX READY");
-  screen.display();
+  // Batterie init
+  uint32_t now = millis();
+  updateBattery(now);
+  filtLastMoveMs = now;
+  lastSendMs     = now;
+  lastBeatMs     = now;
 
-  // Batterie (1x au boot)
-  updateBatteryIfNeeded(millis());
+  Serial.println("[BOOT] setup done");
 }
 
-// ===================== LOOP =====================
+// LOOP
 void loop() {
-  unsigned long now = millis();
+  const uint32_t now = millis();
 
-  // Batterie (1x/s)
-  updateBatteryIfNeeded(now);
+  updateBattery(now);
 
   int targets = radar.read();
+  if (targets >= 0) {
+    handleRadarFrame(targets);
+  }
 
-  bool haveCandidate = false;
-  int x_cm = 0, y_cm = 0, d_cm = 0, v_cms = 0;
+  checkFiltStable(now);
 
-  // ===== Lecture radar =====
-  if (targets > 0) {
-    for (int i = 0; i < targets; i++) {
-      LD2450::RadarTarget t = radar.getTarget(i);
-      if (!t.valid) continue;
+  bool present = presenceState
+                 && (lastGoodMs != 0)
+                 && (now - lastGoodMs <= PRESENCE_HOLD_MS);
 
-      uint16_t rawX = (uint16_t)(int16_t)t.x;
-      uint16_t rawY = (uint16_t)(int16_t)t.y;
-      uint16_t rawS = (uint16_t)(int16_t)t.speed;
+  // Beat debug 1x/s
+  if (now - lastBeatMs >= 1000) {
+    lastBeatMs = now;
+    Serial.printf("[BEAT] present=%d state=%d dist=%.1fcm spd=%.1fcm/s x=%.1f y=%.1f v=%u iv=%u net=%.1f/%u last=%lums\n",
+                  present ? 1 : 0,
+                  presenceState ? 1 : 0,
+                  distFiltCm,
+                  spdFiltCms,
+                  xFiltCm,
+                  yFiltCm,
+                  (unsigned)validStreak,
+                  (unsigned)invalidStreak,
+                  trajNetCm,
+                  (unsigned)trajFrames,
+                  lastGoodMs ? (unsigned long)(now - lastGoodMs) : 999999UL);
+  }
 
-      int16_t x_mm = ld2450_decode_signed15(rawX);
-      int16_t y_mm = ld2450_decode_signed15(rawY);
-      int16_t v    = ld2450_decode_signed15(rawS);
+  // Envoi LoRa 1x/s
+  if (now - lastSendMs >= SEND_PERIOD_MS) {
+    lastSendMs = now;
 
-      // conversion cm
-      x_cm = x_mm / 10;
-      y_cm = y_mm / 10;
+    if (!present) {
+      snprintf(txpacket, BUFFER_SIZE,
+               "LD45;%s;0;0;0;0;%.2f",
+               TX_ID, g_battV);
+      Serial.printf("[SEND] out=0 batt=%.2f => %s\n", g_battV, txpacket);
+    } else {
+      int xCm  = (int)lroundf(xFiltCm);
+      int yCm  = (int)lroundf(yFiltCm);
+      int dCm  = (int)lroundf(distFiltCm);
+      int vCms = (int)lroundf(spdFiltCms);
 
-      // distance recalculee (FIABLE)
-      d_cm = (int)lroundf(sqrtf((float)x_mm * x_mm + (float)y_mm * y_mm) / 10.0f);
+      dCm = constrain(dCm, 20, 800);
 
-      v_cms = v;
-
-      // ignore bruit trop proche
-      if (d_cm < 15) continue;
-
-      haveCandidate = true;
-      break;
+      snprintf(txpacket, BUFFER_SIZE,
+               "LD45;%s;%d;%d;%d;%d;%.2f",
+               TX_ID, xCm, yCm, dCm, vCms, g_battV);
+      Serial.printf("[SEND] out=1 x=%d y=%d d=%d v=%d batt=%.2f => %s\n",
+                    xCm, yCm, dCm, vCms, g_battV, txpacket);
     }
+
+    Radio.Standby();
+    Radio.Send((uint8_t*)txpacket, strlen(txpacket));
   }
 
-  // ===== Option B : mouvement =====
-  bool moved = false;
-
-  if (haveCandidate) {
-    // vitesse
-    if (iabs(v_cms) >= V_MIN_CM_S) moved = true;
-
-    // variation position
-    if (havePrev) {
-      if (iabs(x_cm - prevX) >= 3) moved = true;
-      if (iabs(y_cm - prevY) >= 3) moved = true;
-    }
-
-    prevX = x_cm;
-    prevY = y_cm;
-    havePrev = true;
-  }
-
-  if (moved) {
-    consecutiveMove++;
-    lastMoveMs = now;
-
-    lastX = x_cm;
-    lastY = y_cm;
-    lastD = d_cm;
-    lastV = v_cms;
-
-    if (!presenceState && consecutiveMove >= CONFIRM_FRAMES)
-      presenceState = true;
-
-  } else {
-    consecutiveMove = 0;
-    if (presenceState && (now - lastMoveMs > HOLD_MS)) {
-      presenceState = false;
-      havePrev = false;
-    }
-  }
-
-  // ===== Envoi LoRa =====
-  if (presenceState) {
-    snprintf(txpacket, BUFFER_SIZE,
-             "LD45;%s;%d;%d;%d;%d;%.2f",
-             TX_ID, lastX, lastY, lastD, lastV, g_battV);
-  } else {
-    snprintf(txpacket, BUFFER_SIZE,
-             "LD45;%s;0;0;0;0;%.2f",
-             TX_ID, g_battV);
-  }
-
-  Radio.Send((uint8_t*)txpacket, strlen(txpacket));
-
-  Serial.printf("[TX %s] %s\n", TX_ID, txpacket);
-
-  delay(200);
+  Radio.IrqProcess();
+  delay(5);
 }
