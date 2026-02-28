@@ -228,4 +228,9 @@ async def init_tables(db: aiosqlite.Connection):
         await db.execute("ALTER TABLE events ADD COLUMN orientation TEXT DEFAULT NULL")
     except Exception:
         pass
+    # Mission visual_config (per-mission visual overrides as JSON)
+    try:
+        await db.execute("ALTER TABLE missions ADD COLUMN visual_config TEXT DEFAULT NULL")
+    except Exception:
+        pass
     await db.commit()

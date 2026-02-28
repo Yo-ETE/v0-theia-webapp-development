@@ -8,7 +8,7 @@ import {
   Pencil, Play, Pause, CheckCircle, Trash2, Building2, Home,
   Activity, Eye, EyeOff, Zap, Timer, Download, Signal, Battery, Wifi, Unlink,
   Flame, Crosshair, ArrowDownLeft, ArrowUpRight, Bell, BellOff,
-  Maximize2, Minimize2, FileImage, Ruler,
+  Maximize2, Minimize2, FileImage, Ruler, Palette, RotateCw,
 } from "lucide-react"
 import { TopHeader } from "@/components/top-header"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
@@ -33,7 +33,9 @@ import { FloorManager } from "@/components/mission/floor-manager"
 import { DetectionTimelapse } from "@/components/mission/detection-timelapse"
 import { ErrorBoundary } from "@/components/error-boundary"
 import { useMission, useEvents, useDevices } from "@/hooks/use-api"
-import { useVisualConfig } from "@/hooks/use-visual-config"
+import { useVisualConfig, VISUAL_DEFAULTS, type VisualConfigKey } from "@/hooks/use-visual-config"
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
+import { Switch } from "@/components/ui/switch"
 import { useSSE } from "@/hooks/use-sse"
 import { updateMission, updateDevice } from "@/lib/api-client"
 import { missionStatusConfig, eventTypeConfig, deviceStatusConfig, formatRelative, formatTime, formatDateTime } from "@/lib/format"
@@ -146,7 +148,11 @@ export default function MissionDetailPage() {
   const [timelapseMode, setTimelapseMode] = useState(false)
   const [heatmapMode, setHeatmapMode] = useState(false)
   const [estimatePosition, setEstimatePosition] = useState(false)
-  const { config: visualConfig } = useVisualConfig()
+  const { config: visualConfig, raw: visualRaw, updateConfig: updateVisualConfig, resetAll: resetVisualConfig, hasMissionOverrides } = useVisualConfig({
+    missionOverrides: mission?.visual_config as Record<string, string> | null ?? null,
+    missionId: id,
+    onMissionMutate: mutate,
+  })
   const [showFov, setShowFov] = useState(false)
   // Sync FOV default from visual config on first load
   useEffect(() => { setShowFov(visualConfig.fov_default_visible) }, []) // eslint-disable-line react-hooks/exhaustive-deps
@@ -1381,6 +1387,26 @@ export default function MissionDetailPage() {
                             Position
                           </Button>
                         )}
+                        <Popover>
+                          <PopoverTrigger asChild>
+                            <Button
+                              variant={hasMissionOverrides ? "default" : "outline"}
+                              size="sm"
+                              className="min-h-[36px] text-[10px] px-2.5 gap-1"
+                              title="Apparence visuelle"
+                            >
+                              <Palette className="h-3.5 w-3.5" />
+                            </Button>
+                          </PopoverTrigger>
+                          <PopoverContent align="end" className="w-80 max-h-[70vh] overflow-y-auto p-3">
+                            <VisualConfigPopover
+                              raw={visualRaw}
+                              updateConfig={updateVisualConfig}
+                              resetAll={resetVisualConfig}
+                              hasMissionOverrides={hasMissionOverrides}
+                            />
+                          </PopoverContent>
+                        </Popover>
                       </div>
                       <DetectionTimelapse
                         missionId={id}
@@ -1696,6 +1722,27 @@ export default function MissionDetailPage() {
                             Position
                           </Button>
                         )}
+                        {/* Visual config popover */}
+                        <Popover>
+                          <PopoverTrigger asChild>
+                            <Button
+                              variant={hasMissionOverrides ? "default" : "outline"}
+                              size="sm"
+                              className="min-h-[36px] text-[10px] px-2.5 gap-1"
+                              title="Apparence visuelle"
+                            >
+                              <Palette className="h-3.5 w-3.5" />
+                            </Button>
+                          </PopoverTrigger>
+                          <PopoverContent align="end" className="w-80 max-h-[70vh] overflow-y-auto p-3">
+                            <VisualConfigPopover
+                              raw={visualRaw}
+                              updateConfig={updateVisualConfig}
+                              resetAll={resetVisualConfig}
+                              hasMissionOverrides={hasMissionOverrides}
+                            />
+                          </PopoverContent>
+                        </Popover>
                         {liveDetections.length > 0 && (
                           <span className="text-[9px] font-mono text-success animate-pulse">LIVE</span>
                         )}
@@ -2359,5 +2406,110 @@ export default function MissionDetailPage() {
         </DialogContent>
       </Dialog>
     </>
+  )
+}
+
+
+// ── Visual Config Popover (per-mission) ──────────────────────
+
+const VC_COLOR_ROWS: { key: VisualConfigKey; label: string }[] = [
+  { key: "zone_fill_color",      label: "Zone (remplissage)" },
+  { key: "detection_dot_live",   label: "Detection (live)" },
+  { key: "detection_dot_hold",   label: "Detection (maintien)" },
+  { key: "detection_line_color", label: "Ligne detection" },
+  { key: "fov_overlay_color",    label: "FOV capteur" },
+  { key: "sensor_dot_idle",      label: "Capteur (inactif)" },
+  { key: "estimated_pos_color",  label: "Position estimee" },
+]
+
+const VC_OPACITY_ROWS: { key: VisualConfigKey; label: string }[] = [
+  { key: "zone_fill_opacity",    label: "Opacite zone" },
+  { key: "zone_stroke_opacity",  label: "Contour zone" },
+  { key: "fov_fill_opacity",     label: "Opacite FOV" },
+]
+
+function VisualConfigPopover({
+  raw,
+  updateConfig,
+  resetAll,
+  hasMissionOverrides,
+}: {
+  raw: Record<string, string>
+  updateConfig: (key: VisualConfigKey, value: string) => void
+  resetAll: () => void
+  hasMissionOverrides: boolean
+}) {
+  return (
+    <div className="flex flex-col gap-3">
+      <div className="flex items-center justify-between">
+        <p className="text-xs font-semibold text-foreground">Apparence</p>
+        {hasMissionOverrides && (
+          <button
+            onClick={resetAll}
+            className="flex items-center gap-1 text-[10px] text-muted-foreground hover:text-foreground transition-colors"
+            title="Revenir aux parametres globaux"
+          >
+            <RotateCw className="h-3 w-3" />
+            Global
+          </button>
+        )}
+      </div>
+
+      {/* Colors */}
+      <div className="grid grid-cols-1 gap-1.5">
+        {VC_COLOR_ROWS.map(({ key, label }) => {
+          const val = (raw[key] ?? VISUAL_DEFAULTS[key]) as string
+          return (
+            <div key={key} className="flex items-center gap-2">
+              <label className="relative cursor-pointer shrink-0">
+                <span
+                  className="block h-5 w-5 rounded border border-border/50"
+                  style={{ backgroundColor: val }}
+                />
+                <input
+                  type="color"
+                  value={val}
+                  onChange={(e) => updateConfig(key, e.target.value)}
+                  className="absolute inset-0 h-full w-full cursor-pointer opacity-0"
+                />
+              </label>
+              <span className="text-[10px] text-muted-foreground truncate">{label}</span>
+            </div>
+          )
+        })}
+      </div>
+
+      {/* Opacities */}
+      <div className="flex flex-col gap-1.5 pt-1 border-t border-border/30">
+        {VC_OPACITY_ROWS.map(({ key, label }) => {
+          const val = parseFloat(raw[key] ?? VISUAL_DEFAULTS[key])
+          return (
+            <div key={key} className="flex items-center gap-2">
+              <input
+                type="range"
+                min={0}
+                max={100}
+                step={1}
+                value={Math.round(val * 100)}
+                onChange={(e) => updateConfig(key, String(parseInt(e.target.value) / 100))}
+                className="w-20 accent-primary h-1"
+              />
+              <span className="text-[10px] text-muted-foreground truncate flex-1">{label}</span>
+              <span className="text-[10px] font-mono text-muted-foreground w-8 text-right">{Math.round(val * 100)}%</span>
+            </div>
+          )
+        })}
+      </div>
+
+      {/* FOV toggle */}
+      <div className="flex items-center justify-between pt-1 border-t border-border/30">
+        <span className="text-[10px] text-muted-foreground">FOV visible par defaut</span>
+        <Switch
+          checked={(raw.fov_default_visible ?? VISUAL_DEFAULTS.fov_default_visible) === "true"}
+          onCheckedChange={(v) => updateConfig("fov_default_visible", v ? "true" : "false")}
+          className="scale-75"
+        />
+      </div>
+    </div>
   )
 }

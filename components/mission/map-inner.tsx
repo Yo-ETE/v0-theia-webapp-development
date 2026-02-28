@@ -1188,15 +1188,17 @@ export default function MapInner({
           const det = effectiveDetections[zone.id]
           const hasPresence = det?._state === "live"
           const isBeingEdited = editingZoneId === zone.id
+          const isCustomZoneColor = vc.zone_fill_color !== "#3b82f6"
+          const zc = isCustomZoneColor ? vc.zone_fill_color : zone.color
           return (
             <Polygon
               key={zone.id}
               positions={isBeingEdited ? (localPoly ?? zone.polygon) : zone.polygon}
               interactive={!isBeingEdited}
               pathOptions={{
-                color: isBeingEdited ? "#f59e0b" : (heatmapMode ? "#666" : zone.color),
-                fillColor: isBeingEdited ? "#f59e0b" : (heatmapMode ? "transparent" : zone.color),
-                fillOpacity: isBeingEdited ? 0.05 : (heatmapMode ? 0 : (hasPresence ? 0.08 : 0.12)),
+                color: isBeingEdited ? "#f59e0b" : (heatmapMode ? "#666" : zc),
+                fillColor: isBeingEdited ? "#f59e0b" : (heatmapMode ? "transparent" : zc),
+                fillOpacity: isBeingEdited ? 0.05 : (heatmapMode ? 0 : (hasPresence ? vc.zone_fill_opacity : vc.zone_fill_opacity + 0.04)),
                 weight: isBeingEdited ? 0 : (heatmapMode ? 1 : (hasPresence ? 2 : 1.5)),
                 dashArray: heatmapMode ? "4 4" : undefined,
               }}
@@ -1204,7 +1206,7 @@ export default function MapInner({
             >
               {!heatmapMode && (
                 <Tooltip permanent direction="center" className="zone-label-tip">
-                  <span style={{ fontSize: 11, fontWeight: 600, color: zone.color }}>
+                  <span style={{ fontSize: 11, fontWeight: 600, color: zc }}>
                     {zone.label}
                   </span>
                 </Tooltip>

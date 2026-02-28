@@ -536,14 +536,18 @@ export function PlanEditor({
           const polyStr = pts.map(p => `${p[0]},${p[1]}`).join(" ")
           const sides = groupSidesByBearing(zone.polygon)
 
+          // If user set a custom zone_fill_color (different from default), use it for ALL zones
+          const isCustomZoneColor = vc.zone_fill_color !== "#3b82f6"
+          const zoneColor = isCustomZoneColor ? vc.zone_fill_color : (zone.color || vc.zone_fill_color)
+
           return (
             <g key={zone.id} onClick={(e) => { e.stopPropagation(); onZoneClick?.(zone.id) }} className="cursor-pointer">
               {/* Fill */}
               <polygon
                 points={polyStr}
-                fill={zone.color || vc.zone_fill_color}
+                fill={zoneColor}
                 fillOpacity={vc.zone_fill_opacity}
-                stroke={zone.color || vc.zone_fill_color}
+                stroke={zoneColor}
                 strokeWidth={2}
                 strokeOpacity={vc.zone_stroke_opacity}
               />
@@ -578,7 +582,7 @@ export function PlanEditor({
                     textAnchor="middle"
                     dominantBaseline="central"
                     className="text-[12px] font-bold pointer-events-none"
-                    style={{ fill: zone.color || vc.zone_fill_color, paintOrder: "stroke", stroke: "hsl(var(--background))", strokeWidth: 5 }}
+                    style={{ fill: zoneColor, paintOrder: "stroke", stroke: "hsl(var(--background))", strokeWidth: 5 }}
                   >
                     {zone.name || zone.label}
                   </text>

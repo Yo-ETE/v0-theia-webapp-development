@@ -47,6 +47,7 @@ class MissionUpdate(BaseModel):
     detection_reset_at: str | None = None
     started_at: str | None = None
     ended_at: str | None = None
+    visual_config: str | None = None
     device_count: int | None = None
     event_count: int | None = None
 
@@ -60,6 +61,12 @@ def _row_to_dict(row) -> dict:
                 d[json_field] = json.loads(d[json_field])
             except Exception:
                 d[json_field] = []
+    # Parse visual_config JSON
+    if "visual_config" in d and isinstance(d["visual_config"], str):
+        try:
+            d["visual_config"] = json.loads(d["visual_config"])
+        except Exception:
+            d["visual_config"] = None
     # Ensure all expected fields exist
     d.setdefault("environment", "horizontal")
     d.setdefault("center_lat", 48.8566)
@@ -75,6 +82,7 @@ def _row_to_dict(row) -> dict:
     d.setdefault("plan_height", None)
     d.setdefault("plan_scale", None)
     d.setdefault("detection_reset_at", None)
+    d.setdefault("visual_config", None)
     return d
 
 
@@ -168,10 +176,18 @@ async def patch_mission(mission_id: str, body: MissionUpdate):
     if not updates:
         return await _get_full_mission(db, mission_id)
 
-    # JSON-serialize list fields
+    # JSON-serialize list/dict fields
     for json_field in ("zones", "floors"):
         if json_field in updates:
             updates[json_field] = json.dumps(updates[json_field])
+    if "visual_config" in updates:
+        vc = updates["visual_config"]
+        if vc is None:
+            updates["visual_config"] = None
+        elif isinstance(vc, str):
+            updates["visual_config"] = vc  # already JSON string
+        else:
+            updates["visual_config"] = json.dumps(vc)
 
     updates["updated_at"] = datetime.now(timezone.utc).isoformat()
 
