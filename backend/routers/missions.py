@@ -132,14 +132,8 @@ async def _get_full_mission(db, mission_id: str) -> dict:
     cursor2 = await db.execute("SELECT COUNT(*) FROM devices WHERE mission_id=? AND enabled=1", (mission_id,))
     count = await cursor2.fetchone()
     d["device_count"] = count[0] if count else 0
-    # Count events (respecting detection_reset_at if set)
-    # Normalize ISO format to space-separated for comparison with stored timestamps
-    reset_at = d.get("detection_reset_at")
-    if reset_at:
-        reset_at_norm = _normalize_reset_at(reset_at)
-        cursor3 = await db.execute("SELECT COUNT(*) FROM events WHERE mission_id=? AND timestamp > ?", (mission_id, reset_at_norm))
-    else:
-        cursor3 = await db.execute("SELECT COUNT(*) FROM events WHERE mission_id=?", (mission_id,))
+    # Count all events (reset only affects live feed, not total count)
+    cursor3 = await db.execute("SELECT COUNT(*) FROM events WHERE mission_id=?", (mission_id,))
     ecount = await cursor3.fetchone()
     d["event_count"] = ecount[0] if ecount else 0
     return d
@@ -152,7 +146,7 @@ async def list_missions():
     rows = await cursor.fetchall()
     missions = [_row_to_dict(r) for r in rows]
 
-    # Bulk-count devices and events per mission (events respect detection_reset_at)
+    # Bulk-count devices and events per mission (total count, reset only affects live feed)
     dc = await db.execute("SELECT mission_id, COUNT(*) FROM devices WHERE mission_id != '' AND enabled=1 GROUP BY mission_id")
     dev_counts = {r[0]: r[1] for r in await dc.fetchall()}
     ec = await db.execute("SELECT mission_id, COUNT(*) FROM events GROUP BY mission_id")
@@ -160,14 +154,7 @@ async def list_missions():
 
     for m in missions:
         m["device_count"] = dev_counts.get(m["id"], 0)
-        reset_at = m.get("detection_reset_at")
-        if reset_at:
-            reset_at_norm = _normalize_reset_at(reset_at)
-            rc = await db.execute("SELECT COUNT(*) FROM events WHERE mission_id=? AND timestamp > ?", (m["id"], reset_at_norm))
-            rrow = await rc.fetchone()
-            m["event_count"] = rrow[0] if rrow else 0
-        else:
-            m["event_count"] = evt_counts_all.get(m["id"], 0)
+        m["event_count"] = evt_counts_all.get(m["id"], 0)
     return missions
 
 
