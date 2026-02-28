@@ -277,6 +277,49 @@ async def list_sketches():
     return sketches
 
 
+@router.get("/sketches/{name}")
+async def get_sketch_content(name: str):
+    """Get the source code of a firmware sketch."""
+    sketch_dir = os.path.join(FIRMWARE_DIR, name)
+    if not os.path.isdir(sketch_dir):
+        raise HTTPException(status_code=404, detail="Firmware introuvable")
+    ino_files = [f for f in os.listdir(sketch_dir) if f.endswith(".ino")]
+    if not ino_files:
+        raise HTTPException(status_code=404, detail="Aucun fichier .ino")
+    filepath = os.path.join(sketch_dir, ino_files[0])
+    with open(filepath, "r") as f:
+        content = f.read()
+    return {"name": name, "file": ino_files[0], "content": content}
+
+
+@router.put("/sketches/{name}")
+async def update_sketch_content(name: str, body: dict):
+    """Update the source code of a firmware sketch."""
+    content = body.get("content", "")
+    if not content.strip():
+        raise HTTPException(status_code=400, detail="Contenu vide")
+    sketch_dir = os.path.join(FIRMWARE_DIR, name)
+    if not os.path.isdir(sketch_dir):
+        raise HTTPException(status_code=404, detail="Firmware introuvable")
+    ino_files = [f for f in os.listdir(sketch_dir) if f.endswith(".ino")]
+    if not ino_files:
+        raise HTTPException(status_code=404, detail="Aucun fichier .ino")
+    filepath = os.path.join(sketch_dir, ino_files[0])
+    with open(filepath, "w") as f:
+        f.write(content)
+    return {"ok": True, "name": name}
+
+
+@router.delete("/sketches/{name}")
+async def delete_sketch(name: str):
+    """Delete a firmware sketch directory."""
+    sketch_dir = os.path.join(FIRMWARE_DIR, name)
+    if not os.path.isdir(sketch_dir):
+        raise HTTPException(status_code=404, detail="Firmware introuvable")
+    shutil.rmtree(sketch_dir)
+    return {"ok": True, "name": name}
+
+
 @router.post("/upload-sketch")
 async def upload_sketch(
     file: UploadFile = File(...),

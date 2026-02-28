@@ -122,9 +122,14 @@ export default function LoginPage() {
         </CardContent>
       </Card>
 
-      <p className="text-[10px] text-muted-foreground/50 text-center mt-6 font-mono">
-        THEIA Hub Control v1.0
-      </p>
+      <div className="flex flex-col items-center gap-0.5 mt-8">
+        <p className="text-[10px] text-muted-foreground tracking-wider">
+          {'© 2026 Yoann ETE'}
+        </p>
+        <p className="text-[9px] italic text-muted-foreground/60">
+          {"THEIA - La ou l'oeil est aveugle, l'onde revele"}
+        </p>
+      </div>
     </div>
   )
 }
