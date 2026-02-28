@@ -110,6 +110,13 @@ export default function MissionDetailPage() {
   // Force fresh device list on mount (in case devices were unassigned on another page)
   useEffect(() => { mutateDevices() }, [mutateDevices])
 
+  // Warn if mission is not active (detections won't be recorded)
+  useEffect(() => {
+    if (mission && mission.status !== "active" && missionDevices.length > 0) {
+      console.warn("[THEIA] Mission is not active -- detections will NOT be recorded. Status:", mission.status)
+    }
+  }, [mission, missionDevices.length])
+
   const [drawingMode, setDrawingMode] = useState(false)
   const [calibrationMode, setCalibrationMode] = useState(false)
   const [feedDeviceFilter, setFeedDeviceFilter] = useState<string>("all")
@@ -460,13 +467,17 @@ export default function MissionDetailPage() {
     if (!mission) return
     const zone = (mission.zones ?? []).find((z) => z.id === zoneId)
     try {
-      await updateDevice(deviceId, {
+      const result = await updateDevice(deviceId, {
         mission_id: id,
         zone_id: zoneId,
         zone_label: zone?.label ?? "",
         side: side ?? "",
         sensor_position: sensorPos ?? 0.5,
       } as Partial<import("@/lib/types").Device>)
+      // Verify the PATCH actually set the correct mission_id
+      if (result && (result as Record<string, unknown>).mission_id !== id) {
+        console.error("[THEIA] assignDevice: mission_id not set correctly!", result)
+      }
     } catch (err) {
       console.warn("[THEIA] Failed to update device during assign:", err)
     }

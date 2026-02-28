@@ -1,7 +1,7 @@
 "use client"
 
 import { useState, useCallback, useEffect, useRef } from "react"
-import { Radio, Battery, Signal, Plus, Trash2, Cpu, Upload, Terminal, X } from "lucide-react"
+import { Radio, Battery, Signal, Plus, Trash2, Cpu, Upload, Terminal, X, ChevronDown, Power } from "lucide-react"
 import { TopHeader } from "@/components/top-header"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
@@ -505,6 +505,61 @@ export default function DevicesPage() {
               )}
             </CardContent>
           </Card>
+          {/* Disabled devices section */}
+          {disabledDevices.length > 0 && (
+            <details className="group">
+              <summary className="flex items-center gap-2 cursor-pointer select-none list-none py-2 text-muted-foreground hover:text-foreground transition-colors">
+                <ChevronDown className="h-3.5 w-3.5 transition-transform group-open:rotate-180" />
+                <span className="text-[11px] uppercase tracking-widest font-medium">
+                  Devices desactives ({disabledDevices.length})
+                </span>
+              </summary>
+              <Card className="border-border/50 bg-card/50 mt-1">
+                <CardContent className="py-3">
+                  <div className="flex flex-col gap-2">
+                    {disabledDevices.map((device) => (
+                      <div
+                        key={device.id}
+                        className="flex items-center justify-between gap-3 rounded-md border border-border/30 bg-muted/30 px-3 py-2"
+                      >
+                        <div className="flex items-center gap-3 min-w-0">
+                          <Signal className="h-3 w-3 text-muted-foreground/40 shrink-0" />
+                          <div className="min-w-0">
+                            <p className="text-xs font-mono font-medium text-muted-foreground truncate">{device.name}</p>
+                            <p className="text-[10px] text-muted-foreground/60">
+                              {device.type ?? "microwave_tx"} -- {device.serial_port || "no port"}
+                            </p>
+                          </div>
+                        </div>
+                        <div className="flex items-center gap-1.5 shrink-0">
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            className="h-7 text-[10px] px-2 gap-1 border-success/30 text-success hover:bg-success/10"
+                            onClick={async () => {
+                              await updateDevice(device.id, { enabled: true } as never)
+                              mutate()
+                            }}
+                          >
+                            <Power className="h-3 w-3" />
+                            Activer
+                          </Button>
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            className="h-7 text-[10px] px-2 gap-1 border-destructive/30 text-destructive hover:bg-destructive/10"
+                            onClick={() => handleDelete(device.id)}
+                          >
+                            <Trash2 className="h-3 w-3" />
+                          </Button>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </CardContent>
+              </Card>
+            </details>
+          )}
           {/* Battery consumption chart */}
           <BatteryChart />
         </div>

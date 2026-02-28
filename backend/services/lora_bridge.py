@@ -756,6 +756,15 @@ class LoRaBridge:
                         cooldown_key = ("device_offline", device_id)
                         last_notif = self._watchdog_cooldown.get(cooldown_key, 0)
                         if now_ts - last_notif > 3600:
+                            # Check DB for existing non-dismissed offline notif (survives restarts)
+                            existing = await db.execute(
+                                "SELECT id FROM notifications WHERE device_id=? AND type='device_offline' AND dismissed=0 LIMIT 1",
+                                (device_id,),
+                            )
+                            if await existing.fetchone():
+                                # Already has an active offline notification -- skip
+                                self._watchdog_cooldown[cooldown_key] = now_ts
+                                continue
                             self._watchdog_cooldown[cooldown_key] = now_ts
                             await db.execute(
                                 "INSERT INTO notifications (type, severity, device_id, device_name, message) VALUES (?, ?, ?, ?, ?)",
