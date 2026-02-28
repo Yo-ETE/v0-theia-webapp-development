@@ -419,11 +419,28 @@ export default function AdminPage() {
       if (result.status === "success") {
         setSystemMessage("Mise a jour terminee. Redemarrage des services...")
         await fetchVersionInfo()
+        // Clear auth token (will be invalid after restart)
+        localStorage.removeItem("theia_token")
         setTimeout(async () => {
           try {
             await fetch("/api/admin/restart-services", { method: "POST" })
-            setSystemMessage("Services redemarres. La page va se recharger...")
-            setTimeout(() => window.location.reload(), 2000)
+            setSystemMessage("Services redemarres. Reconnexion en cours...")
+            // Poll until the new frontend is available, then redirect to login
+            const pollUntilReady = async (retries = 30) => {
+              for (let i = 0; i < retries; i++) {
+                await new Promise(r => setTimeout(r, 3000))
+                setSystemMessage(`Attente du redemarrage... (${i + 1}/${retries})`)
+                try {
+                  const r = await fetch("/login", { method: "HEAD", cache: "no-store" })
+                  if (r.ok) {
+                    window.location.href = "/login"
+                    return
+                  }
+                } catch { /* service not ready yet */ }
+              }
+              setSystemMessage("Timeout -- rechargez la page manuellement.")
+            }
+            await pollUntilReady()
           } catch { setSystemMessage("Veuillez redemarrer les services manuellement.") }
         }, 1000)
       }
