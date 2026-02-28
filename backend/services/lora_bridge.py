@@ -42,6 +42,7 @@ class PortReader:
         self._last_insert_ts: dict[str, float] = {}
         self._last_empty_ts: dict[str, float] = {}
         self._presence_count: dict[str, int] = {}
+        self._presence_window: dict[str, list] = {}
         self._tx_validated: dict[str, bool] = {}
         self._PRESENCE_WITHOUT_EMPTY_LIMIT = 200
         self._mission_status_cache: dict[str, tuple[str, float]] = {}  # mission_id -> (status, timestamp)
@@ -395,14 +396,29 @@ class PortReader:
         }
 
         # --- SINGLE phantom gate (for ALL code paths) ---
-        # Validation: explicit EMPTY frame OR 5+ consecutive presence frames.
+        # Validation: explicit EMPTY frame OR 2+ consecutive presence frames.
+        # Uses a sliding window of last N frames to be resilient to occasional
+        # no-presence frames interleaved with real detections.
         phantom_key = tx_id or self.port
+        PHANTOM_CONSEC = 2          # consecutive presence frames to auto-validate
+        PHANTOM_WINDOW = 6          # sliding window size
+        PHANTOM_RATIO_THRESH = 3    # min presence frames in window to validate
+
+        # Update sliding window (True=presence, False=absence)
+        window = self._presence_window.get(phantom_key, [])
+        window.append(presence)
+        if len(window) > PHANTOM_WINDOW:
+            window = window[-PHANTOM_WINDOW:]
+        self._presence_window[phantom_key] = window
+
         if presence and not self._tx_validated.get(phantom_key, False):
             count = self._presence_count.get(phantom_key, 0) + 1
             self._presence_count[phantom_key] = count
-            if count >= 5:
+            # Validate if 2+ consecutive OR 3+ in last 6 frames
+            presence_in_window = sum(1 for v in window if v)
+            if count >= PHANTOM_CONSEC or presence_in_window >= PHANTOM_RATIO_THRESH:
                 self._tx_validated[phantom_key] = True
-                print(f"[THEIA] TX {phantom_key} auto-validated after {count} consecutive frames")
+                print(f"[THEIA] TX {phantom_key} auto-validated (consec={count}, window={presence_in_window}/{len(window)})")
             else:
                 presence = False
                 effective_distance = 0
@@ -410,7 +426,6 @@ class PortReader:
                 payload["distance"] = 0
         elif presence and self._tx_validated.get(phantom_key, False):
             # TX is validated -- allow all presence through.
-            # Just track the counter for diagnostics.
             self._presence_count[phantom_key] = self._presence_count.get(phantom_key, 0) + 1
         elif not presence:
             self._presence_count[phantom_key] = 0
@@ -547,9 +562,6 @@ class PortReader:
         else:
             sensor_type = "ld2450"
 
-        if presence:
-            print(f"[THEIA-LD45] PRESENCE tx={tx_id} x={x} y={y} d={d} v={v} port={self.port}")
-
         # Phantom suppression handled in _handle_detection (single gate)
         await self._handle_detection(
             tx_id=tx_id, sensor_type=sensor_type,
@@ -619,14 +631,21 @@ class PortReader:
         distance = 0
         if isinstance(payload, dict):
             distance = int(payload.get("distance", 0) or 0)
-        # Phantom gate for JSON path: auto-validate after 5 frames (like _handle_detection)
+        # Phantom gate for JSON path (same logic as _handle_detection)
         phantom_key = dev_eui or self.port
+        window = self._presence_window.get(phantom_key, [])
+        window.append(presence)
+        if len(window) > 6:
+            window = window[-6:]
+        self._presence_window[phantom_key] = window
+
         if presence and not self._tx_validated.get(phantom_key, False):
             count = self._presence_count.get(phantom_key, 0) + 1
             self._presence_count[phantom_key] = count
-            if count >= 5:
+            presence_in_window = sum(1 for v in window if v)
+            if count >= 2 or presence_in_window >= 3:
                 self._tx_validated[phantom_key] = True
-                print(f"[THEIA] TX {phantom_key} auto-validated (JSON path) after {count} frames")
+                print(f"[THEIA] TX {phantom_key} auto-validated (JSON path, consec={count}, window={presence_in_window}/{len(window)})")
             else:
                 presence = False
                 distance = 0
