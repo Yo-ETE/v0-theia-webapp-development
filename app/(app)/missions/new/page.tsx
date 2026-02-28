@@ -137,6 +137,7 @@ export default function NewMissionPage() {
           const backendBase = `http://${window.location.hostname}:8000`
           const uploadRes = await fetch(`${backendBase}/api/missions/${mission.id}/plan-image`, {
             method: "POST",
+            credentials: "include",
             headers: {
               "Content-Type": planFile.type || "application/octet-stream",
               "X-Filename": planFile.name,

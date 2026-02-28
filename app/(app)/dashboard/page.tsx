@@ -65,7 +65,7 @@ export default function DashboardPage() {
   const handleDismiss = async (id: number) => {
     const base = getBackendBase()
     if (base) {
-      await fetch(`${base}/api/notifications/${id}`, { method: "DELETE" })
+      await fetch(`${base}/api/notifications/${id}`, { method: "DELETE", credentials: "include" })
       mutateNotifs()
     }
   }
@@ -73,7 +73,7 @@ export default function DashboardPage() {
   const handleDismissAll = async () => {
     const base = getBackendBase()
     if (base) {
-      await fetch(`${base}/api/notifications/dismiss-all`, { method: "POST" })
+      await fetch(`${base}/api/notifications/dismiss-all`, { method: "POST", credentials: "include" })
       mutateNotifs()
     }
   }

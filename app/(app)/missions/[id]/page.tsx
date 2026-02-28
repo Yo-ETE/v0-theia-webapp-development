@@ -1333,6 +1333,7 @@ export default function MissionDetailPage() {
                               const backendBase = typeof window !== "undefined" ? `http://${window.location.hostname}:8000` : ""
                               const res = await fetch(`${backendBase}/api/missions/${id}/plan-image`, {
                                 method: "POST",
+                                credentials: "include",
                                 headers: {
                                   "Content-Type": file.type || "application/octet-stream",
                                   "X-Filename": file.name,
@@ -1925,8 +1926,8 @@ export default function MissionDetailPage() {
                       // Call both proxy and backend directly to ensure deletion
                       const backendUrl = window.location.protocol + "//" + window.location.hostname + ":8000"
                       await Promise.allSettled([
-                        fetch(`/api/events?mission_id=${id}`, { method: "DELETE" }),
-                        fetch(`${backendUrl}/api/events?mission_id=${id}`, { method: "DELETE" }),
+                        fetch(`/api/events?mission_id=${id}`, { method: "DELETE", credentials: "include" }),
+                        fetch(`${backendUrl}/api/events?mission_id=${id}`, { method: "DELETE", credentials: "include" }),
                       ])
                       // Clear SWR cache, do NOT revalidate (backend may insert stale events)
                       await mutateEvents([], false)

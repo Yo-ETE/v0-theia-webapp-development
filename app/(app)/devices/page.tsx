@@ -61,7 +61,7 @@ export default function DevicesPage() {
 
     const init = async () => {
       try {
-        const res = await fetch(`${backendBase}/api/firmware/ports`)
+        const res = await fetch(`${backendBase}/api/firmware/ports`, { credentials: "include" })
         if (!res.ok || cancelled) return
         const data = await res.json()
         const portList: PortInfo[] = data.ports ?? data
@@ -90,7 +90,7 @@ export default function DevicesPage() {
     const interval = setInterval(async () => {
       if (!baselineReady || cancelled) return
       try {
-        const res = await fetch(`${backendBase}/api/firmware/ports`)
+        const res = await fetch(`${backendBase}/api/firmware/ports`, { credentials: "include" })
         if (!res.ok || cancelled) return
         const data = await res.json()
         const portList: PortInfo[] = data.ports ?? data
@@ -154,7 +154,7 @@ export default function DevicesPage() {
     let cancelled = false
     setPortVerifying(true)
     setPortVerified(null)
-    fetch(`${backendBase}/api/firmware/verify-port?port=${encodeURIComponent(flashForm.port)}`)
+    fetch(`${backendBase}/api/firmware/verify-port?port=${encodeURIComponent(flashForm.port)}`, { credentials: "include" })
     .then(r => r.json())
     .then(data => {
       if (!cancelled) {
@@ -196,6 +196,7 @@ export default function DevicesPage() {
         try {
           const upRes = await fetch(`${backendBase}/api/firmware/upload-sketch`, {
             method: "POST",
+            credentials: "include",
             body: uploadData,
           })
           if (upRes.ok) {
@@ -219,6 +220,7 @@ export default function DevicesPage() {
 
       const res = await fetch(`${backendBase}/api/firmware/flash`, {
         method: "POST",
+        credentials: "include",
         headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         port: flashForm.port,

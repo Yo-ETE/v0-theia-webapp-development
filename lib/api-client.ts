@@ -4,6 +4,20 @@
 
 const API_BASE = "/api"
 
+/**
+ * Authenticated fetch wrapper. Always sends credentials (cookies).
+ * Use this instead of raw `fetch()` for any request to the backend.
+ */
+export function authFetch(url: string, init?: RequestInit): Promise<Response> {
+  return fetch(url, {
+    ...init,
+    credentials: "include",
+    headers: {
+      ...init?.headers,
+    },
+  })
+}
+
 // Direct backend URL for write operations (bypasses Next.js API routes entirely)
 // On the Pi, Next.js and FastAPI run on the same host.
 // We derive the backend URL from the current browser location.

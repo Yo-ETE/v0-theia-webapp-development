@@ -29,11 +29,11 @@ const fetcher = async (url: string) => {
   const base = getBackendBase()
   if (base) {
     try {
-      const r = await fetch(`${base}${url}`)
+      const r = await fetch(`${base}${url}`, { credentials: "include" })
       if (r.ok) return r.json()
     } catch { /* fall through */ }
   }
-  const r = await fetch(url)
+  const r = await fetch(url, { credentials: "include" })
   if (!r.ok) throw new Error(`API ${r.status}`)
   return r.json()
 }

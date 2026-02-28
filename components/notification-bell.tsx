@@ -17,13 +17,13 @@ function getBackendBase(): string | null {
 async function apiPost(path: string) {
   const base = getBackendBase()
   if (!base) return
-  await fetch(`${base}/api${path}`, { method: "POST" })
+  await fetch(`${base}/api${path}`, { method: "POST", credentials: "include" })
 }
 
 async function apiDelete(path: string) {
   const base = getBackendBase()
   if (!base) return
-  await fetch(`${base}/api${path}`, { method: "DELETE" })
+  await fetch(`${base}/api${path}`, { method: "DELETE", credentials: "include" })
 }
 
 function notifIcon(type: string) {

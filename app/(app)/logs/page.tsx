@@ -48,7 +48,7 @@ export default function LogsPage() {
     async function load() {
       setSystemLoading(true)
       try {
-        const res = await fetch(`${getBackendBase()}/api/logs/system?unit=${systemUnit}&lines=300`)
+        const res = await fetch(`${getBackendBase()}/api/logs/system?unit=${systemUnit}&lines=300`, { credentials: "include" })
         if (res.ok) {
           const data = await res.json()
           if (!cancelled) setSystemLogs(data.map((d: { line: string }) => d.line))
