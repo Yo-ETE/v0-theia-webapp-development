@@ -783,25 +783,8 @@ export default function MissionDetailPage() {
 
   const statusCfg = missionStatusConfig[mission.status] ?? missionStatusConfig.draft
   const zones = mission.zones ?? []
-  const resetAt = mission.detection_reset_at ?? null
-  // Normalize timestamps for comparison (backend stores "YYYY-MM-DD HH:MM:SS", reset uses ISO "...T...Z")
-  // If the reset_at contains a UTC indicator (Z or T), convert to local time for proper comparison
-  const normalizeTs = (ts: string) => {
-    const isUTC = ts.includes("Z") || (ts.includes("T") && !ts.includes(" "))
-    if (isUTC) {
-      // Parse as UTC and convert to local time string
-      const d = new Date(ts)
-      if (!isNaN(d.getTime())) {
-        const pad = (n: number) => String(n).padStart(2, "0")
-        return `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`
-      }
-    }
-    return ts.replace("T", " ").replace("Z", "").replace(/\.\d+$/, "").split("+")[0]
-  }
-  const resetAtNorm = resetAt ? normalizeTs(resetAt) : null
-  const eventList = (events ?? []).filter(e =>
-    !resetAtNorm || !e.timestamp || normalizeTs(e.timestamp) > resetAtNorm
-  )
+  // eventList = ALL recorded events (history tab). Reset only affects the live feed, not history.
+  const eventList = events ?? []
 
   // ── Environment / mode detection ──
   const env = mission?.environment ?? "habitation"
