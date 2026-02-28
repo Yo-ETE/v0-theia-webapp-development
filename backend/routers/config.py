@@ -642,6 +642,83 @@ async def git_version():
         }
 
 
+# ── Timezone ──────────────────────────────────────────────────────
+
+@router.get("/timezone")
+async def get_timezone():
+    """Get current system timezone."""
+    try:
+        def _get():
+            result = subprocess.run(
+                ["timedatectl", "show", "--property=Timezone", "--value"],
+                capture_output=True, text=True, timeout=5,
+            )
+            tz = result.stdout.strip() or "UTC"
+            # Also get current local time
+            time_result = subprocess.run(
+                ["date", "+%Y-%m-%d %H:%M:%S %Z"],
+                capture_output=True, text=True, timeout=5,
+            )
+            return {"timezone": tz, "localTime": time_result.stdout.strip()}
+        return await asyncio.get_event_loop().run_in_executor(None, _get)
+    except Exception as e:
+        return {"timezone": "UTC", "localTime": "", "error": str(e)}
+
+
+@router.post("/timezone")
+async def set_timezone(request):
+    """Set system timezone (e.g. Europe/Paris)."""
+    try:
+        from starlette.requests import Request
+        body = await request.json()
+        tz = body.get("timezone", "").strip()
+        if not tz:
+            return {"status": "error", "message": "Timezone manquant"}
+
+        def _set():
+            result = subprocess.run(
+                ["sudo", "timedatectl", "set-timezone", tz],
+                capture_output=True, text=True, timeout=10,
+            )
+            if result.returncode != 0:
+                return {"status": "error", "message": result.stderr.strip() or "Erreur timedatectl"}
+            # Verify
+            check = subprocess.run(
+                ["timedatectl", "show", "--property=Timezone", "--value"],
+                capture_output=True, text=True, timeout=5,
+            )
+            new_tz = check.stdout.strip()
+            now_result = subprocess.run(
+                ["date", "+%Y-%m-%d %H:%M:%S %Z"],
+                capture_output=True, text=True, timeout=5,
+            )
+            return {
+                "status": "success",
+                "message": f"Fuseau horaire mis a jour: {new_tz}",
+                "timezone": new_tz,
+                "localTime": now_result.stdout.strip(),
+            }
+        return await asyncio.get_event_loop().run_in_executor(None, _set)
+    except Exception as e:
+        return {"status": "error", "message": str(e)}
+
+
+@router.get("/timezone/list")
+async def list_timezones():
+    """List available timezones."""
+    try:
+        def _list():
+            result = subprocess.run(
+                ["timedatectl", "list-timezones"],
+                capture_output=True, text=True, timeout=10,
+            )
+            zones = [z.strip() for z in result.stdout.strip().split("\n") if z.strip()]
+            return {"timezones": zones}
+        return await asyncio.get_event_loop().run_in_executor(None, _list)
+    except Exception as e:
+        return {"timezones": ["Europe/Paris", "UTC"], "error": str(e)}
+
+
 # ── System ────────────────────────────────────────────────────────
 
 @router.post("/apt/update")

@@ -102,6 +102,7 @@ export interface Floor {
   level: number
   label: string
   devices: string[]
+  device_history?: string[]
 }
 
 // ─── Devices (TX) ────────────────────────────────────────────────

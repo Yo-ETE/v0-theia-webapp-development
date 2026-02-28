@@ -4,11 +4,8 @@ Field names aligned with frontend: center_lat, center_lon, zoom, environment, lo
 """
 import json
 import uuid
-from datetime import datetime, timezone
-from zoneinfo import ZoneInfo
+from datetime import datetime
 from fastapi import APIRouter, HTTPException, Request
-
-LOCAL_TZ = ZoneInfo("Europe/Paris")
 from pydantic import BaseModel, Field
 from backend.database import get_db
 
@@ -50,9 +47,10 @@ class MissionUpdate(BaseModel):
     detection_reset_at: str | None = None
     started_at: str | None = None
     ended_at: str | None = None
-    visual_config: dict | str | None = None
-    device_count: int | None = None
-    event_count: int | None = None
+  visual_config: dict | str | None = None
+  device_placements: dict | str | None = None
+  device_count: int | None = None
+  event_count: int | None = None
 
 
 def _row_to_dict(row) -> dict:
@@ -70,6 +68,12 @@ def _row_to_dict(row) -> dict:
             d["visual_config"] = json.loads(d["visual_config"])
         except Exception:
             d["visual_config"] = None
+    # Parse device_placements JSON
+    if "device_placements" in d and isinstance(d["device_placements"], str):
+        try:
+            d["device_placements"] = json.loads(d["device_placements"])
+        except Exception:
+            d["device_placements"] = {}
     # Ensure all expected fields exist
     d.setdefault("environment", "horizontal")
     d.setdefault("center_lat", 48.8566)
@@ -86,6 +90,7 @@ def _row_to_dict(row) -> dict:
     d.setdefault("plan_scale", None)
     d.setdefault("detection_reset_at", None)
     d.setdefault("visual_config", None)
+    d.setdefault("device_placements", {})
     return d
 
 
@@ -153,7 +158,7 @@ async def create_mission(body: MissionCreate):
     db = await get_db()
     # Use client-provided ID if present, otherwise generate one
     mid = body.id if body.id else str(uuid.uuid4())[:8]
-    now = datetime.now(LOCAL_TZ).strftime("%Y-%m-%d %H:%M:%S")
+    now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     await db.execute(
         """INSERT INTO missions
            (id, name, description, location, environment, center_lat, center_lon, zoom, zones, floors,
@@ -204,8 +209,16 @@ async def patch_mission(mission_id: str, body: MissionUpdate):
             updates["visual_config"] = vc  # already JSON string
         else:
             updates["visual_config"] = json.dumps(vc)
+    if "device_placements" in updates:
+        dp = updates["device_placements"]
+        if dp is None:
+            updates["device_placements"] = "{}"
+        elif isinstance(dp, str):
+            updates["device_placements"] = dp
+        else:
+            updates["device_placements"] = json.dumps(dp)
 
-    updates["updated_at"] = datetime.now(LOCAL_TZ).strftime("%Y-%m-%d %H:%M:%S")
+    updates["updated_at"] = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
 
     if "status" in updates:
         print(f"[THEIA] Mission {mission_id} status -> {updates['status']}")
@@ -302,7 +315,7 @@ async def upload_plan_image(mission_id: str, request: Request):
     plan_url = f"/api/missions/{mission_id}/plan-image/file"
     await db.execute(
         "UPDATE missions SET plan_image=?, plan_width=?, plan_height=?, updated_at=? WHERE id=?",
-        (plan_url, plan_width, plan_height, datetime.now(LOCAL_TZ).strftime("%Y-%m-%d %H:%M:%S"), mission_id),
+        (plan_url, plan_width, plan_height, datetime.now().strftime("%Y-%m-%d %H:%M:%S"), mission_id),
     )
     await db.commit()
     print(f"[THEIA] Plan image DB updated: plan_url={plan_url}, w={plan_width}, h={plan_height}")

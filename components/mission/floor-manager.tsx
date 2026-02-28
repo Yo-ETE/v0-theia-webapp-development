@@ -94,12 +94,19 @@ export function FloorManager({
   const [assignDialog, setAssignDialog] = useState<number | null>(null)
   const [selectedDevice, setSelectedDevice] = useState("")
 
-  // Build device_id -> floor level map from two sources:
-  // 1. Currently assigned devices (devices prop)
-  // 2. Mission floor config (floors[].devices[]) -- persists even after unassignment
+  // Build device_id -> floor level map from three sources:
+  // 1. Device history (oldest fallback -- persists after unassignment for replay)
+  // 2. Current floor config (floors[].devices[])
+  // 3. Live devices (most recent, override)
   const deviceFloorMap = useMemo(() => {
     const map = new Map<string, number>()
-    // From floors config (fallback for unassigned devices)
+    // From device_history (oldest data, for replay of unassigned devices)
+    for (const f of floors) {
+      for (const did of (f.device_history || [])) {
+        map.set(did, f.level)
+      }
+    }
+    // From floors config (current assignments)
     for (const f of floors) {
       for (const did of f.devices) {
         map.set(did, f.level)
@@ -230,13 +237,18 @@ export function FloorManager({
   }, [assignDialog, selectedDevice, floors, onFloorsChange, onDeviceAssign])
 
   const unassignFromFloor = useCallback((deviceId: string, level: number) => {
-    onDeviceUnassign(deviceId)
-    const updated = floors.map(f =>
-      f.level === level
-        ? { ...f, devices: f.devices.filter(id => id !== deviceId) }
-        : f
-    )
-    onFloorsChange(updated)
+  onDeviceUnassign(deviceId)
+  const updated = floors.map(f =>
+  f.level === level
+  ? {
+      ...f,
+      devices: f.devices.filter(id => id !== deviceId),
+      // Keep device in history for timelapse replay (even after unassignment)
+      device_history: [...new Set([...(f.device_history || []), deviceId])],
+    }
+  : f
+  )
+  onFloorsChange(updated)
   }, [floors, onFloorsChange, onDeviceUnassign])
 
   const openAddDialog = useCallback(() => {

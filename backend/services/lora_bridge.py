@@ -18,10 +18,7 @@ import json
 import math
 import os
 import time
-from datetime import datetime, timezone
-from zoneinfo import ZoneInfo
-
-LOCAL_TZ = ZoneInfo("Europe/Paris")
+from datetime import datetime
 
 from backend.database import get_db
 from backend.sse import sse_manager
@@ -364,7 +361,7 @@ class PortReader:
             except (KeyError, IndexError):
                 pass
 
-        now_iso = datetime.now(LOCAL_TZ).strftime("%Y-%m-%d %H:%M:%S")
+        now_iso = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
         if device_id:
             await db.execute(
                 "UPDATE devices SET battery=?, last_seen=?, rssi=?, serial_port=? WHERE id=?",
@@ -581,7 +578,7 @@ class PortReader:
         db = await get_db()
         await db.execute(
             "UPDATE devices SET rssi=?, snr=?, last_seen=? WHERE dev_eui=?",
-            (rssi, snr, datetime.now(LOCAL_TZ).strftime("%Y-%m-%d %H:%M:%S"), dev_eui),
+            (rssi, snr, datetime.now().strftime("%Y-%m-%d %H:%M:%S"), dev_eui),
         )
 
         cursor = await db.execute(
@@ -660,7 +657,7 @@ class PortReader:
             "rssi": rssi,
             "snr": snr,
             "payload": payload,
-            "timestamp": datetime.now(LOCAL_TZ).strftime("%Y-%m-%d %H:%M:%S"),
+            "timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
         })
 
 

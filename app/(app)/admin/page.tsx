@@ -41,7 +41,7 @@ import {
   Scale,
   ChevronDown,
   ChevronRight,
-
+  Clock,
 } from "lucide-react"
 import { TopHeader } from "@/components/top-header"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
@@ -233,6 +233,15 @@ export default function AdminPage() {
   const [isShuttingDown, setIsShuttingDown] = useState(false)
   const [isRestarting, setIsRestarting] = useState(false)
   const [systemMessage, setSystemMessage] = useState<string | null>(null)
+
+  // Timezone
+  const [currentTz, setCurrentTz] = useState<string>("")
+  const [currentLocalTime, setCurrentLocalTime] = useState<string>("")
+  const [tzList, setTzList] = useState<string[]>([])
+  const [selectedTz, setSelectedTz] = useState<string>("")
+  const [tzSearch, setTzSearch] = useState("")
+  const [isSavingTz, setIsSavingTz] = useState(false)
+  const [tzMessage, setTzMessage] = useState<{ type: "success" | "error"; text: string } | null>(null)
 
   // Licence / Guide
   const [showLicence, setShowLicence] = useState(false)
@@ -454,6 +463,39 @@ export default function AdminPage() {
     } catch { setBackupMessage("Erreur lors de la suppression") }
   }
 
+  const fetchTimezone = useCallback(async () => {
+    try {
+      const [tzData, listData] = await Promise.all([
+        api.get("timezone"),
+        api.get("timezone/list"),
+      ])
+      setCurrentTz(tzData.timezone || "UTC")
+      setCurrentLocalTime(tzData.localTime || "")
+      setSelectedTz(tzData.timezone || "UTC")
+      setTzList(listData.timezones || [])
+    } catch { /* ignore */ }
+  }, [])
+
+  const handleSetTimezone = async () => {
+    if (!selectedTz || selectedTz === currentTz) return
+    setIsSavingTz(true)
+    setTzMessage(null)
+    try {
+      const result = await api.post("timezone", { timezone: selectedTz })
+      if (result.status === "success") {
+        setCurrentTz(result.timezone)
+        setCurrentLocalTime(result.localTime || "")
+        setTzMessage({ type: "success", text: result.message })
+      } else {
+        setTzMessage({ type: "error", text: result.message })
+      }
+    } catch {
+      setTzMessage({ type: "error", text: "Erreur lors du changement de fuseau horaire" })
+    } finally {
+      setIsSavingTz(false)
+    }
+  }
+
   const handleRestartServices = async () => {
     setIsRestarting(true)
     try {
@@ -490,6 +532,7 @@ export default function AdminPage() {
     fetchBranches()
     fetchBackups()
     fetchTailscale()
+    fetchTimezone()
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
@@ -1133,6 +1176,78 @@ export default function AdminPage() {
                     </div>
                   )}
                 </div>
+              )}
+            </CardContent>
+          </Card>
+
+          {/* ── Timezone ── */}
+          <Card className="border-border/50 bg-card">
+            <CardHeader>
+              <div className="flex items-center gap-3">
+                <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-primary/10">
+                  <Clock className="h-5 w-5 text-primary" />
+                </div>
+                <div className="flex-1 min-w-0">
+                  <CardTitle className="text-base">Fuseau horaire</CardTitle>
+                  <CardDescription className="truncate">
+                    {currentTz || "---"} {currentLocalTime ? `- ${currentLocalTime}` : ""}
+                  </CardDescription>
+                </div>
+                <Button variant="outline" size="sm" onClick={fetchTimezone} className="bg-transparent shrink-0">
+                  <RefreshCw className="h-4 w-4" />
+                </Button>
+              </div>
+            </CardHeader>
+            <CardContent className="flex flex-col gap-3">
+              <div>
+                <Label className="text-xs text-muted-foreground mb-1 block">Rechercher un fuseau</Label>
+                <Input
+                  value={tzSearch}
+                  onChange={(e) => setTzSearch(e.target.value)}
+                  placeholder="Ex: Paris, Tokyo, New_York..."
+                  className="h-8 text-xs bg-transparent"
+                />
+              </div>
+              {tzList.length > 0 && (
+                <div>
+                  <Label className="text-xs text-muted-foreground mb-1 block">Fuseau horaire</Label>
+                  <ScrollArea className="h-32 rounded-md border border-border/50">
+                    <div className="p-1">
+                      {tzList
+                        .filter(tz => !tzSearch || tz.toLowerCase().includes(tzSearch.toLowerCase()))
+                        .slice(0, 50)
+                        .map(tz => (
+                          <button
+                            key={tz}
+                            onClick={() => setSelectedTz(tz)}
+                            className={cn(
+                              "w-full text-left px-2 py-1 rounded text-xs transition-colors",
+                              selectedTz === tz ? "bg-primary text-primary-foreground" : "hover:bg-secondary/50 text-foreground"
+                            )}
+                          >
+                            {tz}
+                          </button>
+                        ))}
+                    </div>
+                  </ScrollArea>
+                </div>
+              )}
+              <div className="flex items-center gap-2">
+                <Badge variant="outline" className="text-xs font-mono">{selectedTz || currentTz}</Badge>
+                <Button
+                  onClick={handleSetTimezone}
+                  disabled={isSavingTz || !selectedTz || selectedTz === currentTz}
+                  size="sm"
+                  className="ml-auto gap-1"
+                >
+                  {isSavingTz ? <Loader2 className="h-3 w-3 animate-spin" /> : <CheckCircle2 className="h-3 w-3" />}
+                  Appliquer
+                </Button>
+              </div>
+              {tzMessage && (
+                <Alert variant={tzMessage.type === "error" ? "destructive" : "default"} className="py-2">
+                  <AlertDescription className="text-xs">{tzMessage.text}</AlertDescription>
+                </Alert>
               )}
             </CardContent>
           </Card>

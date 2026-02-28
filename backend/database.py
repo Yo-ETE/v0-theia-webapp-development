@@ -243,4 +243,9 @@ async def init_tables(db: aiosqlite.Connection):
         await db.execute("ALTER TABLE missions ADD COLUMN visual_config TEXT DEFAULT NULL")
     except Exception:
         pass
+    # Mission device_placements (persists TX positions for replay after unassignment)
+    try:
+        await db.execute("ALTER TABLE missions ADD COLUMN device_placements TEXT DEFAULT '{}'")
+    except Exception:
+        pass
     await db.commit()

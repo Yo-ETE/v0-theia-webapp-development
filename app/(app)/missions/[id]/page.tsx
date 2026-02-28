@@ -494,8 +494,21 @@ export default function MissionDetailPage() {
         ? { ...z, devices: [...z.devices, deviceId] }
         : z
     )
+    // Persist device placement in mission history (for replay after unassignment)
+    const existingPlacements = (mission as Record<string, unknown>).device_placements as Record<string, unknown> ?? {}
+    const deviceObj = (allDevices ?? []).find(d => d.id === deviceId)
+    const updatedPlacements = {
+      ...existingPlacements,
+      [deviceId]: {
+        zone_id: zoneId,
+        side: side ?? "",
+        sensor_position: sensorPos ?? 0.5,
+        orientation: deviceObj?.orientation ?? "inward",
+        device_name: deviceObj?.name ?? deviceId,
+      },
+    }
     try {
-      const updated = await updateMission(id, { zones })
+      const updated = await updateMission(id, { zones, device_placements: updatedPlacements } as Record<string, unknown>)
       mutate(updated, false)
     } catch (err) {
       console.warn("[THEIA] Failed to update mission during assign:", err)
@@ -799,21 +812,39 @@ export default function MissionDetailPage() {
       orientation: (d.orientation as "inward" | "outward") ?? "inward",
     }))
   // Reconstruct placements from historical events (preserves positions at time of recording)
+  // Falls back to mission.device_placements (persisted at assignment time) for old events
+  const savedPlacements = (mission as Record<string, unknown>)?.device_placements as Record<string, Record<string, unknown>> ?? {}
   const historicalPlacements = (() => {
     if (!events || events.length === 0) return []
     const seen = new Map<string, (typeof livePlacements)[0]>()
     for (const e of events) {
       const did = e.device_id ?? ""
       if (!did || !e.zone_id || !e.side || seen.has(did)) continue
+      // Fallback: use mission-level saved placement for sensor_position/orientation
+      const saved = savedPlacements[did]
       seen.set(did, {
         device_id: did,
-        device_name: e.device_name ?? did,
+        device_name: e.device_name ?? (saved?.device_name as string) ?? did,
         zone_id: e.zone_id,
         side: e.side,
-        sensor_position: e.sensor_position ?? 0.5,
+        sensor_position: e.sensor_position ?? (saved?.sensor_position as number) ?? 0.5,
         device_type: "",
-        orientation: (e.orientation as "inward" | "outward") ?? "inward",
+        orientation: (e.orientation ?? saved?.orientation ?? "inward") as "inward" | "outward",
       })
+    }
+    // Also add devices from saved placements that have no events (assigned but no detection yet)
+    for (const [did, p] of Object.entries(savedPlacements)) {
+      if (!seen.has(did) && p.zone_id && p.side) {
+        seen.set(did, {
+          device_id: did,
+          device_name: (p.device_name as string) ?? did,
+          zone_id: p.zone_id as string,
+          side: p.side as string,
+          sensor_position: (p.sensor_position as number) ?? 0.5,
+          device_type: "",
+          orientation: (p.orientation as "inward" | "outward") ?? "inward",
+        })
+      }
     }
     return Array.from(seen.values())
   })()
