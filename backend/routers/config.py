@@ -3,6 +3,7 @@ THEIA - Configuration endpoints
 WiFi scan/connect, Ethernet status, Tailscale VPN, Backups, Git branches.
 """
 import asyncio
+import json
 import os
 import subprocess
 import glob
@@ -460,110 +461,142 @@ async def git_fetch(body: dict = None):
 
 @router.post("/git/update")
 async def git_update(body: dict = None):
-    """Update from git with optional branch switch."""
+    """Update from git with SSE streaming progress.
+    Runs: git stash -> git pull -> chmod +x install.sh -> sudo bash install.sh
+    Then schedules a delayed service restart via nohup so the response completes.
+    """
+    from fastapi.responses import StreamingResponse
+    import queue as _queue
+
     branch = (body or {}).get("branch", "")
-    try:
-        repo_dir = os.getenv("THEIA_REPO", os.path.expanduser("~/theia"))
+    repo_dir = os.getenv("THEIA_REPO", os.path.expanduser("~/theia"))
 
-        def _update():
-            lines = []
-            commands = []
+    msg_queue: _queue.Queue = _queue.Queue()
 
-            # Get current commit before update
-            old_hash = subprocess.run(
-                ["git", "rev-parse", "--short", "HEAD"],
-                capture_output=True, text=True, cwd=repo_dir, timeout=5
-            ).stdout.strip()
+    def _run_update():
+        """Execute the full update in a background thread, pushing SSE messages."""
+        def send(step: str, detail: str = "", status: str = "running"):
+            msg_queue.put(json.dumps({"step": step, "detail": detail, "status": status}))
 
-            # Stash any local changes first
-            commands.append("git stash")
-            stash_r = subprocess.run(
+        try:
+            # 1. git stash
+            send("git stash", "Sauvegarde des modifications locales...")
+            r = subprocess.run(
                 ["git", "stash"], capture_output=True, text=True, cwd=repo_dir, timeout=10
             )
-            lines.append(stash_r.stdout.strip())
+            send("git stash", r.stdout.strip() or "OK", "done")
 
-            commands.append("git fetch --quiet")
-            subprocess.run(["git", "fetch", "--quiet"], capture_output=True, text=True, cwd=repo_dir, timeout=15)
-
+            # 2. git fetch
+            send("git fetch", "Recuperation des commits distants...")
+            cmd_fetch = ["git", "fetch", "--quiet", "origin"]
             if branch:
-                cmd = f"git checkout {branch}"
-                commands.append(cmd)
+                cmd_fetch.append(branch)
+            subprocess.run(cmd_fetch, capture_output=True, text=True, cwd=repo_dir, timeout=30)
+            send("git fetch", "OK", "done")
+
+            # 3. git checkout (if branch specified)
+            if branch:
+                send("git checkout", f"Passage sur la branche {branch}...")
                 r = subprocess.run(
                     ["git", "checkout", branch],
                     capture_output=True, text=True, cwd=repo_dir, timeout=15
                 )
-                lines.append(r.stdout.strip())
+                out = r.stdout.strip() or r.stderr.strip() or "OK"
+                send("git checkout", out, "done" if r.returncode == 0 else "error")
                 if r.returncode != 0:
-                    lines.append(r.stderr.strip())
+                    send("FINISHED", out, "error")
+                    msg_queue.put(None)
+                    return
 
-            commands.append("git pull")
+            # 4. git pull
+            send("git pull", "Telechargement des mises a jour...")
             r = subprocess.run(
-                ["git", "pull"],
-                capture_output=True, text=True, cwd=repo_dir, timeout=30
+                ["git", "pull"], capture_output=True, text=True, cwd=repo_dir, timeout=60
             )
-            lines.append(r.stdout.strip())
+            pull_out = r.stdout.strip() or r.stderr.strip() or "OK"
+            send("git pull", pull_out, "done" if r.returncode == 0 else "error")
             if r.returncode != 0:
-                lines.append(r.stderr.strip())
-                return {"status": "error", "output": "\n".join(lines), "commands": commands, "commits": []}
+                send("FINISHED", pull_out, "error")
+                msg_queue.put(None)
+                return
 
-            # Get new commits since old hash
-            commits = []
+            # 5. install.sh
+            install_sh = os.path.join(repo_dir, "install.sh")
+            if os.path.exists(install_sh):
+                send("install.sh", "Lancement de install.sh (peut prendre quelques minutes)...")
+                subprocess.run(["chmod", "+x", install_sh], cwd=repo_dir, timeout=5)
+                proc = subprocess.Popen(
+                    ["sudo", "bash", install_sh],
+                    stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
+                    text=True, cwd=repo_dir
+                )
+                last_lines = []
+                for line in proc.stdout:
+                    line = line.rstrip()
+                    if line:
+                        last_lines.append(line)
+                        # Stream last meaningful lines to frontend
+                        send("install.sh", line)
+                proc.wait()
+                if proc.returncode == 0:
+                    send("install.sh", "install.sh termine avec succes", "done")
+                else:
+                    detail = last_lines[-1] if last_lines else f"Exit code {proc.returncode}"
+                    send("install.sh", f"install.sh erreur: {detail}", "error")
+            else:
+                # No install.sh -- do pip install + npm build manually
+                venv_pip = "/opt/theia/.venv/bin/pip"
+                req_file = os.path.join(repo_dir, "backend", "requirements.txt")
+                if os.path.exists(venv_pip) and os.path.exists(req_file):
+                    send("pip install", "Installation des dependances Python...")
+                    subprocess.run(
+                        ["sudo", venv_pip, "install", "-r", req_file, "-q"],
+                        capture_output=True, text=True, cwd=repo_dir, timeout=120
+                    )
+                    send("pip install", "OK", "done")
+
+                send("npm build", "Build du frontend Next.js...")
+                subprocess.run(
+                    ["sudo", "-u", "theia", "npm", "run", "build"],
+                    capture_output=True, text=True,
+                    cwd=os.path.join(repo_dir, "app") if os.path.isdir(os.path.join(repo_dir, "app")) else repo_dir,
+                    timeout=300
+                )
+                send("npm build", "OK", "done")
+
+            # 6. Schedule service restart with nohup (so this API can finish responding)
+            send("restart", "Redemarrage des services dans 3 secondes...")
+            subprocess.Popen(
+                ["bash", "-c", "sleep 3 && sudo systemctl restart theia-api theia-web"],
+                stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+                start_new_session=True
+            )
+            send("restart", "Redemarrage programme", "done")
+
+            send("FINISHED", "Mise a jour terminee. Les services vont redemarrer.", "success")
+        except Exception as e:
+            send("FINISHED", str(e), "error")
+        finally:
+            msg_queue.put(None)  # Signal end of stream
+
+    # Start update in background thread
+    import threading
+    t = threading.Thread(target=_run_update, daemon=True)
+    t.start()
+
+    async def event_generator():
+        while True:
             try:
-                log_result = subprocess.run(
-                    ["git", "log", f"{old_hash}..HEAD", "--pretty=format:%h|%s|%ai|%an", "--max-count=20"],
-                    capture_output=True, text=True, cwd=repo_dir, timeout=5
-                )
-                if log_result.returncode == 0 and log_result.stdout.strip():
-                    for line in log_result.stdout.strip().split("\n"):
-                        parts = line.split("|", 3)
-                        if len(parts) >= 4:
-                            commits.append({
-                                "hash": parts[0],
-                                "message": parts[1],
-                                "date": parts[2][:16],
-                                "author": parts[3],
-                            })
-            except Exception:
-                pass
+                msg = await asyncio.get_event_loop().run_in_executor(None, msg_queue.get, True, 0.5)
+            except _queue.Empty:
+                # Send keepalive comment
+                yield ": keepalive\n\n"
+                continue
+            if msg is None:
+                break
+            yield f"data: {msg}\n\n"
 
-            # Run install if exists
-            install = os.path.join(repo_dir, "install.sh")
-            if os.path.exists(install):
-                commands.append("chmod +x install.sh")
-                subprocess.run(["chmod", "+x", "install.sh"], cwd=repo_dir, timeout=5)
-
-                commands.append("sudo bash install.sh")
-                r2 = subprocess.run(
-                    ["sudo", "bash", "install.sh"],
-                    capture_output=True, text=True, cwd=repo_dir, timeout=300
-                )
-                lines.append(r2.stdout.strip()[-500:] if r2.stdout else "")
-
-            # pip install for new dependencies
-            venv_pip = "/opt/theia/.venv/bin/pip"
-            req_file = os.path.join(repo_dir, "backend", "requirements.txt")
-            if os.path.exists(venv_pip) and os.path.exists(req_file):
-                commands.append(f"{venv_pip} install -r backend/requirements.txt")
-                subprocess.run(
-                    ["sudo", venv_pip, "install", "-r", req_file],
-                    capture_output=True, text=True, cwd=repo_dir, timeout=120
-                )
-
-            # Restart services
-            for svc in ("theia-api", "theia-web"):
-                commands.append(f"sudo systemctl restart {svc}")
-                subprocess.run(
-                    ["sudo", "systemctl", "restart", svc],
-                    capture_output=True, text=True, timeout=30
-                )
-            lines.append("Services restarted")
-
-            return {"status": "success", "output": "\n".join(lines), "commands": commands, "commits": commits}
-
-        data = await asyncio.get_event_loop().run_in_executor(None, _update)
-        return data
-    except Exception as e:
-        return {"status": "error", "output": str(e), "commands": [], "commits": []}
+    return StreamingResponse(event_generator(), media_type="text/event-stream")
 
 
 # ── Git Version Info ──────────────────────────────────────────────

@@ -410,67 +410,135 @@ export default function AdminPage() {
     setIsUpdating(true)
     setUpdateOutput(null)
     setUpdateResult(null)
+
+    // Build a live steps array that we update in real-time
+    const liveSteps: Array<{ name: string; status: string; output: string }> = []
+    const updateLiveResult = (status?: string) => {
+      setUpdateResult({
+        status: status || "running",
+        output: "",
+        commands: [],
+        commits: [],
+        steps: [...liveSteps],
+      } as GitUpdateResult)
+    }
+
     try {
       const body: Record<string, string> = { branch: branchToUse }
       if (selectedCommit) body.commit = selectedCommit
-      const result: GitUpdateResult = await api.post("git/update", body)
-      setUpdateOutput(result.output || "")
-      setUpdateResult(result)
-      if (result.status === "success") {
-        setSystemMessage("Mise a jour terminee. Redemarrage des services...")
-        await fetchVersionInfo()
-        // Clear auth token (will be invalid after restart)
+      const backendBase = `http://${window.location.hostname}:8000`
+      const token = localStorage.getItem("theia_token")
+      const headers: Record<string, string> = { "Content-Type": "application/json" }
+      if (token) headers["Authorization"] = `Bearer ${token}`
+
+      // Start SSE streaming update
+      const res = await fetch(`${backendBase}/api/config/git/update`, {
+        method: "POST",
+        credentials: "include",
+        headers,
+        body: JSON.stringify(body),
+      })
+
+      if (!res.ok || !res.body) {
+        setSystemMessage("Erreur de connexion au serveur")
+        setIsUpdating(false)
+        return
+      }
+
+      const reader = res.body.getReader()
+      const decoder = new TextDecoder()
+      let buffer = ""
+      let finalStatus = "running"
+
+      while (true) {
+        const { done, value } = await reader.read()
+        if (done) break
+        buffer += decoder.decode(value, { stream: true })
+
+        // Parse SSE lines
+        const lines = buffer.split("\n")
+        buffer = lines.pop() || ""
+
+        for (const line of lines) {
+          if (!line.startsWith("data: ")) continue
+          try {
+            const msg = JSON.parse(line.slice(6))
+            const { step, detail, status } = msg as { step: string; detail: string; status: string }
+
+            if (step === "FINISHED") {
+              finalStatus = status
+              continue
+            }
+
+            // Find existing step or create new one
+            const existing = liveSteps.find(s => s.name === step)
+            if (existing) {
+              if (status === "done" || status === "error") {
+                existing.status = status
+                existing.output = detail
+              } else {
+                // Running status -- append detail lines
+                existing.output = detail
+              }
+            } else {
+              liveSteps.push({
+                name: step,
+                status: status === "done" || status === "error" ? status : "running",
+                output: detail,
+              })
+            }
+            updateLiveResult()
+          } catch { /* skip malformed lines */ }
+        }
+      }
+
+      // Final update
+      updateLiveResult(finalStatus)
+
+      if (finalStatus === "success") {
+        // Clear auth token and chunk guard
         localStorage.removeItem("theia_token")
-        // Clear chunk reload guard so error.tsx auto-reloads cleanly
         sessionStorage.removeItem("theia_chunk_reload")
 
-        const backendBase = `http://${window.location.hostname}:8000`
-        const _t = localStorage.getItem("theia_token")
-        const _h: Record<string, string> = _t ? { Authorization: `Bearer ${_t}` } : {}
+        // Poll until frontend is back (services restart in 3s via nohup)
+        const pollStep = { name: "Attente du redemarrage", status: "running" as string, output: "" }
+        liveSteps.push(pollStep)
+        updateLiveResult("success")
 
-        setTimeout(async () => {
+        // Wait for services to stop
+        await new Promise(r => setTimeout(r, 5000))
+
+        for (let i = 0; i < 40; i++) {
+          pollStep.output = `Tentative ${i + 1}/40...`
+          updateLiveResult("success")
+          await new Promise(r => setTimeout(r, 3000))
           try {
-            // Restart services via the backend directly (Next.js might be down)
-            await fetch(`${backendBase}/api/admin/restart-services`, {
-              method: "POST", credentials: "include", headers: _h,
-            }).catch(() => {})
-
-            setSystemMessage("Services en cours de redemarrage...")
-
-            // Poll the backend health endpoint (FastAPI restarts faster than Next.js)
-            const pollUntilReady = async (retries = 40) => {
-              // Wait 5s for services to actually stop before polling
-              await new Promise(r => setTimeout(r, 5000))
-
-              for (let i = 0; i < retries; i++) {
-                setSystemMessage(`Attente du redemarrage... (${i + 1}/${retries})`)
-                await new Promise(r => setTimeout(r, 3000))
-                try {
-                  // Check if frontend is back (Next.js rebuilt)
-                  const r = await fetch(`/login?_t=${Date.now()}`, {
-                    method: "HEAD",
-                    cache: "no-store",
-                    headers: { "Cache-Control": "no-cache" },
-                  })
-                  if (r.ok) {
-                    setSystemMessage("THEIA est pret. Redirection...")
-                    // Clear caches before redirect
-                    if ("caches" in window) {
-                      const keys = await caches.keys()
-                      await Promise.all(keys.map(k => caches.delete(k)))
-                    }
-                    window.location.href = `/login?_t=${Date.now()}`
-                    return
-                  }
-                } catch { /* service not ready yet */ }
+            const r = await fetch(`/login?_t=${Date.now()}`, {
+              method: "HEAD", cache: "no-store",
+              headers: { "Cache-Control": "no-cache" },
+            })
+            if (r.ok) {
+              pollStep.status = "done"
+              pollStep.output = "THEIA est pret. Redirection..."
+              updateLiveResult("success")
+              // Clear caches before redirect
+              if ("caches" in window) {
+                const keys = await caches.keys()
+                await Promise.all(keys.map(k => caches.delete(k)))
               }
-              setSystemMessage("Timeout -- rechargez la page manuellement (Ctrl+Shift+R).")
+              await new Promise(r => setTimeout(r, 1000))
+              window.location.href = `/login?_t=${Date.now()}`
+              return
             }
-            await pollUntilReady()
-          } catch { setSystemMessage("Veuillez redemarrer les services manuellement.") }
-        }, 1000)
+          } catch { /* not ready */ }
+        }
+        pollStep.status = "error"
+        pollStep.output = "Timeout -- rechargez la page manuellement (Ctrl+Shift+R)"
+        updateLiveResult("success")
       }
-    } catch { setSystemMessage("Erreur lors de la mise a jour") }
+    } catch (e) {
+      setSystemMessage(`Erreur: ${e instanceof Error ? e.message : "connexion perdue"}`)
+    }
     finally { setIsUpdating(false) }
   }
 
