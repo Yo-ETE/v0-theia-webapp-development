@@ -17,8 +17,10 @@ function bearerHeaders(extra?: Record<string, string>): Record<string, string> {
   return h
 }
 
+// Routes that have a matching Next.js proxy (only these should fallback to :3000)
+const PROXIED_ROUTES = ["/api/config/", "/api/stream"]
+
 const fetcher = async (url: string) => {
-  // For /api/* paths, try the FastAPI backend directly first
   const backendBase = getBackendBase()
   if (backendBase && url.startsWith("/api/")) {
     try {
@@ -28,18 +30,25 @@ const fetcher = async (url: string) => {
         headers: bearerHeaders({ "Content-Type": "application/json" }),
       })
       if (r.ok) return r.json()
-      // If 401, don't fallback -- redirect to login
+      // If 401, redirect to login
       if (r.status === 401) {
         window.location.href = "/login"
         throw new Error("Session expired")
       }
+      // Other HTTP errors -- throw so SWR retries
+      throw new Error(`Backend: ${r.status}`)
     } catch (e) {
-      // If it's our own 401 redirect, rethrow
       if (e instanceof Error && e.message === "Session expired") throw e
-      // Backend unreachable -- fall through to Next.js route
+      // Backend unreachable -- only fallback to Next.js proxy if route is proxied
+      const hasProxy = PROXIED_ROUTES.some(p => url.startsWith(p))
+      if (!hasProxy) {
+        // No proxy route exists -- throw so SWR retries later (keeps previous data)
+        throw new Error("Backend unreachable")
+      }
+      // Fall through to Next.js proxy
     }
   }
-  // Fallback: Next.js API route
+  // Fallback: Next.js API route (only for proxied routes)
   const r = await fetch(url, { credentials: "include" })
   if (!r.ok) throw new Error(`API Error: ${r.status}`)
   return r.json()
