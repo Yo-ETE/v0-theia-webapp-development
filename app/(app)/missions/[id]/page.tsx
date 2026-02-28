@@ -110,13 +110,6 @@ export default function MissionDetailPage() {
   // Force fresh device list on mount (in case devices were unassigned on another page)
   useEffect(() => { mutateDevices() }, [mutateDevices])
 
-  // Warn if mission is not active (detections won't be recorded)
-  useEffect(() => {
-    if (mission && mission.status !== "active" && missionDevices.length > 0) {
-      console.warn("[THEIA] Mission is not active -- detections will NOT be recorded. Status:", mission.status)
-    }
-  }, [mission, missionDevices.length])
-
   const [drawingMode, setDrawingMode] = useState(false)
   const [calibrationMode, setCalibrationMode] = useState(false)
   const [feedDeviceFilter, setFeedDeviceFilter] = useState<string>("all")

@@ -143,11 +143,12 @@ export async function updateDevice(id: string, data: Partial<import("./types").D
   }
 }
 
-export async function deleteDevice(id: string) {
+export async function deleteDevice(id: string, hard = false) {
+  const qs = hard ? "?hard=true" : ""
   try {
-    return await directBackendRequest<{ ok: boolean }>(`/devices/${id}`, { method: "DELETE" })
+    return await directBackendRequest<{ ok: boolean }>(`/devices/${id}${qs}`, { method: "DELETE" })
   } catch {
-    return request<{ ok: boolean }>(`/devices/${id}`, { method: "DELETE" })
+    return request<{ ok: boolean }>(`/devices/${id}${qs}`, { method: "DELETE" })
   }
 }
 

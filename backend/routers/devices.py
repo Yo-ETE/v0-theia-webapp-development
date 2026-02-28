@@ -208,30 +208,39 @@ async def get_battery_history(device_id: str, hours: int = 24):
 
 
 @router.delete("/{device_id}")
-async def delete_device(device_id: str):
+async def delete_device(device_id: str, hard: bool = False):
     db = await get_db()
     # Check device exists
-    cursor = await db.execute("SELECT id, name, dev_eui FROM devices WHERE id=?", (device_id,))
+    cursor = await db.execute("SELECT id, name, dev_eui, enabled FROM devices WHERE id=?", (device_id,))
     row = await cursor.fetchone()
     if not row:
         raise HTTPException(status_code=404, detail="Device not found")
 
     device = dict(row)
 
-    # ── Soft-delete: set enabled=0 so the bridge ignores future frames ──
-    # (Hard DELETE would cause the bridge to auto-re-create the device
-    #  as soon as it receives a LoRa frame from this TX)
-    await db.execute(
-        "UPDATE devices SET enabled=0, mission_id=NULL, zone=NULL, zone_id=NULL, zone_label=NULL, side=NULL WHERE id=?",
-        (device_id,),
-    )
-    await db.commit()
+    if hard:
+        # Hard DELETE: completely remove the device from DB
+        # (Use for already-disabled devices that will never come back)
+        await db.execute("DELETE FROM devices WHERE id=?", (device_id,))
+        await db.commit()
+        await db.execute(
+            "INSERT INTO logs (level, source, message) VALUES (?, ?, ?)",
+            ("info", "api", f"Device hard-deleted: {device.get('name', '')} ({device.get('dev_eui', '')})"),
+        )
+        await db.commit()
+    else:
+        # ── Soft-delete: set enabled=0 so the bridge ignores future frames ──
+        # (Hard DELETE would cause the bridge to auto-re-create the device
+        #  as soon as it receives a LoRa frame from this TX)
+        await db.execute(
+            "UPDATE devices SET enabled=0, mission_id=NULL, zone=NULL, zone_id=NULL, zone_label=NULL, side=NULL WHERE id=?",
+            (device_id,),
+        )
+        await db.commit()
+        await db.execute(
+            "INSERT INTO logs (level, source, message) VALUES (?, ?, ?)",
+            ("info", "api", f"Device disabled: {device.get('name', '')} ({device.get('dev_eui', '')})"),
+        )
+        await db.commit()
 
-    # Log the deletion
-    await db.execute(
-        "INSERT INTO logs (level, source, message) VALUES (?, ?, ?)",
-        ("info", "api", f"Device disabled: {device.get('name', '')} ({device.get('dev_eui', '')})"),
-    )
-    await db.commit()
-
-    return {"ok": True, "deleted": device_id}
+    return {"ok": True, "deleted": device_id, "hard": hard}

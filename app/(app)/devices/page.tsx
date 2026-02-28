@@ -548,7 +548,11 @@ export default function DevicesPage() {
                             variant="outline"
                             size="sm"
                             className="h-7 text-[10px] px-2 gap-1 border-destructive/30 text-destructive hover:bg-destructive/10"
-                            onClick={() => handleDelete(device.id, device.name)}
+                            onClick={async () => {
+                              if (!confirm(`Supprimer definitivement "${device.name}" ? Cette action est irreversible.`)) return
+                              try { await deleteDevice(device.id, true) } catch (err) { console.error("[v0] Hard delete failed:", err) }
+                              mutate()
+                            }}
                           >
                             <Trash2 className="h-3 w-3" />
                           </Button>
