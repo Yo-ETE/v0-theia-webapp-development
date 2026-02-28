@@ -99,7 +99,7 @@ theia/
       devices/            # Capteurs TX (provisioning, flash, monitoring)
       logs/               # Viewer logs (applicatifs + systeme Pi)
       admin/              # Configuration reseau, Git, sauvegardes
-    api/                  # API Routes (mock en preview, proxy en pi)
+    api/                  # API Routes (proxy vers FastAPI backend)
   components/             # Composants UI (shadcn + custom)
     dashboard/            # Cards status, alertes
     mission/              # Carte Leaflet, overlays, floor plans
@@ -107,7 +107,7 @@ theia/
     notification-bell.tsx # Cloche de notifications globale
     theia-footer.tsx      # Footer copyright global
   hooks/                  # use-api (SWR), use-sse (EventSource)
-  lib/                    # Types, mock-data, api-client, format
+  lib/                    # Types, api-client, format, utilitaires
   firmware/               # Sketches Arduino ESP32
     TX_LD2450/            # Template capteur HLK-LD2450
     TX_C4001/             # Template capteur DFRobot C4001
@@ -143,7 +143,7 @@ theia/
 
 ```bash
 cd ~
-git clone https://github.com/Yo-ETE/v0-theia-webapp-development.git theia
+git clone https://github.com/Yo-ETE/theia.git theia
 cd theia
 ```
 
@@ -240,7 +240,7 @@ sudo bash install.sh
 Le fichier `.env` est cree automatiquement par `install.sh` :
 
 ```bash
-# Mode : preview (mock) ou pi (reel)
+# Mode de fonctionnement
 NEXT_PUBLIC_MODE=pi
 NEXT_PUBLIC_API_URL=/api
 THEIA_BACKEND_URL=http://localhost:8000
