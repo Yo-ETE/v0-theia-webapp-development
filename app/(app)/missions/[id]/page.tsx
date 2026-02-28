@@ -1051,7 +1051,7 @@ export default function MissionDetailPage() {
                       FOV
                     </Button>
                   )}
-                  {!isPlanMode && !isFloorMode && missionDevices.length >= 2 && (
+                  {!isPlanMode && !isFloorMode && (missionDevices.length >= 2 || (timelapseMode && sensorPlacements.length >= 2)) && (
                     <Button
                       variant={estimatePosition ? "default" : "outline"}
                       size="sm"
@@ -1450,18 +1450,18 @@ export default function MissionDetailPage() {
                             FOV
                           </Button>
                         )}
-                        {!isFloorMode && missionDevices.length >= 2 && (
-                          <Button
-                            variant={estimatePosition ? "default" : "outline"}
-                            size="sm"
-                            className="min-h-[36px] text-[10px] px-2.5 gap-1"
-                            onClick={() => setEstimatePosition(!estimatePosition)}
-                          >
-                            <Crosshair className="h-3.5 w-3.5" />
-                            Position
-                          </Button>
-                        )}
-                      </div>
+                  {!isFloorMode && (missionDevices.length >= 2 || (timelapseMode && sensorPlacements.length >= 2)) && (
+                  <Button
+                    variant={estimatePosition ? "default" : "outline"}
+                    size="sm"
+                    className="min-h-[36px] text-[10px] px-2.5 gap-1"
+                    onClick={() => setEstimatePosition(!estimatePosition)}
+                  >
+                    <Crosshair className="h-3.5 w-3.5" />
+                    Position
+                  </Button>
+                  )}
+                  </div>
                       <DetectionTimelapse
                         missionId={id}
                         onDetection={handleReplayDetection}
@@ -1764,7 +1764,7 @@ export default function MissionDetailPage() {
                             FOV
                           </Button>
                         )}
-                        {!isFloorMode && missionDevices.length >= 2 && (
+                        {!isFloorMode && (missionDevices.length >= 2 || (timelapseMode && sensorPlacements.length >= 2)) && (
                           <Button
                             variant={estimatePosition ? "default" : "outline"}
                             size="sm"
