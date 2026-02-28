@@ -845,14 +845,17 @@ export default function MissionDetailPage() {
     const seen = new Map<string, (typeof livePlacements)[0]>()
     for (const e of events) {
       const did = e.device_id ?? ""
-      if (!did || !e.zone_id || !e.side || seen.has(did)) continue
-      // Fallback: use mission-level saved placement for sensor_position/orientation
+      if (!did || seen.has(did)) continue
+      // Fallback: use mission-level saved placement for zone_id/side/sensor_position/orientation
       const saved = savedPlacements[did]
+      const zoneId = e.zone_id || saved?.zone_id
+      const side = e.side || saved?.side
+      if (!zoneId || !side) continue
       seen.set(did, {
         device_id: did,
         device_name: e.device_name ?? saved?.device_name ?? did,
-        zone_id: e.zone_id,
-        side: e.side,
+        zone_id: zoneId,
+        side: side,
         sensor_position: e.sensor_position ?? saved?.sensor_position ?? 0.5,
         device_type: "",
         orientation: (e.orientation ?? saved?.orientation ?? "inward") as "inward" | "outward",

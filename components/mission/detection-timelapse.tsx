@@ -91,6 +91,7 @@ export function DetectionTimelapse({ missionId, onDetection, onClose }: Detectio
   // Rolling window: keep last detection per device within WINDOW_MS of current event
   const WINDOW_MS = 5000
   const lastDetByDeviceRef = useRef<Record<string, { det: LiveDetection; ts: number }>>({})
+  const skipNextEffectRef = useRef(false)
 
   // Fetch ALL detection events for this mission (same approach as history page)
   // then filter by date range client-side to avoid timezone mismatch issues
@@ -128,6 +129,11 @@ export function DetectionTimelapse({ missionId, onDetection, onClose }: Detectio
   // Feed detection at current index to parent using rolling window
   // Keeps recent detections from ALL devices within WINDOW_MS of current event
   useEffect(() => {
+    // Skip this effect when triggered by manual navigation (rewind/scrub/skip)
+    if (skipNextEffectRef.current) {
+      skipNextEffectRef.current = false
+      return
+    }
     if (!events.length || currentIdx >= events.length) {
       lastDetByDeviceRef.current = {}
       onDetection({})
@@ -249,7 +255,7 @@ export function DetectionTimelapse({ missionId, onDetection, onClose }: Detectio
               min={0}
               max={Math.max(0, events.length - 1)}
               value={currentIdx}
-              onChange={(e) => { lastDetByDeviceRef.current = {}; onDetection({}); setCurrentIdx(parseInt(e.target.value)); setPlaying(false) }}
+              onChange={(e) => { lastDetByDeviceRef.current = {}; onDetection({}); skipNextEffectRef.current = true; setCurrentIdx(parseInt(e.target.value)); setPlaying(false) }}
               className="w-full h-2 accent-primary"
             />
             <div className="flex items-center justify-between mt-1">
@@ -271,7 +277,7 @@ export function DetectionTimelapse({ missionId, onDetection, onClose }: Detectio
             <div className="flex items-center gap-1">
               <Button
                 variant="ghost" size="sm" className="h-10 w-10 sm:h-8 sm:w-8 p-0"
-                onClick={() => { lastDetByDeviceRef.current = {}; onDetection({}); setCurrentIdx(0); setPlaying(false) }}
+                onClick={() => { lastDetByDeviceRef.current = {}; onDetection({}); skipNextEffectRef.current = true; setCurrentIdx(0); setPlaying(false) }}
               >
                 <SkipBack className="h-4 w-4" />
               </Button>
@@ -284,7 +290,7 @@ export function DetectionTimelapse({ missionId, onDetection, onClose }: Detectio
               </Button>
               <Button
                 variant="ghost" size="sm" className="h-10 w-10 sm:h-8 sm:w-8 p-0"
-                onClick={() => { lastDetByDeviceRef.current = {}; onDetection({}); setCurrentIdx(events.length - 1) }}
+                onClick={() => { lastDetByDeviceRef.current = {}; onDetection({}); skipNextEffectRef.current = true; setCurrentIdx(events.length - 1) }}
               >
                 <SkipForward className="h-4 w-4" />
               </Button>
