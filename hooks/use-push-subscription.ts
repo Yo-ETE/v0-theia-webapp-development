@@ -98,10 +98,10 @@ export function usePushSubscription() {
       if (subscription) {
         const subJson = subscription.toJSON()
         // Remove from backend
-        await fetch(`${API_BASE}/api/push/subscribe`, {
+        await fetch(`${_getApi()}/api/push/subscribe`, {
           method: "DELETE",
           credentials: "include",
-          headers: { "Content-Type": "application/json" },
+          headers: { "Content-Type": "application/json", ..._bH() },
           body: JSON.stringify({
             endpoint: subJson.endpoint,
             keys: subJson.keys,
