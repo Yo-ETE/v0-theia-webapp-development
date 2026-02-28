@@ -15,12 +15,23 @@ _db: aiosqlite.Connection | None = None
 
 async def get_db() -> aiosqlite.Connection:
     global _db
+    if _db is not None:
+        try:
+            await _db.execute("SELECT 1")
+        except Exception:
+            print("[THEIA] DB connection lost, reconnecting...")
+            try:
+                await _db.close()
+            except Exception:
+                pass
+            _db = None
     if _db is None:
         os.makedirs(os.path.dirname(DB_PATH), exist_ok=True)
         _db = await aiosqlite.connect(DB_PATH)
         _db.row_factory = aiosqlite.Row
         await _db.execute("PRAGMA journal_mode=WAL")
         await _db.execute("PRAGMA foreign_keys=ON")
+        await _db.execute("PRAGMA busy_timeout=5000")
         await init_tables(_db)
     return _db
 

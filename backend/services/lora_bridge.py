@@ -26,6 +26,7 @@ from backend.sse import sse_manager
 DEFAULT_BAUD = int(os.getenv("LORA_BAUD_RATE", "115200"))
 LORA_SERIAL_PORT = os.getenv("LORA_SERIAL_PORT", "")
 SCAN_INTERVAL = 10
+_DEBUG = os.getenv("THEIA_DEBUG", "").lower() in ("1", "true", "yes")
 
 
 class PortReader:
@@ -362,13 +363,12 @@ class PortReader:
                     "INSERT INTO devices (id, dev_eui, name, type, serial_port, enabled) VALUES (?, ?, ?, ?, ?, 1)",
                     (did, tx_id, f"TX-{tx_id}", dev_type, self.port),
                 )
-                await db.commit()
-                print(f"[THEIA] Auto-enrolled new TX: {tx_id} ({sensor_type}) on {self.port}")
                 await db.execute(
                     "INSERT INTO logs (level, source, message) VALUES (?, ?, ?)",
                     ("info", "lora", f"Auto-enrolled TX {tx_id} ({sensor_type}) from {self.port}"),
                 )
                 await db.commit()
+                print(f"[THEIA] Auto-enrolled new TX: {tx_id} ({sensor_type}) on {self.port}")
                 cursor = await db.execute(
                     "SELECT id, mission_id, zone, zone_id, zone_label, side, name, type, muted, floor, sensor_position, orientation FROM devices WHERE id=?",
                     (did,),
@@ -493,7 +493,8 @@ class PortReader:
             presence_in_window = sum(1 for v in window if v)
             if count >= PHANTOM_CONSEC or presence_in_window >= PHANTOM_RATIO_THRESH:
                 self._tx_validated[phantom_key] = True
-                print(f"[THEIA] TX {phantom_key} auto-validated (consec={count}, window={presence_in_window}/{len(window)})")
+                if _DEBUG:
+                    print(f"[THEIA] TX {phantom_key} auto-validated (consec={count}, window={presence_in_window}/{len(window)})")
             else:
                 presence = False
                 effective_distance = 0
@@ -534,7 +535,8 @@ class PortReader:
                         "INSERT INTO events (mission_id, device_id, event_type, zone, rssi, snr, payload) VALUES (?, ?, ?, ?, ?, ?, ?)",
                         (mission_id, device_id, "detection", zone, self.last_rssi, 0, payload_json),
                     )
-                print(f"[THEIA-DB] INSERT event: d={d} dir={direction} zone_id={zone_id} mission={mission_id}")
+                if _DEBUG:
+                    print(f"[THEIA-DB] INSERT event: d={d} dir={direction} zone_id={zone_id} mission={mission_id}")
                 # Check notification rules for this mission
                 await self._check_notification_rules(mission_id, device_name or device_id or "", zone_id or "", d, direction if presence else "C")
         elif presence and mission_id and not mission_active:
