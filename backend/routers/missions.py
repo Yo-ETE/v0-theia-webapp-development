@@ -67,10 +67,10 @@ class MissionUpdate(BaseModel):
     started_at: str | None = None
     ended_at: str | None = None
     visual_config: dict | str | None = None
-  device_placements: dict | str | None = None
-  notification_config: dict | str | None = None
-  device_count: int | None = None
-  event_count: int | None = None
+    device_placements: dict | str | None = None
+    notification_config: dict | str | None = None
+    device_count: int | None = None
+    event_count: int | None = None
 
 
 def _row_to_dict(row) -> dict:
