@@ -8,7 +8,7 @@ export const missionStatusConfig: Record<
 > = {
   draft: {
     label: "DRAFT",
-    className: "border-muted-foreground/30 bg-muted text-muted-foreground",
+    className: "border-sky-500/30 bg-sky-500/10 text-sky-400",
   },
   active: {
     label: "ACTIVE",

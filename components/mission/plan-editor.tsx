@@ -540,10 +540,10 @@ export function PlanEditor({
               <polygon
                 points={polyStr}
                 fill={zone.color || "#3b82f6"}
-                fillOpacity={0.15}
+                fillOpacity={0.25}
                 stroke={zone.color || "#3b82f6"}
-                strokeWidth={2}
-                strokeOpacity={0.7}
+                strokeWidth={2.5}
+                strokeOpacity={0.9}
               />
               {/* Side labels */}
               {zone.polygon.map((pt, i) => {
@@ -557,8 +557,8 @@ export function PlanEditor({
                     y={mid[1]}
                     textAnchor="middle"
                     dominantBaseline="central"
-                    className="fill-foreground text-[10px] font-mono font-bold pointer-events-none"
-                    style={{ paintOrder: "stroke", stroke: "hsl(var(--background))", strokeWidth: 3 }}
+                    className="text-[10px] font-mono font-bold pointer-events-none"
+                    style={{ fill: "#ffffff", paintOrder: "stroke", stroke: "hsl(var(--background))", strokeWidth: 4 }}
                   >
                     {label}
                   </text>
@@ -575,8 +575,8 @@ export function PlanEditor({
                     y={sy}
                     textAnchor="middle"
                     dominantBaseline="central"
-                    className="fill-foreground text-[11px] font-semibold pointer-events-none"
-                    style={{ paintOrder: "stroke", stroke: "hsl(var(--background))", strokeWidth: 4 }}
+                    className="text-[12px] font-bold pointer-events-none"
+                    style={{ fill: zone.color || "#3b82f6", paintOrder: "stroke", stroke: "hsl(var(--background))", strokeWidth: 5 }}
                   >
                     {zone.name || zone.label}
                   </text>
@@ -730,11 +730,11 @@ export function PlanEditor({
             <polygon
               key={`det-${m.device_id}`}
               points={detPath}
-              fill="#f59e0b"
-              fillOpacity={0.15}
-              stroke="#f59e0b"
+              fill="#22c55e"
+              fillOpacity={0.12}
+              stroke="#22c55e"
               strokeWidth={1.5}
-              strokeOpacity={0.6}
+              strokeOpacity={0.5}
               className="pointer-events-none"
             />
           )
