@@ -1,10 +1,8 @@
 "use client"
 
-import { Bell, BellOff, Battery, Signal, Wifi, WifiOff, X, Volume2, VolumeX } from "lucide-react"
+import { Bell, BellOff, Battery, Signal, Wifi, WifiOff, X } from "lucide-react"
 import { useNotifications, useNotificationCount, type Notification } from "@/hooks/use-api"
-import { useNotificationSound } from "@/hooks/use-notification-sound"
 import { cn } from "@/lib/utils"
-import { useEffect } from "react"
 import {
   Popover,
   PopoverContent,
@@ -66,12 +64,6 @@ export function NotificationBell() {
   const { data: notifications, mutate: mutateNotifs } = useNotifications()
   const { data: countData, mutate: mutateCount } = useNotificationCount()
   const count = countData?.count ?? 0
-  const { soundEnabled, toggleSound, checkAndPlay } = useNotificationSound()
-
-  // Play sound when new notifications arrive
-  useEffect(() => {
-    checkAndPlay(count)
-  }, [count, checkAndPlay])
 
   const handleDismissAll = async () => {
     await apiPost("/notifications/dismiss-all")
@@ -123,18 +115,6 @@ export function NotificationBell() {
         <div className="flex items-center justify-between px-3 py-2 border-b border-border">
           <span className="text-xs font-semibold text-foreground">Notifications</span>
           <div className="flex items-center gap-1">
-            <button
-              onClick={toggleSound}
-              className={cn(
-                "flex items-center justify-center h-6 w-6 rounded transition-colors cursor-pointer",
-                soundEnabled
-                  ? "text-primary hover:bg-primary/10"
-                  : "text-muted-foreground/40 hover:text-muted-foreground hover:bg-muted"
-              )}
-              title={soundEnabled ? "Desactiver le son" : "Activer le son des notifications"}
-            >
-              {soundEnabled ? <Volume2 className="h-3 w-3" /> : <VolumeX className="h-3 w-3" />}
-            </button>
             {count > 0 && (
               <button
                 onClick={handleReadAll}

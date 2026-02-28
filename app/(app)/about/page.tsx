@@ -1,7 +1,5 @@
 "use client"
 
-import { TheiaFooter } from "@/components/theia-footer"
-
 export default function AboutPage() {
   return (
     <main className="flex-1 flex flex-col">
@@ -87,7 +85,6 @@ export default function AboutPage() {
           </div>
         </div>
       </div>
-      <TheiaFooter />
     </main>
   )
 }

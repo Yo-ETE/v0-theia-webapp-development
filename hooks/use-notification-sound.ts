@@ -81,5 +81,18 @@ export function useNotificationSound() {
     lastCountRef.current = count
   }, [enabled])
 
-  return { soundEnabled: enabled, toggleSound: toggle, checkAndPlay }
+  /**
+   * Play a detection ping immediately (if sound is enabled).
+   * Throttled to max once per 2 seconds to avoid spam.
+   */
+  const lastPlayRef = useRef(0)
+  const playDetection = useCallback(() => {
+    if (!enabled) return
+    const now = Date.now()
+    if (now - lastPlayRef.current < 2000) return
+    lastPlayRef.current = now
+    playRadarPing()
+  }, [enabled])
+
+  return { soundEnabled: enabled, toggleSound: toggle, checkAndPlay, playDetection }
 }

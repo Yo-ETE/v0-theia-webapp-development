@@ -9,6 +9,7 @@ import {
   Activity, Eye, EyeOff, Zap, Timer, Download, Signal, Battery, Wifi, Unlink,
   Flame, Crosshair, ArrowDownLeft, ArrowUpRight, Bell, BellOff,
   Maximize2, Minimize2, FileImage, Ruler, Palette, RotateCw,
+  Volume2, VolumeX,
 } from "lucide-react"
 import { TopHeader } from "@/components/top-header"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
@@ -38,6 +39,7 @@ import { useVisualConfig, VISUAL_DEFAULTS, type VisualConfigKey } from "@/hooks/
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
 import { Switch } from "@/components/ui/switch"
 import { useSSE } from "@/hooks/use-sse"
+import { useNotificationSound } from "@/hooks/use-notification-sound"
 import { updateMission, updateDevice } from "@/lib/api-client"
 import { missionStatusConfig, eventTypeConfig, deviceStatusConfig, formatRelative, formatTime, formatDateTime } from "@/lib/format"
 import { cn } from "@/lib/utils"
@@ -113,6 +115,9 @@ export default function MissionDetailPage() {
 
   // Force fresh device list on mount (in case devices were unassigned on another page)
   useEffect(() => { mutateDevices() }, [mutateDevices])
+
+  // Detection sound
+  const { soundEnabled, toggleSound, playDetection } = useNotificationSound()
 
   const [drawingMode, setDrawingMode] = useState(false)
   const [calibrationMode, setCalibrationMode] = useState(false)
@@ -238,6 +243,8 @@ export default function MissionDetailPage() {
         const next = [d, ...prev]
         return next.slice(0, 50)
       })
+      // Play detection sound (throttled to 1x / 2s)
+      playDetection()
       // Periodically refresh DB events list so history tab stays in sync
       sseCountRef.current += 1
       if (sseCountRef.current % 10 === 0) {
@@ -254,7 +261,7 @@ export default function MissionDetailPage() {
     if (d.device_id) {
       setLiveByDevice(prev => ({ ...prev, [d.device_id]: d }))
     }
-  }, [id, mutateEvents])
+  }, [id, mutateEvents, playDetection])
 
   useSSE(handleSSE)
 
@@ -947,11 +954,23 @@ export default function MissionDetailPage() {
                 <Link href="/missions"><ArrowLeft className="mr-1.5 h-4 w-4" />Missions</Link>
               </Button>
               <Button
+                variant={soundEnabled ? "secondary" : "ghost"}
+                size="sm"
+                className={cn(
+                  "min-h-[44px] min-w-[44px]",
+                  soundEnabled ? "text-primary" : "text-muted-foreground"
+                )}
+                onClick={toggleSound}
+                title={soundEnabled ? "Desactiver le son des detections" : "Activer le son des detections"}
+              >
+                {soundEnabled ? <Volume2 className="h-4 w-4" /> : <VolumeX className="h-4 w-4" />}
+              </Button>
+              <Button
                 variant={showNotifConfig ? "secondary" : "ghost"}
                 size="sm"
                 className="min-h-[44px] min-w-[44px] text-muted-foreground"
                 onClick={() => setShowNotifConfig(v => !v)}
-                title="Configurer les notifications"
+                title="Configurer les notifications push"
               >
                 <Bell className="h-4 w-4" />
               </Button>
