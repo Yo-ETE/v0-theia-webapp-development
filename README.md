@@ -13,7 +13,7 @@ les affiche sur une carte interactive, et fournit un tableau de bord operationne
 ## Architecture
 
 ```
-Capteurs MW (TX LoRa)  --433MHz-->  Heltec RX (USB)  -->  Raspberry Pi 5
+Capteurs MW (TX LoRa)  --868MHz-->  Heltec RX (USB)  -->  Raspberry Pi 5
                                                             |
                                                     +-------+-------+
                                                     |               |
