@@ -3,6 +3,7 @@
 import { useEffect, useState, useCallback, useRef } from "react"
 import type { Zone, DetectionEvent } from "@/lib/types"
 import { cn } from "@/lib/utils"
+import { useVisualConfig } from "@/hooks/use-visual-config"
 import HeatmapCanvas from "./heatmap-canvas"
 
 /** Group polygon edges by outward-normal bearing so colinear walls share the same facade letter */
@@ -226,6 +227,7 @@ export default function MapInner({
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const [RL, setRL] = useState<Record<string, any> | null>(null)
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const { config: vc } = useVisualConfig()
   const [leafletL, setLeafletL] = useState<any>(null)
   const [drawPoints, setDrawPoints] = useState<[number, number][]>([])
   const mapRef = useRef<unknown>(null)
@@ -1244,7 +1246,7 @@ export default function MapInner({
                 key={`place-edge-${zone.id}-${idx}`}
                 positions={[pt, nextPt]}
                 pathOptions={{
-                  color: "#22d3ee",
+                  color: vc.fov_overlay_color,
                   weight: 5,
                   opacity: 0.7,
                   dashArray: "8 4",
@@ -1374,7 +1376,7 @@ export default function MapInner({
         {/* When estimatePosition is on, show dashed lines to individual sensors but use a single averaged marker */}
         {sensorMarkers.filter(sm => sm.detectionPos).map((sm) => {
           const state = (sm.detection as LiveDetection & { _state?: string })?._state ?? "live"
-          const color = state === "live" ? "#22c55e" : "#f59e0b"
+          const color = state === "live" ? vc.detection_dot_live : vc.detection_dot_hold
           const opacity = state === "fading" ? 0.25 : state === "hold" ? 0.6 : 0.8
           return (
             <Polyline
@@ -1384,7 +1386,7 @@ export default function MapInner({
                 ? [sm.sensorPos, [estimatedPosition.lat, estimatedPosition.lon]]
                 : [sm.sensorPos, sm.detectionPos!]}
               pathOptions={{
-                color: estimatePosition ? "#3b82f6" : color,
+                color: estimatePosition ? vc.estimated_pos_color : color,
                 weight: 2,
                 dashArray: "4 3",
                 opacity: estimatePosition ? 0.5 : opacity,
@@ -1401,8 +1403,8 @@ export default function MapInner({
             center={[estimatedPosition.lat, estimatedPosition.lon]}
             radius={10}
             pathOptions={{
-              color: "#3b82f6",
-              fillColor: "#3b82f6",
+              color: vc.estimated_pos_color,
+              fillColor: vc.estimated_pos_color,
               fillOpacity: 0.7,
               weight: 3,
               opacity: 0.9,
@@ -1411,9 +1413,9 @@ export default function MapInner({
           >
             <Tooltip permanent direction="top" offset={[0, -12]}>
               <span style={{
-                fontSize: 10, fontWeight: 700, color: "#3b82f6",
+                fontSize: 10, fontWeight: 700, color: vc.estimated_pos_color,
                 background: "rgba(255,255,255,0.95)", padding: "2px 6px",
-                borderRadius: 3, border: "1px solid #3b82f655",
+                borderRadius: 3, border: `1px solid ${vc.estimated_pos_color}55`,
               }}>
                 {`~${estimatedPosition.avgDist}cm (${estimatedPosition.count} TX)`}
               </span>
@@ -1426,7 +1428,7 @@ export default function MapInner({
           const state = (sm.detection as LiveDetection & { _state?: string })?._state ?? "live"
           const isLive = state === "live"
           const isFading = state === "fading"
-          const color = isLive ? "#22c55e" : "#f59e0b"
+          const color = isLive ? vc.detection_dot_live : vc.detection_dot_hold
           return (
             <CircleMarker
               key={`det-pt-${sm.id}`}
@@ -1463,7 +1465,7 @@ export default function MapInner({
           if (sensorMarkers.some(sm => sm.detection && zones.find(z => z.id === zoneId)?.devices.includes(sm.id))) return null
           const centroid = zoneCentroids[zoneId]
           if (!centroid || !det) return null
-          const fbColor = det._state === "live" ? "#22c55e" : "#f59e0b"
+          const fbColor = det._state === "live" ? vc.detection_dot_live : vc.detection_dot_hold
           const fbFading = det._state === "fading"
           return (
             <CircleMarker

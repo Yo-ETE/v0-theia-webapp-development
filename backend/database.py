@@ -132,6 +132,11 @@ async def init_tables(db: aiosqlite.Connection):
         CREATE INDEX IF NOT EXISTS idx_notifications_dismissed ON notifications(dismissed);
         CREATE INDEX IF NOT EXISTS idx_battery_history_device ON battery_history(device_id);
         CREATE INDEX IF NOT EXISTS idx_battery_history_ts ON battery_history(timestamp);
+
+        CREATE TABLE IF NOT EXISTS settings (
+            key TEXT PRIMARY KEY,
+            value TEXT NOT NULL
+        );
     """)
     await db.commit()
 

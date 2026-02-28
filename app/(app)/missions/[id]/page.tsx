@@ -33,6 +33,7 @@ import { FloorManager } from "@/components/mission/floor-manager"
 import { DetectionTimelapse } from "@/components/mission/detection-timelapse"
 import { ErrorBoundary } from "@/components/error-boundary"
 import { useMission, useEvents, useDevices } from "@/hooks/use-api"
+import { useVisualConfig } from "@/hooks/use-visual-config"
 import { useSSE } from "@/hooks/use-sse"
 import { updateMission, updateDevice } from "@/lib/api-client"
 import { missionStatusConfig, eventTypeConfig, deviceStatusConfig, formatRelative, formatTime, formatDateTime } from "@/lib/format"
@@ -145,7 +146,10 @@ export default function MissionDetailPage() {
   const [timelapseMode, setTimelapseMode] = useState(false)
   const [heatmapMode, setHeatmapMode] = useState(false)
   const [estimatePosition, setEstimatePosition] = useState(false)
+  const { config: visualConfig } = useVisualConfig()
   const [showFov, setShowFov] = useState(false)
+  // Sync FOV default from visual config on first load
+  useEffect(() => { setShowFov(visualConfig.fov_default_visible) }, []) // eslint-disable-line react-hooks/exhaustive-deps
   const [fullMapMode, setFullMapMode] = useState(false)
   const [editingZoneId, setEditingZoneId] = useState<string | null>(null)
   const [editingPolygon, setEditingPolygon] = useState<[number, number][] | null>(null)

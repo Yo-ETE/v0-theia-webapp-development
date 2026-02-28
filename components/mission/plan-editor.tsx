@@ -3,6 +3,7 @@
 import { useState, useRef, useCallback, useEffect, useMemo } from "react"
 import type { Zone, DetectionEvent } from "@/lib/types"
 import { cn } from "@/lib/utils"
+import { useVisualConfig } from "@/hooks/use-visual-config"
 
 // ── Types ────────────────────────────────────────────────────
 
@@ -122,6 +123,7 @@ export function PlanEditor({
   onCalibrationDone,
   planScale,
 }: PlanEditorProps) {
+  const { config: vc } = useVisualConfig()
   const resolvedImage = planImage || imageUrl || ""
   const handlePolygonDone = onPolygonDrawn ?? onZoneCreated
   const containerRef = useRef<HTMLDivElement>(null)
@@ -539,11 +541,11 @@ export function PlanEditor({
               {/* Fill */}
               <polygon
                 points={polyStr}
-                fill={zone.color || "#3b82f6"}
-                fillOpacity={0.08}
-                stroke={zone.color || "#3b82f6"}
+                fill={zone.color || vc.zone_fill_color}
+                fillOpacity={vc.zone_fill_opacity}
+                stroke={zone.color || vc.zone_fill_color}
                 strokeWidth={2}
-                strokeOpacity={0.7}
+                strokeOpacity={vc.zone_stroke_opacity}
               />
               {/* Side labels */}
               {zone.polygon.map((pt, i) => {
@@ -576,7 +578,7 @@ export function PlanEditor({
                     textAnchor="middle"
                     dominantBaseline="central"
                     className="text-[12px] font-bold pointer-events-none"
-                    style={{ fill: zone.color || "#3b82f6", paintOrder: "stroke", stroke: "hsl(var(--background))", strokeWidth: 5 }}
+                    style={{ fill: zone.color || vc.zone_fill_color, paintOrder: "stroke", stroke: "hsl(var(--background))", strokeWidth: 5 }}
                   >
                     {zone.name || zone.label}
                   </text>
@@ -613,7 +615,7 @@ export function PlanEditor({
               <line
                 key={`place-${zone.id}-${i}`}
                 x1={x1} y1={y1} x2={x2} y2={y2}
-                stroke="#22d3ee"
+                stroke={vc.fov_overlay_color}
                 strokeWidth={4}
                 strokeOpacity={0.7}
                 strokeDasharray="8 4"
@@ -630,20 +632,20 @@ export function PlanEditor({
             {m.isPresence && m.detSx != null && m.detSy != null && (
               <line
                 x1={m.sx} y1={m.sy} x2={m.detSx} y2={m.detSy}
-                stroke="#22c55e" strokeWidth={2} strokeDasharray="4 3" strokeOpacity={0.8}
+                stroke={vc.detection_line_color} strokeWidth={2} strokeDasharray="4 3" strokeOpacity={0.8}
               />
             )}
-            {/* Detection point: green pulsing circle */}
+            {/* Detection point: pulsing circle */}
             {m.isPresence && m.detSx != null && m.detSy != null && (
               <g>
-                <circle cx={m.detSx} cy={m.detSy} r={14} fill="#22c55e" fillOpacity={0.15} className="animate-ping" />
-                <circle cx={m.detSx} cy={m.detSy} r={7} fill="#22c55e" fillOpacity={0.7} stroke="#22c55e" strokeWidth={2} strokeOpacity={0.9} />
+                <circle cx={m.detSx} cy={m.detSy} r={14} fill={vc.detection_dot_live} fillOpacity={0.15} className="animate-ping" />
+                <circle cx={m.detSx} cy={m.detSy} r={7} fill={vc.detection_dot_live} fillOpacity={0.7} stroke={vc.detection_dot_live} strokeWidth={2} strokeOpacity={0.9} />
                 {/* Distance + direction label */}
                 <text
                   x={m.detSx} y={m.detSy - 12}
                   textAnchor="middle"
                   className="text-[9px] font-mono font-bold pointer-events-none"
-                  style={{ fill: "#22c55e", paintOrder: "stroke", stroke: "hsl(var(--background))", strokeWidth: 3 }}
+                  style={{ fill: vc.detection_dot_live, paintOrder: "stroke", stroke: "hsl(var(--background))", strokeWidth: 3 }}
                 >
                   {m.det!.distance}cm {m.det!.direction === "G" || m.det!.direction === "Gauche" ? "G" : m.det!.direction === "D" || m.det!.direction === "Droite" ? "D" : "C"}
                 </text>
@@ -652,10 +654,8 @@ export function PlanEditor({
             {/* Sensor dot (always visible) */}
             <circle
               cx={m.sx} cy={m.sy} r={5}
-              className={cn(
-                "stroke-background",
-                m.isPresence ? "fill-emerald-500" : m.det ? "fill-success" : "fill-primary"
-              )}
+              fill={m.isPresence ? vc.detection_dot_live : (m.det ? vc.detection_dot_hold : vc.sensor_dot_idle)}
+              className="stroke-background"
               strokeWidth={2}
             />
             {/* Sensor label */}
@@ -675,7 +675,7 @@ export function PlanEditor({
                 y={m.sy + 16}
                 textAnchor="middle"
                 className="text-[9px] font-mono font-bold pointer-events-none"
-                style={{ fill: "#22c55e", paintOrder: "stroke", stroke: "hsl(var(--background))", strokeWidth: 3 }}
+                style={{ fill: vc.detection_dot_live, paintOrder: "stroke", stroke: "hsl(var(--background))", strokeWidth: 3 }}
               >
                 {m.det.distance}cm
               </text>
@@ -696,9 +696,9 @@ export function PlanEditor({
             <g key={`fov-${m.device_id}`}>
               <polygon
                 points={fovPath}
-                fill="#22d3ee"
-                fillOpacity={0.08}
-                stroke="#22d3ee"
+                fill={vc.fov_overlay_color}
+                fillOpacity={vc.fov_fill_opacity}
+                stroke={vc.fov_overlay_color}
                 strokeWidth={1}
                 strokeOpacity={0.4}
                 strokeDasharray="4 2"
@@ -800,7 +800,7 @@ export function PlanEditor({
             <polyline
               points={drawPoints.map(p => { const [x, y] = toSvg(p); return `${x},${y}` }).join(" ")}
               fill="none"
-              stroke="#22d3ee"
+              stroke={vc.fov_overlay_color}
               strokeWidth={2}
               strokeDasharray="6 3"
             />
