@@ -35,7 +35,8 @@ interface DetectionTimelapseProps {
 function parseEventToDetection(ev: DetectionEvent): LiveDetection | null {
   const p = ev.payload ?? {}
   const distance = Number(p.distance ?? p.dist ?? 0)
-  if (!distance) return null
+  // Allow distance 0 for presence-only events (e.g. C4001 in floor mode)
+  if (distance === 0 && !p.presence) return null
   // zone_id and side come from the event row directly (new schema)
   // or fall back to payload / device join fields
   const zoneId = ev.zone_id || (p.zone_id as string) || null

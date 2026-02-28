@@ -125,9 +125,18 @@ export function FloorManager({
       const dname = det.device_name || ""
       let floorLevel = deviceFloorMap.get(did)
       if (floorLevel == null && dname) {
-        // Try by name match in devices
-        const dev = devices.find(d => d.name === dname)
-        if (dev?.floor != null) floorLevel = dev.floor
+        // Try by name match: find the device by name, then look up its ID in the floor map
+        const dev = devices.find(d => d.name === dname || d.dev_eui === dname)
+        if (dev) {
+          floorLevel = deviceFloorMap.get(dev.id) ?? (dev.floor != null ? dev.floor : undefined)
+        }
+      }
+      // Also try by dev_eui match if device_id looks like a TX id
+      if (floorLevel == null && did) {
+        const devByEui = devices.find(d => d.dev_eui === did)
+        if (devByEui) {
+          floorLevel = deviceFloorMap.get(devByEui.id) ?? (devByEui.floor != null ? devByEui.floor : undefined)
+        }
       }
       // Last resort: floor stored in the detection/event payload itself
       if (floorLevel == null && det.floor != null) {
