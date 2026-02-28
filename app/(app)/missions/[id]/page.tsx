@@ -265,9 +265,11 @@ export default function MissionDetailPage() {
     if (events.length === lastEventCountRef.current) return
     lastEventCountRef.current = events.length
 
-    // Filter out events before detection_reset_at
+    // Filter out events before detection_reset_at (normalize timestamp format for comparison)
     const ra = mission?.detection_reset_at ?? null
-    const filteredEvents = ra ? events.filter((e: Record<string, unknown>) => !e.timestamp || (e.timestamp as string) > ra) : events
+    const normTs = (ts: string) => ts.replace("T", " ").replace("Z", "").replace(/\.\d+$/, "")
+    const raNorm = ra ? normTs(ra) : null
+    const filteredEvents = raNorm ? events.filter((e: Record<string, unknown>) => !e.timestamp || normTs(e.timestamp as string) > raNorm) : events
 
     const dbDetections: LiveDetection[] = filteredEvents.slice(0, 30).map((e: Record<string, unknown>) => {
       const p = (typeof e.payload === "string" ? (() => { try { return JSON.parse(e.payload as string) } catch { return {} } })() : (e.payload ?? {})) as Record<string, unknown>
@@ -746,8 +748,11 @@ export default function MissionDetailPage() {
   const statusCfg = missionStatusConfig[mission.status] ?? missionStatusConfig.draft
   const zones = mission.zones ?? []
   const resetAt = mission.detection_reset_at ?? null
+  // Normalize timestamps for comparison (backend stores "YYYY-MM-DD HH:MM:SS", reset uses ISO "...T...Z")
+  const normalizeTs = (ts: string) => ts.replace("T", " ").replace("Z", "").replace(/\.\d+$/, "")
+  const resetAtNorm = resetAt ? normalizeTs(resetAt) : null
   const eventList = (events ?? []).filter(e =>
-    !resetAt || !e.timestamp || e.timestamp > resetAt
+    !resetAtNorm || !e.timestamp || normalizeTs(e.timestamp) > resetAtNorm
   )
 
   // ── Environment / mode detection ──
@@ -793,9 +798,9 @@ export default function MissionDetailPage() {
       device_type: d.type ?? "",
       orientation: (d.orientation as "inward" | "outward") ?? "inward",
     }))
-  // Fallback: reconstruct placements from historical events (when devices are unassigned)
+  // Reconstruct placements from historical events (preserves positions at time of recording)
   const historicalPlacements = (() => {
-    if (livePlacements.length > 0 || !events || events.length === 0) return []
+    if (!events || events.length === 0) return []
     const seen = new Map<string, (typeof livePlacements)[0]>()
     for (const e of events) {
       const did = e.device_id ?? ""
@@ -812,7 +817,10 @@ export default function MissionDetailPage() {
     }
     return Array.from(seen.values())
   })()
-  const sensorPlacements = livePlacements.length > 0 ? livePlacements : historicalPlacements
+  // Use live placements for live mode; for timelapse, prefer historical (preserves original TX positions)
+  const sensorPlacements = timelapseMode && historicalPlacements.length > 0
+    ? historicalPlacements
+    : (livePlacements.length > 0 ? livePlacements : historicalPlacements)
 
   // Map detections: ONLY from SSE (real-time). Never from DB -- DB events are history.
   // Filter out muted devices from zone-level AND device-level aggregation

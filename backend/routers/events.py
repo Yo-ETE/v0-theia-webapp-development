@@ -48,9 +48,10 @@ async def list_events(
             e.zone_id,
             e.side,
             e.rssi, e.snr, e.payload, e.timestamp,
+            e.sensor_position, e.orientation,
             d.name AS device_name,
             d.dev_eui AS tx_id,
-            COALESCE(d.zone_label, e.zone) AS zone_label
+            COALESCE(e.zone, d.zone_label) AS zone_label
         FROM events e
         LEFT JOIN devices d ON d.id = e.device_id
         WHERE {where}
@@ -65,9 +66,10 @@ async def list_events(
             '' AS zone_id,
             '' AS side,
             e.rssi, e.snr, e.payload, e.timestamp,
+            '' AS sensor_position, '' AS orientation,
             d.name AS device_name,
             d.dev_eui AS tx_id,
-            COALESCE(d.zone_label, e.zone) AS zone_label
+            COALESCE(e.zone, d.zone_label) AS zone_label
         FROM events e
         LEFT JOIN devices d ON d.id = e.device_id
         WHERE {where}
