@@ -50,6 +50,7 @@ export default function DevicesPage() {
   const fileInputRef = useRef<HTMLInputElement>(null)
 
   const backendBase = typeof window !== "undefined" ? `http://${window.location.hostname}:8000` : ""
+  const _bH = (): Record<string, string> => { const t = typeof window !== "undefined" ? localStorage.getItem("theia_token") : null; return t ? { Authorization: `Bearer ${t}` } : {} }
 
   // Step 2: snapshot baseline then poll for new ports
   const [usbDebug, setUsbDebug] = useState("")
@@ -61,7 +62,7 @@ export default function DevicesPage() {
 
     const init = async () => {
       try {
-        const res = await fetch(`${backendBase}/api/firmware/ports`, { credentials: "include" })
+        const res = await fetch(`${backendBase}/api/firmware/ports`, { credentials: "include", headers: _bH() })
         if (!res.ok || cancelled) return
         const data = await res.json()
         const portList: PortInfo[] = data.ports ?? data
@@ -90,7 +91,7 @@ export default function DevicesPage() {
     const interval = setInterval(async () => {
       if (!baselineReady || cancelled) return
       try {
-        const res = await fetch(`${backendBase}/api/firmware/ports`, { credentials: "include" })
+        const res = await fetch(`${backendBase}/api/firmware/ports`, { credentials: "include", headers: _bH() })
         if (!res.ok || cancelled) return
         const data = await res.json()
         const portList: PortInfo[] = data.ports ?? data
@@ -154,7 +155,7 @@ export default function DevicesPage() {
     let cancelled = false
     setPortVerifying(true)
     setPortVerified(null)
-    fetch(`${backendBase}/api/firmware/verify-port?port=${encodeURIComponent(flashForm.port)}`, { credentials: "include" })
+    fetch(`${backendBase}/api/firmware/verify-port?port=${encodeURIComponent(flashForm.port)}`, { credentials: "include", headers: _bH() })
     .then(r => r.json())
     .then(data => {
       if (!cancelled) {
@@ -197,6 +198,7 @@ export default function DevicesPage() {
           const upRes = await fetch(`${backendBase}/api/firmware/upload-sketch`, {
             method: "POST",
             credentials: "include",
+            headers: _bH(),
             body: uploadData,
           })
           if (upRes.ok) {
@@ -221,7 +223,7 @@ export default function DevicesPage() {
       const res = await fetch(`${backendBase}/api/firmware/flash`, {
         method: "POST",
         credentials: "include",
-        headers: { "Content-Type": "application/json" },
+        headers: { "Content-Type": "application/json", ..._bH() },
       body: JSON.stringify({
         port: flashForm.port,
         tx_id: flashForm.tx_id.trim(),

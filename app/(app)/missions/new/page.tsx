@@ -135,12 +135,14 @@ export default function NewMissionPage() {
       if (form.environment === "plan" && planFile && mission.id) {
         try {
           const backendBase = `http://${window.location.hostname}:8000`
+          const _t = localStorage.getItem("theia_token")
           const uploadRes = await fetch(`${backendBase}/api/missions/${mission.id}/plan-image`, {
             method: "POST",
             credentials: "include",
             headers: {
               "Content-Type": planFile.type || "application/octet-stream",
               "X-Filename": planFile.name,
+              ...(_t ? { Authorization: `Bearer ${_t}` } : {}),
             },
             body: planFile,
           })

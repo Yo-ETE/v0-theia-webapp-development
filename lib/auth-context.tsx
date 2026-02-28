@@ -19,9 +19,25 @@ interface AuthContextType {
 
 const AuthContext = createContext<AuthContextType | null>(null)
 
+const TOKEN_KEY = "theia_token"
+
 function getBackendUrl(path: string): string {
   if (typeof window === "undefined") return `/api${path}`
   return `http://${window.location.hostname}:8000/api${path}`
+}
+
+/** Get stored auth token -- used by fetch helpers for cross-port requests */
+export function getAuthToken(): string | null {
+  if (typeof window === "undefined") return null
+  return localStorage.getItem(TOKEN_KEY)
+}
+
+/** Build auth headers with Bearer token for cross-port requests */
+export function authHeaders(extra?: Record<string, string>): Record<string, string> {
+  const headers: Record<string, string> = { ...extra }
+  const token = getAuthToken()
+  if (token) headers["Authorization"] = `Bearer ${token}`
+  return headers
 }
 
 export function AuthProvider({ children }: { children: ReactNode }) {
@@ -30,12 +46,16 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const refresh = useCallback(async () => {
     try {
-      const res = await fetch(getBackendUrl("/auth/me"), { credentials: "include" })
+      const res = await fetch(getBackendUrl("/auth/me"), {
+        credentials: "include",
+        headers: authHeaders(),
+      })
       if (res.ok) {
         const data = await res.json()
         setUser(data)
       } else {
         setUser(null)
+        localStorage.removeItem(TOKEN_KEY)
       }
     } catch {
       setUser(null)
@@ -60,14 +80,18 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       throw new Error(data.detail || "Login failed")
     }
     const data = await res.json()
+    if (data.token) localStorage.setItem(TOKEN_KEY, data.token)
     setUser(data.user)
   }, [])
 
   const logout = useCallback(async () => {
+    const token = getAuthToken()
     await fetch(getBackendUrl("/auth/logout"), {
       method: "POST",
       credentials: "include",
+      headers: token ? { "Authorization": `Bearer ${token}` } : {},
     }).catch(() => {})
+    localStorage.removeItem(TOKEN_KEY)
     setUser(null)
   }, [])
 

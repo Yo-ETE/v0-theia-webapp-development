@@ -8,7 +8,14 @@ import { Label } from "@/components/ui/label"
 import { Switch } from "@/components/ui/switch"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 
-const API = process.env.NEXT_PUBLIC_BACKEND_URL || "http://localhost:8000"
+function _getApi(): string {
+  if (typeof window === "undefined") return "http://localhost:8000"
+  return `http://${window.location.hostname}:8000`
+}
+function _bH(): Record<string, string> {
+  const t = typeof window !== "undefined" ? localStorage.getItem("theia_token") : null
+  return t ? { Authorization: `Bearer ${t}` } : {}
+}
 
 interface NotificationConfigData {
   enabled: boolean
@@ -63,10 +70,10 @@ export function NotificationConfig({ missionId, missionName, zones = [], initial
   const save = useCallback(async () => {
     setSaving(true)
     try {
-      await fetch(`${API}/api/missions/${missionId}`, {
+      await fetch(`${_getApi()}/api/missions/${missionId}`, {
         method: "PATCH",
         credentials: "include",
-        headers: { "Content-Type": "application/json" },
+        headers: { "Content-Type": "application/json", ..._bH() },
         body: JSON.stringify({ notification_config: JSON.stringify(config) }),
       })
       setSaved(true)

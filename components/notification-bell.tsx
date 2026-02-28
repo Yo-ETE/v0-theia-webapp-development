@@ -14,16 +14,21 @@ function getBackendBase(): string | null {
   return `http://${window.location.hostname}:8000`
 }
 
+function _bH(): Record<string, string> {
+  const t = typeof window !== "undefined" ? localStorage.getItem("theia_token") : null
+  return t ? { Authorization: `Bearer ${t}` } : {}
+}
+
 async function apiPost(path: string) {
   const base = getBackendBase()
   if (!base) return
-  await fetch(`${base}/api${path}`, { method: "POST", credentials: "include" })
+  await fetch(`${base}/api${path}`, { method: "POST", credentials: "include", headers: _bH() })
 }
 
 async function apiDelete(path: string) {
   const base = getBackendBase()
   if (!base) return
-  await fetch(`${base}/api${path}`, { method: "DELETE", credentials: "include" })
+  await fetch(`${base}/api${path}`, { method: "DELETE", credentials: "include", headers: _bH() })
 }
 
 function notifIcon(type: string) {

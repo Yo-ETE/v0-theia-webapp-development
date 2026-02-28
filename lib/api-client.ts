@@ -2,19 +2,36 @@
 // All requests go to /api/* (Next.js API routes)
 // The API routes decide: mock data in preview, proxy to FastAPI in pi mode
 
+import { getAuthToken } from "@/lib/auth-context"
+
 const API_BASE = "/api"
 
+/** Build headers including Bearer token for cross-port auth */
+function _bearerHeaders(extra?: HeadersInit): Record<string, string> {
+  const h: Record<string, string> = {}
+  if (extra) {
+    if (extra instanceof Headers) {
+      extra.forEach((v, k) => { h[k] = v })
+    } else if (Array.isArray(extra)) {
+      extra.forEach(([k, v]) => { h[k] = v })
+    } else {
+      Object.assign(h, extra)
+    }
+  }
+  const token = getAuthToken()
+  if (token && !h["Authorization"]) h["Authorization"] = `Bearer ${token}`
+  return h
+}
+
 /**
- * Authenticated fetch wrapper. Always sends credentials (cookies).
+ * Authenticated fetch wrapper. Sends credentials + Bearer token.
  * Use this instead of raw `fetch()` for any request to the backend.
  */
 export function authFetch(url: string, init?: RequestInit): Promise<Response> {
   return fetch(url, {
     ...init,
     credentials: "include",
-    headers: {
-      ...init?.headers,
-    },
+    headers: _bearerHeaders(init?.headers),
   })
 }
 
@@ -34,10 +51,10 @@ async function request<T>(path: string, options?: RequestInit): Promise<T> {
   const res = await fetch(url, {
     ...options,
     credentials: "include",
-    headers: {
+    headers: _bearerHeaders({
       "Content-Type": "application/json",
-      ...options?.headers,
-    },
+      ...(options?.headers as Record<string, string> || {}),
+    }),
   })
 
   if (!res.ok) {
@@ -67,10 +84,10 @@ async function directBackendRequest<T>(path: string, options?: RequestInit): Pro
   const res = await fetch(url, {
     ...options,
     credentials: "include",
-    headers: {
+    headers: _bearerHeaders({
       "Content-Type": "application/json",
-      ...options?.headers,
-    },
+      ...(options?.headers as Record<string, string> || {}),
+    }),
   })
 
   if (!res.ok) {

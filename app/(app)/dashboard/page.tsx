@@ -65,7 +65,8 @@ export default function DashboardPage() {
   const handleDismiss = async (id: number) => {
     const base = getBackendBase()
     if (base) {
-      await fetch(`${base}/api/notifications/${id}`, { method: "DELETE", credentials: "include" })
+      const t = localStorage.getItem("theia_token")
+      await fetch(`${base}/api/notifications/${id}`, { method: "DELETE", credentials: "include", headers: t ? { Authorization: `Bearer ${t}` } : {} })
       mutateNotifs()
     }
   }
@@ -73,7 +74,8 @@ export default function DashboardPage() {
   const handleDismissAll = async () => {
     const base = getBackendBase()
     if (base) {
-      await fetch(`${base}/api/notifications/dismiss-all`, { method: "POST", credentials: "include" })
+      const t = localStorage.getItem("theia_token")
+      await fetch(`${base}/api/notifications/dismiss-all`, { method: "POST", credentials: "include", headers: t ? { Authorization: `Bearer ${t}` } : {} })
       mutateNotifs()
     }
   }

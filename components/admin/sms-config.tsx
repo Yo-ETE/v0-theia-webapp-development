@@ -10,7 +10,14 @@ import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from "@/components/ui/select"
 
-const API = process.env.NEXT_PUBLIC_BACKEND_URL || "http://localhost:8000"
+function _getApi(): string {
+  if (typeof window === "undefined") return "http://localhost:8000"
+  return `http://${window.location.hostname}:8000`
+}
+function _bH(): Record<string, string> {
+  const t = typeof window !== "undefined" ? localStorage.getItem("theia_token") : null
+  return t ? { Authorization: `Bearer ${t}` } : {}
+}
 
 interface SmsConfigData {
   provider: string
@@ -42,7 +49,7 @@ export function SmsConfig() {
 
   const loadConfig = useCallback(async () => {
     try {
-      const res = await fetch(`${API}/api/admin/sms-config`, { credentials: "include" })
+      const res = await fetch(`${_getApi()}/api/admin/sms-config`, { credentials: "include", headers: _bH() })
       if (res.ok) {
         const data = await res.json()
         setConfig({ ...DEFAULT_CONFIG, ...data })
@@ -60,10 +67,10 @@ export function SmsConfig() {
     setSaving(true)
     setMessage(null)
     try {
-      const res = await fetch(`${API}/api/admin/sms-config`, {
+      const res = await fetch(`${_getApi()}/api/admin/sms-config`, {
         method: "POST",
         credentials: "include",
-        headers: { "Content-Type": "application/json" },
+        headers: { "Content-Type": "application/json", ..._bH() },
         body: JSON.stringify(config),
       })
       if (res.ok) {
@@ -81,9 +88,10 @@ export function SmsConfig() {
     setTesting(true)
     setMessage(null)
     try {
-      const res = await fetch(`${API}/api/admin/sms-test`, {
+      const res = await fetch(`${_getApi()}/api/admin/sms-test`, {
         method: "POST",
         credentials: "include",
+        headers: _bH(),
       })
       const data = await res.json()
       if (data.ok) {

@@ -181,7 +181,7 @@ async def login(req: LoginRequest, request: Request):
         "exp": int(time.time()) + 7 * 24 * 3600,
     }, _get_secret())
 
-    response = JSONResponse({"ok": True, "user": {
+    response = JSONResponse({"ok": True, "token": token, "user": {
         "id": row["id"],
         "username": row["username"],
         "role": row["role"],

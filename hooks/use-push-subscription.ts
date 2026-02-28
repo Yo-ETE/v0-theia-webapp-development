@@ -2,7 +2,14 @@
 
 import { useState, useEffect, useCallback } from "react"
 
-const API_BASE = process.env.NEXT_PUBLIC_BACKEND_URL || "http://localhost:8000"
+function _getApi(): string {
+  if (typeof window === "undefined") return "http://localhost:8000"
+  return `http://${window.location.hostname}:8000`
+}
+function _bH(): Record<string, string> {
+  const t = typeof window !== "undefined" ? localStorage.getItem("theia_token") : null
+  return t ? { Authorization: `Bearer ${t}` } : {}
+}
 
 function urlBase64ToUint8Array(base64String: string) {
   const padding = "=".repeat((4 - (base64String.length % 4)) % 4)
@@ -52,7 +59,7 @@ export function usePushSubscription() {
       await navigator.serviceWorker.ready
 
       // 3. Get VAPID public key from backend
-      const res = await fetch(`${API_BASE}/api/push/vapid-key`, { credentials: "include" })
+      const res = await fetch(`${_getApi()}/api/push/vapid-key`, { credentials: "include", headers: _bH() })
       const { public_key } = await res.json()
 
       // 4. Subscribe to push
@@ -63,10 +70,10 @@ export function usePushSubscription() {
 
       // 5. Send subscription to backend
       const subJson = subscription.toJSON()
-      await fetch(`${API_BASE}/api/push/subscribe`, {
+      await fetch(`${_getApi()}/api/push/subscribe`, {
         method: "POST",
         credentials: "include",
-        headers: { "Content-Type": "application/json" },
+        headers: { "Content-Type": "application/json", ..._bH() },
         body: JSON.stringify({
           endpoint: subJson.endpoint,
           keys: subJson.keys,

@@ -10,6 +10,8 @@ import {
   Loader2,
   UserPlus,
   KeyRound,
+  ExternalLink,
+  Network,
 } from "lucide-react"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
@@ -30,6 +32,10 @@ function getBackendUrl(path: string): string {
   if (typeof window === "undefined") return `/api${path}`
   return `http://${window.location.hostname}:8000/api${path}`
 }
+function _bH(): Record<string, string> {
+  const t = typeof window !== "undefined" ? localStorage.getItem("theia_token") : null
+  return t ? { Authorization: `Bearer ${t}` } : {}
+}
 
 export function UserManagement() {
   const { user: currentUser } = useAuth()
@@ -48,7 +54,7 @@ export function UserManagement() {
 
   const fetchUsers = useCallback(async () => {
     try {
-      const res = await fetch(getBackendUrl("/auth/users"), { credentials: "include" })
+      const res = await fetch(getBackendUrl("/auth/users"), { credentials: "include", headers: _bH() })
       if (res.ok) {
         const data = await res.json()
         setUsers(data)
@@ -72,7 +78,7 @@ export function UserManagement() {
       const res = await fetch(getBackendUrl("/auth/users"), {
         method: "POST",
         credentials: "include",
-        headers: { "Content-Type": "application/json" },
+        headers: { "Content-Type": "application/json", ..._bH() },
         body: JSON.stringify({ username: newUsername, password: newPassword, role: newRole }),
       })
       if (!res.ok) {
@@ -99,6 +105,7 @@ export function UserManagement() {
       const res = await fetch(getBackendUrl(`/auth/users/${userId}`), {
         method: "DELETE",
         credentials: "include",
+        headers: _bH(),
       })
       if (!res.ok) {
         const data = await res.json().catch(() => ({ detail: "Erreur" }))
@@ -119,7 +126,7 @@ export function UserManagement() {
       const res = await fetch(getBackendUrl(`/auth/users/${userId}`), {
         method: "PATCH",
         credentials: "include",
-        headers: { "Content-Type": "application/json" },
+        headers: { "Content-Type": "application/json", ..._bH() },
         body: JSON.stringify({ password: newPw }),
       })
       if (!res.ok) {
@@ -141,7 +148,7 @@ export function UserManagement() {
       const res = await fetch(getBackendUrl(`/auth/users/${userId}`), {
         method: "PATCH",
         credentials: "include",
-        headers: { "Content-Type": "application/json" },
+        headers: { "Content-Type": "application/json", ..._bH() },
         body: JSON.stringify({ role: newR }),
       })
       if (!res.ok) {
@@ -242,6 +249,26 @@ export function UserManagement() {
                 </button>
               </div>
             </div>
+            {/* Tailscale access info */}
+            <div className="rounded-md border border-border/50 bg-muted/30 p-3 flex flex-col gap-2">
+              <p className="text-[10px] font-medium text-foreground flex items-center gap-1.5">
+                <Network className="h-3 w-3 text-primary" />
+                Acces reseau (Tailscale)
+              </p>
+              <p className="text-[10px] text-muted-foreground leading-relaxed">
+                {"Pour acceder au dashboard, l'utilisateur doit etre sur votre reseau Tailscale. Invitez-le depuis la console admin Tailscale :"}
+              </p>
+              <a
+                href="https://login.tailscale.com/admin/users"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="inline-flex items-center gap-1.5 text-[11px] font-medium text-primary hover:underline w-fit"
+              >
+                <ExternalLink className="h-3 w-3" />
+                Ouvrir Tailscale Admin (inviter un utilisateur)
+              </a>
+            </div>
+
             <div className="flex justify-end gap-2">
               <Button size="sm" variant="ghost" onClick={() => setShowCreate(false)}>Annuler</Button>
               <Button

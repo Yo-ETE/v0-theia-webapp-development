@@ -25,15 +25,21 @@ function getBackendBase(): string | null {
   if (typeof window === "undefined") return null
   return `http://${window.location.hostname}:8000`
 }
+function _bearerH(): Record<string, string> {
+  try {
+    const token = typeof window !== "undefined" ? localStorage.getItem("theia_token") : null
+    return token ? { "Authorization": `Bearer ${token}` } : {}
+  } catch { return {} }
+}
 const fetcher = async (url: string) => {
   const base = getBackendBase()
   if (base) {
     try {
-      const r = await fetch(`${base}${url}`, { credentials: "include" })
+      const r = await fetch(`${base}${url}`, { credentials: "include", headers: _bearerH() })
       if (r.ok) return r.json()
     } catch { /* fall through */ }
   }
-  const r = await fetch(url, { credentials: "include" })
+  const r = await fetch(url, { credentials: "include", headers: _bearerH() })
   if (!r.ok) throw new Error(`API ${r.status}`)
   return r.json()
 }

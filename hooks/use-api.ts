@@ -1,11 +1,20 @@
 "use client"
 
 import useSWR from "swr"
+import { getAuthToken } from "@/lib/auth-context"
 
 // Try direct backend first (port 8000), fallback to Next.js route
 function getBackendBase(): string | null {
   if (typeof window === "undefined") return null
   return `http://${window.location.hostname}:8000`
+}
+
+/** Build headers with Bearer token for backend requests */
+function bearerHeaders(extra?: Record<string, string>): Record<string, string> {
+  const h: Record<string, string> = { ...extra }
+  const token = getAuthToken()
+  if (token) h["Authorization"] = `Bearer ${token}`
+  return h
 }
 
 const fetcher = async (url: string) => {
@@ -16,7 +25,7 @@ const fetcher = async (url: string) => {
       const directUrl = `${backendBase}${url}`
       const r = await fetch(directUrl, {
         credentials: "include",
-        headers: { "Content-Type": "application/json" },
+        headers: bearerHeaders({ "Content-Type": "application/json" }),
       })
       if (r.ok) return r.json()
       // If 401, don't fallback -- redirect to login
