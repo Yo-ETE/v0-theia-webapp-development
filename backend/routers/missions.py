@@ -12,6 +12,25 @@ from backend.database import get_db
 router = APIRouter(prefix="/missions", tags=["missions"])
 
 
+def _normalize_reset_at(reset_at: str) -> str:
+    """Normalize a detection_reset_at timestamp to 'YYYY-MM-DD HH:MM:SS' local time.
+    Handles both old UTC ISO format and new local format."""
+    if not reset_at:
+        return reset_at
+    # If it looks like UTC ISO (contains T and Z or +00:00)
+    if "T" in reset_at:
+        try:
+            from datetime import timezone as tz
+            dt = datetime.fromisoformat(reset_at.replace("Z", "+00:00"))
+            # Convert to local time
+            local_dt = dt.astimezone(tz=None)  # system local timezone
+            return local_dt.strftime("%Y-%m-%d %H:%M:%S")
+        except Exception:
+            pass
+    # Already local format or fallback: just strip cruft
+    return reset_at.replace("T", " ").replace("Z", "").split(".")[0].split("+")[0]
+
+
 class MissionCreate(BaseModel):
     id: str | None = None
     name: str
@@ -109,7 +128,7 @@ async def _get_full_mission(db, mission_id: str) -> dict:
     # Normalize ISO format to space-separated for comparison with stored timestamps
     reset_at = d.get("detection_reset_at")
     if reset_at:
-        reset_at_norm = reset_at.replace("T", " ").replace("Z", "").split(".")[0]
+        reset_at_norm = _normalize_reset_at(reset_at)
         cursor3 = await db.execute("SELECT COUNT(*) FROM events WHERE mission_id=? AND timestamp > ?", (mission_id, reset_at_norm))
     else:
         cursor3 = await db.execute("SELECT COUNT(*) FROM events WHERE mission_id=?", (mission_id,))
@@ -135,8 +154,8 @@ async def list_missions():
         m["device_count"] = dev_counts.get(m["id"], 0)
         reset_at = m.get("detection_reset_at")
         if reset_at:
-            # Count only events after reset
-            rc = await db.execute("SELECT COUNT(*) FROM events WHERE mission_id=? AND timestamp > ?", (m["id"], reset_at))
+            reset_at_norm = _normalize_reset_at(reset_at)
+            rc = await db.execute("SELECT COUNT(*) FROM events WHERE mission_id=? AND timestamp > ?", (m["id"], reset_at_norm))
             rrow = await rc.fetchone()
             m["event_count"] = rrow[0] if rrow else 0
         else:

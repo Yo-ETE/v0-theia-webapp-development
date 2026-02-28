@@ -265,11 +265,21 @@ export default function MissionDetailPage() {
     if (events.length === lastEventCountRef.current) return
     lastEventCountRef.current = events.length
 
-    // Filter out events before detection_reset_at (normalize timestamp format for comparison)
-    const ra = mission?.detection_reset_at ?? null
-    const normTs = (ts: string) => ts.replace("T", " ").replace("Z", "").replace(/\.\d+$/, "")
-    const raNorm = ra ? normTs(ra) : null
-    const filteredEvents = raNorm ? events.filter((e: Record<string, unknown>) => !e.timestamp || normTs(e.timestamp as string) > raNorm) : events
+  // Filter out events before detection_reset_at (normalize timestamp format for comparison)
+  const ra = mission?.detection_reset_at ?? null
+  const normTs = (ts: string) => {
+    const isUTC = ts.includes("Z") || (ts.includes("T") && !ts.includes(" "))
+    if (isUTC) {
+      const d = new Date(ts)
+      if (!isNaN(d.getTime())) {
+        const pad = (n: number) => String(n).padStart(2, "0")
+        return `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`
+      }
+    }
+    return ts.replace("T", " ").replace("Z", "").replace(/\.\d+$/, "").split("+")[0]
+  }
+  const raNorm = ra ? normTs(ra) : null
+  const filteredEvents = raNorm ? events.filter((e: Record<string, unknown>) => !e.timestamp || normTs(e.timestamp as string) > raNorm) : events
 
     const dbDetections: LiveDetection[] = filteredEvents.slice(0, 30).map((e: Record<string, unknown>) => {
       const p = (typeof e.payload === "string" ? (() => { try { return JSON.parse(e.payload as string) } catch { return {} } })() : (e.payload ?? {})) as Record<string, unknown>
@@ -766,7 +776,19 @@ export default function MissionDetailPage() {
   const zones = mission.zones ?? []
   const resetAt = mission.detection_reset_at ?? null
   // Normalize timestamps for comparison (backend stores "YYYY-MM-DD HH:MM:SS", reset uses ISO "...T...Z")
-  const normalizeTs = (ts: string) => ts.replace("T", " ").replace("Z", "").replace(/\.\d+$/, "")
+  // If the reset_at contains a UTC indicator (Z or T), convert to local time for proper comparison
+  const normalizeTs = (ts: string) => {
+    const isUTC = ts.includes("Z") || (ts.includes("T") && !ts.includes(" "))
+    if (isUTC) {
+      // Parse as UTC and convert to local time string
+      const d = new Date(ts)
+      if (!isNaN(d.getTime())) {
+        const pad = (n: number) => String(n).padStart(2, "0")
+        return `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`
+      }
+    }
+    return ts.replace("T", " ").replace("Z", "").replace(/\.\d+$/, "").split("+")[0]
+  }
   const resetAtNorm = resetAt ? normalizeTs(resetAt) : null
   const eventList = (events ?? []).filter(e =>
     !resetAtNorm || !e.timestamp || normalizeTs(e.timestamp) > resetAtNorm
