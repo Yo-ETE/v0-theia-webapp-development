@@ -157,15 +157,17 @@ export default function MissionDetailPage() {
   const handleReplayDetection = useCallback((dets: Record<string, any>) => {
     // Timelapse sends detections keyed by device_id (rolling window of all active devices).
     const env = mission?.environment ?? "habitation"
+    const plan = env === "plan"
     const floorMode = env === "vertical" || env === "etages" || env === "garage"
 
-    // Floor mode: pass through by device_id (FloorManager resolves device->floor)
-    if (floorMode) {
+    // Floor mode + Plan mode: pass through by device_id
+    // (FloorManager resolves device->floor, PlanEditor resolves device->sensor placement)
+    if (floorMode || plan) {
       setReplayDetections(dets)
       return
     }
 
-    // Zone mode: resolve to zone_id keys for zone highlighting on the map.
+    // Zone mode (map): resolve to zone_id keys for zone highlighting on the map.
     const zones = mission?.zones ?? []
     const resolved: Record<string, any> = {}
     for (const [, det] of Object.entries(dets)) {
@@ -1261,7 +1263,13 @@ export default function MissionDetailPage() {
                       imageHeight={mission?.plan_height ?? undefined}
                       zones={zones}
                       sensorPlacements={sensorPlacements}
-                      liveByDevice={filteredLiveByDevice}
+                      liveByDevice={timelapseMode
+                        ? Object.fromEntries(
+                            Object.entries(replayDetections)
+                              .map(([key, det]) => [det.device_id || key, det])
+                          )
+                        : filteredLiveByDevice
+                      }
                       drawingMode={drawingMode}
                       sensorPlaceMode={sensorPlaceMode}
                       onZoneCreated={handlePolygonDrawn}

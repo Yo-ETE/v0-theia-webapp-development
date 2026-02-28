@@ -540,10 +540,10 @@ export function PlanEditor({
               <polygon
                 points={polyStr}
                 fill={zone.color || "#3b82f6"}
-                fillOpacity={0.25}
+                fillOpacity={0.08}
                 stroke={zone.color || "#3b82f6"}
-                strokeWidth={2.5}
-                strokeOpacity={0.9}
+                strokeWidth={2}
+                strokeOpacity={0.7}
               />
               {/* Side labels */}
               {zone.polygon.map((pt, i) => {
@@ -716,29 +716,7 @@ export function PlanEditor({
           )
         })}
 
-        {/* Live detection arcs (scaled) */}
-        {planScale && sensorMarkers.map(m => {
-          if (!m.isPresence || !m.det) return null
-          const zone = zones.find(z => z.id === m.zone_id)
-          if (!zone?.polygon?.length) return null
-          const sideIdx = sideLetterToIdx(m.side)
-          const specs = SENSOR_SPECS[m.device_type ?? ""] ?? DEFAULT_SENSOR_SPECS
-          const angleDeg = getEdgeNormal(zone.polygon, sideIdx, m.orientation ?? "inward")
-          const detRadiusPx = (m.det.distance / 100) * planScale * scale
-          const detPath = buildFovPath(m.sx, m.sy, angleDeg, specs.fovDeg, detRadiusPx)
-          return (
-            <polygon
-              key={`det-${m.device_id}`}
-              points={detPath}
-              fill="#22c55e"
-              fillOpacity={0.12}
-              stroke="#22c55e"
-              strokeWidth={1.5}
-              strokeOpacity={0.5}
-              className="pointer-events-none"
-            />
-          )
-        })}
+        {/* Detection arcs removed -- only green dot + dashed line shown */}
 
         {/* Calibration overlay */}
         {calibrationMode && (
