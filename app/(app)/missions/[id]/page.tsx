@@ -808,11 +808,22 @@ export default function MissionDetailPage() {
     return true
   }) ?? []
   // Use direct backend URL for plan image (avoids Next.js proxy multipart/binary issues)
-  const backendBase = typeof window !== "undefined" ? `http://${window.location.hostname}:8000` : ""
-  const planImageUrl = (isPlanMode && mission.plan_image)
-  ? `${backendBase}/api/missions/${id}/plan-image/file?t=${planImageTs}`
-  : null
-  const floorMode: "floor" | "section" = (env === "garage") ? "section" : "floor"
+  const backendBase =
+    typeof window !== "undefined"
+      ? `http://${window.location.hostname}:8000`
+      : ""
+  
+  const hasPlan = Boolean(mission?.plan_image)
+  
+  const planImageUrl =
+    isPlanMode && hasPlan
+      ? `${backendBase}/api/missions/${id}/plan-image/file?t=${planImageTs}`
+      : null
+  
+  // 👇 ON GARDE ÇA
+  const floorMode: "floor" | "section" =
+    (env === "garage") ? "section" : "floor"
+  
   const missionFloors = mission?.floors ?? []
 
   // Filter muted device IDs
