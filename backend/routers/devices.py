@@ -24,9 +24,9 @@ def _compute_status(device: dict) -> dict:
         ls_dt = datetime.fromisoformat(last_seen)
         now = datetime.now()
         delta = now - ls_dt
-        if delta < timedelta(seconds=60):
+        if delta < timedelta(seconds=30):
             d["status"] = "online"
-        elif delta < timedelta(minutes=5):
+        elif delta < timedelta(minutes=3):
             d["status"] = "idle"
         else:
             d["status"] = "offline"
