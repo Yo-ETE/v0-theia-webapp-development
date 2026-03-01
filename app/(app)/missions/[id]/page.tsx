@@ -1360,7 +1360,7 @@ export default function MissionDetailPage() {
                                 },
                                 body: file,
                               })
-                              if (res.ok) { setPlanImageTs(Date.now()); mutate() }
+                              if (res.ok) { setPlanDeleted(false); setPlanImageTs(Date.now()); mutate() }
                               else { const t = await res.text(); alert(`Erreur upload: ${t}`) }
                             } catch (err) {
                               console.error("Upload error:", err)
@@ -1379,7 +1379,7 @@ export default function MissionDetailPage() {
                           onClick={async () => {
                             if (!confirm("Supprimer le plan de cette mission ?")) return
                             try {
-                              setPlanDeleted(false)          // ✅ bloque PlanEditor tout de suite
+                              setPlanDeleted(true)          // ✅ bloque PlanEditor tout de suite
                               setPlanImageTs(Date.now())    // bust cache
                               // optimistic: mission.plan_image -> false immédiatement
                               mutate({ ...mission, plan_image: false }, false)
@@ -2264,7 +2264,6 @@ export default function MissionDetailPage() {
                               <TableCell>
                                 <div className="flex items-center gap-1">
                                   <Button variant="outline" size="sm" className="h-6 text-[10px] px-2" onClick={async () => {
-                                    // Clean device from any old assignment
                                     await updateDevice(device.id, {
                                       mission_id: id,
                                       zone_id: "",
@@ -2274,6 +2273,7 @@ export default function MissionDetailPage() {
                                     } as Partial<import("@/lib/types").Device>)
                                     mutate()
                                     mutateDevices()
+                                    setTimeout(() => mutateDevices(), 2000)
                                   }}>
                                     <Signal className="mr-1 h-3 w-3" />{isElsewhere ? "Reassign" : "Assign"}
                                   </Button>
