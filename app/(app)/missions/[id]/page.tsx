@@ -1379,7 +1379,7 @@ export default function MissionDetailPage() {
                           onClick={async () => {
                             if (!confirm("Supprimer le plan de cette mission ?")) return
                             try {
-                              setPlanDeleted(true)          // ✅ bloque PlanEditor tout de suite
+                              setPlanDeleted(false)          // ✅ bloque PlanEditor tout de suite
                               setPlanImageTs(Date.now())    // bust cache
                               // optimistic: mission.plan_image -> false immédiatement
                               mutate({ ...mission, plan_image: false }, false)
