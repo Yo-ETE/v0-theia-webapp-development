@@ -22,6 +22,11 @@ PUBLIC_PREFIXES = [
     "/api/tiles",    # map tiles proxy -- no auth needed
 ]
 
+# Suffix patterns that are public (static file serves via <img src>)
+PUBLIC_SUFFIXES = [
+    "/plan-image/file",  # plan images loaded via <img> -- can't send Bearer
+]
+
 # Routes/prefixes that require admin role
 ADMIN_ROUTES_EXACT = {
     ("POST", "/api/auth/users"),
@@ -49,6 +54,11 @@ class AuthMiddleware(BaseHTTPMiddleware):
         # Check if route is public
         if (method, path) in PUBLIC_ROUTES:
             return await call_next(request)
+        # Strip query params for suffix matching
+        path_no_q = path.split("?")[0]
+        for suffix in PUBLIC_SUFFIXES:
+            if path_no_q.endswith(suffix):
+                return await call_next(request)
         for prefix in PUBLIC_PREFIXES:
             if path.startswith(prefix):
                 # For SSE stream, validate token query param
