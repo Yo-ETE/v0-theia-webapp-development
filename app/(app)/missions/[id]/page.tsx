@@ -766,6 +766,7 @@ export default function MissionDetailPage() {
 
   // MUST be declared before any early return to respect Rules of Hooks
   const [planImageTs, setPlanImageTs] = useState(() => Date.now())
+  const [planDeleted, setPlanDeleted] = useState(false)
 
   if (isLoading || !mission) {
     return (
@@ -813,7 +814,7 @@ export default function MissionDetailPage() {
       ? `http://${window.location.hostname}:8000`
       : ""
   
-  const hasPlan = Boolean(mission?.plan_image)
+  const hasPlan = Boolean(mission?.plan_image) && !planDeleted
   
   const planImageUrl =
     isPlanMode && hasPlan
@@ -1126,7 +1127,7 @@ export default function MissionDetailPage() {
           {isPlanMode ? (
             /* Fullscreen PlanEditor */
             <PlanEditor
-              imageUrl={planImageUrl!}
+              imageUrl={planImageUrl}
               imageWidth={mission?.plan_width ?? undefined}
               imageHeight={mission?.plan_height ?? undefined}
               zones={zones}
@@ -1378,26 +1379,29 @@ export default function MissionDetailPage() {
                           onClick={async () => {
                             if (!confirm("Supprimer le plan de cette mission ?")) return
                             try {
+                              setPlanDeleted(true)          // ✅ bloque PlanEditor tout de suite
+                              setPlanImageTs(Date.now())    // bust cache
+                              // optimistic: mission.plan_image -> false immédiatement
+                              mutate({ ...mission, plan_image: false }, false)
+                            
                               const backendBase = typeof window !== "undefined"
                                 ? `http://${window.location.hostname}:8000`
                                 : ""
                               const _t = localStorage.getItem("theia_token")
-                          
+                            
                               const res = await fetch(`${backendBase}/api/missions/${id}/plan-image`, {
                                 method: "DELETE",
                                 credentials: "include",
                                 headers: _t ? { Authorization: `Bearer ${_t}` } : {},
                               })
-                          
-                              if (!res.ok) {
-                                const t = await res.text()
-                                throw new Error(t || `HTTP ${res.status}`)
-                              }
-                          
-                              setPlanImageTs(Date.now())  // ou +1, mais Date.now() suffit
-                              mutate()                    // la mission rechargera plan_image=false         // mission.plan_image -> null => planImageUrl -> null
+                              if (!res.ok) throw new Error(await res.text())
+                            
+                              // revalidate mission proprement
+                              mutate()
                             } catch (err) {
                               console.error("Delete plan error:", err)
+                              setPlanDeleted(false) // rollback UI
+                              mutate()              // resync
                               alert("Erreur suppression: " + (err instanceof Error ? err.message : "inconnue"))
                             }
                           }}
@@ -1418,7 +1422,7 @@ export default function MissionDetailPage() {
                       <Maximize2 className="h-3.5 w-3.5" />
                     </Button>
                     <PlanEditor
-                      imageUrl={planImageUrl!}
+                      imageUrl={planImageUrl}
                       imageWidth={mission?.plan_width ?? undefined}
                       imageHeight={mission?.plan_height ?? undefined}
                       zones={zones}
