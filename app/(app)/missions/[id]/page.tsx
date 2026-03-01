@@ -809,7 +809,9 @@ export default function MissionDetailPage() {
   }) ?? []
   // Use direct backend URL for plan image (avoids Next.js proxy multipart/binary issues)
   const backendBase = typeof window !== "undefined" ? `http://${window.location.hostname}:8000` : ""
-  const planImageUrl = isPlanMode ? `${backendBase}/api/missions/${id}/plan-image/file?t=${planImageTs}` : null
+  const planImageUrl = (isPlanMode && mission.plan_image)
+  ? `${backendBase}/api/missions/${id}/plan-image/file?t=${planImageTs}`
+  : null
   const floorMode: "floor" | "section" = (env === "garage") ? "section" : "floor"
   const missionFloors = mission?.floors ?? []
 
@@ -1363,18 +1365,16 @@ export default function MissionDetailPage() {
                         <button
                           className="inline-flex items-center gap-1 rounded-md bg-destructive/20 border border-destructive/30 px-2.5 py-1.5 text-[10px] text-destructive hover:bg-destructive/30 transition-colors cursor-pointer"
                           onClick={async () => {
-                            if (!confirm("Supprimer le plan de cette mission ?")) return
-                            try {
-                              const backendBase = typeof window !== "undefined" ? `http://${window.location.hostname}:8000` : ""
-                              const _t = localStorage.getItem("theia_token")
-                              await fetch(`${backendBase}/api/missions/${id}/plan-image`, {
-                                method: "DELETE",
-                                credentials: "include",
-                                headers: _t ? { Authorization: `Bearer ${_t}` } : {},
-                              })
-                              setPlanImageTs(Date.now())
-                              mutate()
-                            } catch (err) {
+                              if (!confirm("Supprimer le plan de cette mission ?")) return
+                              try {
+                                await fetch(`${backendBase}/api/missions/${id}/plan-image`, {
+                                  method: "DELETE",
+                                  credentials: "include",
+                                  headers: _t ? { Authorization: `Bearer ${_t}` } : {},
+                                })
+                                setPlanImageTs(0)   // ← reset le timestamp
+                                mutate()            // ← le mutate va mettre plan_image=null, planImageUrl -> null
+                              } catch (err) {
                               console.error("Delete plan error:", err)
                             }
                           }}
