@@ -1319,14 +1319,16 @@ export default function MissionDetailPage() {
                       <Button variant="ghost" size="sm" className="h-7 px-2 text-[10px] text-cyan-400" onClick={() => setSensorPlaceMode(null)}>Annuler</Button>
                     </div>
                   )}
-                  {/* Upload button shown when no plan image is set yet */}
-                  {!mission?.plan_image && (
-                    <div className="flex items-center justify-between gap-2 rounded-lg border border-amber-500/30 bg-amber-500/10 px-3 py-2">
-                      <p className="text-xs text-amber-300">Aucun plan importe pour cette mission</p>
-                      <label className="cursor-pointer shrink-0">
+                  {/* Upload / re-upload / delete plan image */}
+                  <div className="flex items-center justify-between gap-2 rounded-lg border border-amber-500/30 bg-amber-500/10 px-3 py-2">
+                    <p className="text-xs text-amber-300">
+                      {mission?.plan_image ? "Remplacer ou supprimer le plan" : "Aucun plan importe pour cette mission"}
+                    </p>
+                    <div className="flex items-center gap-1.5 shrink-0">
+                      <label className="cursor-pointer">
                         <input
                           type="file"
-                          accept="image/jpeg,image/png,image/webp"
+                          accept="image/jpeg,image/png,image/webp,image/heic,image/heif,application/pdf,.jpg,.jpeg,.png,.webp,.heic,.heif,.pdf"
                           className="hidden"
                           onChange={async (e) => {
                             const file = e.target.files?.[0]
@@ -1345,18 +1347,44 @@ export default function MissionDetailPage() {
                                 body: file,
                               })
                               if (res.ok) { setPlanImageTs(Date.now()); mutate() }
+                              else { const t = await res.text(); alert(`Erreur upload: ${t}`) }
                             } catch (err) {
                               console.error("Upload error:", err)
+                              alert("Erreur upload: " + (err instanceof Error ? err.message : "inconnue"))
                             }
                           }}
                         />
                         <span className="inline-flex items-center gap-1.5 rounded-md bg-primary px-3 py-1.5 text-[10px] font-medium text-primary-foreground hover:bg-primary/90 transition-colors">
                           <FileImage className="h-3 w-3" />
-                          Importer
+                          {mission?.plan_image ? "Remplacer" : "Importer"}
                         </span>
                       </label>
+                      {mission?.plan_image && (
+                        <button
+                          className="inline-flex items-center gap-1 rounded-md bg-destructive/20 border border-destructive/30 px-2.5 py-1.5 text-[10px] text-destructive hover:bg-destructive/30 transition-colors cursor-pointer"
+                          onClick={async () => {
+                            if (!confirm("Supprimer le plan de cette mission ?")) return
+                            try {
+                              const backendBase = typeof window !== "undefined" ? `http://${window.location.hostname}:8000` : ""
+                              const _t = localStorage.getItem("theia_token")
+                              await fetch(`${backendBase}/api/missions/${id}/plan-image`, {
+                                method: "DELETE",
+                                credentials: "include",
+                                headers: _t ? { Authorization: `Bearer ${_t}` } : {},
+                              })
+                              setPlanImageTs(Date.now())
+                              mutate()
+                            } catch (err) {
+                              console.error("Delete plan error:", err)
+                            }
+                          }}
+                        >
+                          <Trash2 className="h-3 w-3" />
+                          Supprimer
+                        </button>
+                      )}
                     </div>
-                  )}
+                  </div>
                   <div className="relative">
                     <Button
                       variant="outline"

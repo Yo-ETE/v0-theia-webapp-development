@@ -284,11 +284,26 @@ _DATA_DIR = os.getenv("THEIA_DATA_DIR", "/opt/theia/data")
 PLANS_DIR = os.path.join(_DATA_DIR, "plans")
 
 
+def _convert_to_jpeg(src_path: str, dst_path: str, max_dim: int = 4096) -> tuple:
+    """Convert any PIL-supported image to JPEG, resize if too large. Returns (width, height)."""
+    from PIL import Image
+    img = Image.open(src_path)
+    img = img.convert("RGB")  # drop alpha / handle palette
+    w, h = img.size
+    if max(w, h) > max_dim:
+        ratio = max_dim / max(w, h)
+        w, h = int(w * ratio), int(h * ratio)
+        img = img.resize((w, h), Image.LANCZOS)
+    img.save(dst_path, "JPEG", quality=85, optimize=True)
+    img.close()
+    return w, h
+
+
 @router.post("/{mission_id}/plan-image")
 async def upload_plan_image(mission_id: str, request: Request):
     """Upload a floor plan image for a plan-type mission.
     Accepts raw binary body with X-Filename and Content-Type headers.
-    This bypasses python-multipart entirely to avoid 0-byte reads."""
+    Supports JPEG, PNG, WebP, HEIC, PDF. Converts everything to JPEG."""
     db = await get_db()
     cursor = await db.execute("SELECT id FROM missions WHERE id=?", (mission_id,))
     if not await cursor.fetchone():
@@ -296,7 +311,6 @@ async def upload_plan_image(mission_id: str, request: Request):
 
     os.makedirs(PLANS_DIR, exist_ok=True)
 
-    # Read raw body bytes directly -- no multipart parsing
     content = await request.body()
     ct = request.headers.get("content-type", "")
     filename_header = request.headers.get("x-filename", "image.jpg")
@@ -304,45 +318,90 @@ async def upload_plan_image(mission_id: str, request: Request):
 
     if len(content) == 0:
         raise HTTPException(status_code=400, detail="Empty body")
+    if len(content) > 50 * 1024 * 1024:
+        raise HTTPException(status_code=413, detail="Fichier trop volumineux (max 50 Mo)")
 
-    # Determine extension
-    ext = "jpg"
-    if "png" in ct:
-        ext = "png"
-    elif "webp" in ct:
-        ext = "webp"
-    elif filename_header.lower().endswith(".png"):
-        ext = "png"
-    elif filename_header.lower().endswith(".webp"):
-        ext = "webp"
+    # Delete any previous plan file for this mission
+    for old_ext in ("jpg", "png", "webp", "heic", "pdf", "tmp"):
+        old_path = os.path.join(PLANS_DIR, f"{mission_id}.{old_ext}")
+        if os.path.exists(old_path):
+            os.remove(old_path)
 
-    filename = f"{mission_id}.{ext}"
-    filepath = os.path.join(PLANS_DIR, filename)
-
-    with open(filepath, "wb") as f:
+    # Save raw upload to a temp file first
+    fn_lower = filename_header.lower()
+    tmp_path = os.path.join(PLANS_DIR, f"{mission_id}.tmp")
+    with open(tmp_path, "wb") as f:
         f.write(content)
-    print(f"[THEIA] Plan image saved: {filepath} ({len(content)} bytes)")
 
-    # Try to get image dimensions
+    # Always convert to JPEG for consistency + size reduction
+    final_path = os.path.join(PLANS_DIR, f"{mission_id}.jpg")
     plan_width, plan_height = None, None
-    try:
-        from PIL import Image
-        img = Image.open(filepath)
-        plan_width, plan_height = img.size
-        img.close()
-    except Exception as e:
-        print(f"[THEIA] PIL not available or failed: {e}")
 
-    # Update mission
+    try:
+        # HEIC needs pillow-heif registered
+        if "heic" in ct or fn_lower.endswith((".heic", ".heif")):
+            try:
+                import pillow_heif
+                pillow_heif.register_heif_opener()
+            except ImportError:
+                print("[THEIA] pillow-heif not installed, trying raw PIL")
+
+        # PDF: extract first page as image
+        if "pdf" in ct or fn_lower.endswith(".pdf"):
+            try:
+                import fitz  # PyMuPDF
+                doc = fitz.open(tmp_path)
+                page = doc[0]
+                pix = page.get_pixmap(dpi=200)
+                pix.save(tmp_path + ".png")
+                doc.close()
+                os.replace(tmp_path + ".png", tmp_path)
+            except ImportError:
+                print("[THEIA] PyMuPDF not installed, cannot convert PDF")
+                os.remove(tmp_path)
+                raise HTTPException(status_code=400, detail="PDF non supporte (PyMuPDF manquant)")
+
+        plan_width, plan_height = _convert_to_jpeg(tmp_path, final_path)
+        print(f"[THEIA] Plan image saved as JPEG: {final_path} ({os.path.getsize(final_path)} bytes, {plan_width}x{plan_height})")
+    except HTTPException:
+        raise
+    except Exception as e:
+        print(f"[THEIA] Plan image conversion error: {e}")
+        # Fallback: save as-is with original extension
+        src_ext = fn_lower.rsplit(".", 1)[-1] if "." in fn_lower else "jpg"
+        if src_ext not in ("jpg", "jpeg", "png", "webp"):
+            src_ext = "jpg"
+        final_path = os.path.join(PLANS_DIR, f"{mission_id}.{src_ext}")
+        os.replace(tmp_path, final_path)
+        print(f"[THEIA] Saved raw file as fallback: {final_path}")
+    finally:
+        if os.path.exists(tmp_path):
+            os.remove(tmp_path)
+
     plan_url = f"/api/missions/{mission_id}/plan-image/file"
     await db.execute(
         "UPDATE missions SET plan_image=?, plan_width=?, plan_height=?, updated_at=? WHERE id=?",
         (plan_url, plan_width, plan_height, datetime.now().strftime("%Y-%m-%d %H:%M:%S"), mission_id),
     )
     await db.commit()
-    print(f"[THEIA] Plan image DB updated: plan_url={plan_url}, w={plan_width}, h={plan_height}")
 
     return {"url": plan_url, "width": plan_width, "height": plan_height}
+
+
+@router.delete("/{mission_id}/plan-image")
+async def delete_plan_image(mission_id: str):
+    """Delete the floor plan image for a mission."""
+    db = await get_db()
+    for ext in ("jpg", "png", "webp"):
+        filepath = os.path.join(PLANS_DIR, f"{mission_id}.{ext}")
+        if os.path.exists(filepath):
+            os.remove(filepath)
+    await db.execute(
+        "UPDATE missions SET plan_image=NULL, plan_width=NULL, plan_height=NULL, updated_at=? WHERE id=?",
+        (datetime.now().strftime("%Y-%m-%d %H:%M:%S"), mission_id),
+    )
+    await db.commit()
+    return {"ok": True}
 
 
 @router.get("/{mission_id}/plan-image/file")
@@ -353,7 +412,5 @@ async def get_plan_image(mission_id: str):
         filepath = os.path.join(PLANS_DIR, f"{mission_id}.{ext}")
         if os.path.exists(filepath):
             media = {"jpg": "image/jpeg", "png": "image/png", "webp": "image/webp"}[ext]
-            print(f"[THEIA] Serving plan image: {filepath}")
             return FileResponse(filepath, media_type=media)
-    print(f"[THEIA] Plan image NOT FOUND for {mission_id} in {PLANS_DIR}")
     raise HTTPException(status_code=404, detail="Plan image not found")
