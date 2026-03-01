@@ -3,8 +3,8 @@
 export function TheiaWatermark() {
   return (
     <div
-      className="pointer-events-none fixed bottom-6 right-6 z-0 select-none"
-      style={{ opacity: 0.06 }}
+      className="pointer-events-none fixed bottom-15 right-6 z-0 select-none"
+      style={{ opacity: 0.10 }}
       aria-hidden="true"
     >
       <svg
