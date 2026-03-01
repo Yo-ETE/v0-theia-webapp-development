@@ -648,7 +648,7 @@ export function FloorManager({
           {/* Floor/Section detail cards */}
           <div className={cn(
             mode === "section"
-              ? "grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2"
+              ? "grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-2"
               : "flex flex-col gap-2"
           )}>
             {sortedFloors.map(renderFloorCard)}
