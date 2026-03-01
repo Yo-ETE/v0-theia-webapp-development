@@ -2488,8 +2488,11 @@ export default function MissionDetailPage() {
                         {device.battery && (
                           <span className="text-[9px] text-muted-foreground font-mono">{device.battery}V</span>
                         )}
-                        <Badge variant="outline" className="text-[9px] px-1 py-0">
-                          {device.last_seen ? "online" : device.status ?? "unknown"}
+                        <Badge variant="outline" className={cn(
+                          "text-[9px] px-1 py-0",
+                          (deviceStatusConfig[device.status] ?? deviceStatusConfig.unknown).className
+                        )}>
+                          {(deviceStatusConfig[device.status] ?? deviceStatusConfig.unknown).label}
                         </Badge>
                       </div>
                     </button>
