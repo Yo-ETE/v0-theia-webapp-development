@@ -1394,8 +1394,8 @@ export default function MissionDetailPage() {
                                 throw new Error(t || `HTTP ${res.status}`)
                               }
                           
-                              setPlanImageTs(0) // reset timestamp
-                              mutate()          // mission.plan_image -> null => planImageUrl -> null
+                              setPlanImageTs(Date.now())  // ou +1, mais Date.now() suffit
+                              mutate()                    // la mission rechargera plan_image=false         // mission.plan_image -> null => planImageUrl -> null
                             } catch (err) {
                               console.error("Delete plan error:", err)
                               alert("Erreur suppression: " + (err instanceof Error ? err.message : "inconnue"))
