@@ -23,6 +23,15 @@ from datetime import datetime
 from backend.database import get_db
 from backend.sse import sse_manager
 
+def _fmt_delta(seconds: int) -> str:
+    if seconds < 60:
+        return f"{seconds}s"
+    if seconds < 3600:
+        return f"{seconds // 60}min"
+    if seconds < 86400:
+        return f"{seconds // 3600}h{(seconds % 3600) // 60:02d}"
+    return f"{seconds // 86400}j {(seconds % 86400) // 3600}h"
+
 DEFAULT_BAUD = int(os.getenv("LORA_BAUD_RATE", "115200"))
 LORA_SERIAL_PORT = os.getenv("LORA_SERIAL_PORT", "")
 SCAN_INTERVAL = 10
@@ -830,11 +839,11 @@ class LoRaBridge:
                             await db.execute(
                                 "INSERT INTO notifications (type, severity, device_id, device_name, message) VALUES (?, ?, ?, ?, ?)",
                                 ("device_offline", "warning", device_id, device_name,
-                                 f"{device_name} hors ligne (aucun signal depuis {int(delta_s)}s)"),
+                                 f"{device_name} hors ligne (aucun signal depuis {_fmt_delta(int(delta_s))})"),
                             )
                             await db.execute(
                                 "INSERT INTO logs (level, source, message) VALUES (?, ?, ?)",
-                                ("warning", "device", f"{device_name} deconnecte (pas de signal depuis {int(delta_s)}s)"),
+                                ("warning", "device", f"{device_name} deconnecte (pas de signal depuis {_fmt_delta(int(delta_s))})"),
                             )
                             await db.commit()
                             await sse_manager.broadcast("notification", {
