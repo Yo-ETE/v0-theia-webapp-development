@@ -1,8 +1,10 @@
 "use client"
-
+import { TopHeader } from "@/components/top-header"
 export default function AboutPage() {
   return (
-    <main className="flex-1 flex flex-col">
+    <>
+      <TopHeader title="A propos" />
+      <main className="flex-1 flex flex-col">
       <div className="flex-1 flex items-center justify-center p-6">
         <div className="w-full max-w-lg">
           {/* Logo radar */}
@@ -85,6 +87,7 @@ export default function AboutPage() {
           </div>
         </div>
       </div>
-    </main>
-  )
-}
+      </main>
+          </>
+        )
+      }
