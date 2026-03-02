@@ -40,15 +40,36 @@ export default function LoginPage() {
 
   return (
     <div className="w-full max-w-sm px-4 relative">
-      {/* Watermark logo */}
-      <div className="absolute -bottom-16 -right-10 pointer-events-none select-none z-0">
-        <svg viewBox="0 0 120 120" className="h-48 w-48 text-primary opacity-[0.10]" fill="none" xmlns="http://www.w3.org/2000/svg">
+      {/* Watermark logo bas droite */}
+      <div className="absolute bottom-6 right-6 pointer-events-none select-none z-0 flex flex-col items-center opacity-[0.08]">
+        
+        <svg
+          viewBox="0 0 120 120"
+          className="h-40 w-40 text-muted-foreground"
+          fill="none"
+          xmlns="http://www.w3.org/2000/svg"
+        >
           <circle cx="60" cy="60" r="58" stroke="currentColor" strokeWidth="2" />
           <circle cx="60" cy="60" r="40" stroke="currentColor" strokeWidth="1.5" />
           <circle cx="60" cy="60" r="22" stroke="currentColor" strokeWidth="1" />
           <circle cx="60" cy="60" r="6" fill="currentColor" />
-          <line x1="60" y1="60" x2="108" y2="36" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" />
+          <line
+            x1="60"
+            y1="60"
+            x2="108"
+            y2="36"
+            stroke="currentColor"
+            strokeWidth="2.5"
+            strokeLinecap="round"
+          />
         </svg>
+      
+        <div className="mt-2 text-center">
+          <div className="text-sm font-semibold tracking-[0.3em] text-muted-foreground font-mono">
+            THEIA
+          </div>
+        </div>
+      
       </div>
       {/* Radar logo */}
       <div className="flex flex-col items-center gap-4 mb-8">
