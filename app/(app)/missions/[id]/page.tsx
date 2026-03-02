@@ -2605,18 +2605,36 @@ function VisualConfigPopover({
           const isCustom = val !== VISUAL_DEFAULTS[key]
           return (
             <div key={key} className="flex items-center gap-2">
-              <label className="relative cursor-pointer shrink-0">
-                <span
-                  className="block h-5 w-5 rounded border border-border/50"
-                  style={{ backgroundColor: val }}
-                />
-                <input
-                  type="color"
-                  value={val}
-                  onChange={(e) => updateConfig(key, e.target.value)}
-                  className="absolute inset-0 h-full w-full cursor-pointer opacity-0"
-                />
-              </label>
+              <Popover>
+                <PopoverTrigger asChild>
+                  <button
+                    className="h-5 w-5 rounded border border-border/50 shrink-0 cursor-pointer"
+                    style={{ backgroundColor: val }}
+                  />
+                </PopoverTrigger>
+                <PopoverContent side="left" className="w-auto p-2 z-[20000]">
+                  <div className="flex flex-col gap-2">
+                    <input
+                      type="color"
+                      value={val}
+                      onChange={(e) => updateConfig(key, e.target.value)}
+                      className="h-32 w-40 cursor-pointer rounded border-0"
+                    />
+                    <div className="grid grid-cols-8 gap-1">
+                      {["#3b82f6","#ef4444","#22c55e","#f59e0b","#8b5cf6","#ec4899","#06b6d4","#f97316",
+                        "#ffffff","#94a3b8","#475569","#1e293b","#000000","#fbbf24","#34d399","#f87171"]
+                        .map(c => (
+                          <button
+                            key={c}
+                            className="h-5 w-5 rounded-sm border border-border/30"
+                            style={{ backgroundColor: c }}
+                            onClick={() => updateConfig(key, c)}
+                          />
+                        ))}
+                    </div>
+                  </div>
+                </PopoverContent>
+              </Popover>
               <span className="text-[10px] text-muted-foreground truncate flex-1">{label}</span>
               {isCustom && (
                 <button
