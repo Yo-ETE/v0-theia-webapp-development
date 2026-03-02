@@ -98,10 +98,15 @@ export function useVisualConfig(opts?: UseVisualConfigOptions) {
     const url = base
       ? `${base}/api/missions/${missionId}`
       : `/api/missions/${missionId}`
-    try {
+  try {
+      const _t = typeof window !== "undefined" ? localStorage.getItem("theia_token") : null
       await fetch(url, {
         method: "PATCH",
-        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        headers: {
+          "Content-Type": "application/json",
+          ...(_t ? { Authorization: `Bearer ${_t}` } : {}),
+        },
         body: JSON.stringify({ visual_config: newOverrides }),
       })
     } catch { /* ignore */ }
@@ -115,10 +120,15 @@ export function useVisualConfig(opts?: UseVisualConfigOptions) {
     const url = base
       ? `${base}/api/missions/${missionId}`
       : `/api/missions/${missionId}`
-    try {
+  try {
+      const _t = typeof window !== "undefined" ? localStorage.getItem("theia_token") : null
       await fetch(url, {
         method: "PATCH",
-        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        headers: {
+          "Content-Type": "application/json",
+          ...(_t ? { Authorization: `Bearer ${_t}` } : {}),
+        },
         body: JSON.stringify({ visual_config: null }),
       })
     } catch { /* ignore */ }
