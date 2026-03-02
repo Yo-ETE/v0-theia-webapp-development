@@ -2613,13 +2613,6 @@ function VisualConfigPopover({
                   />
                 </PopoverTrigger>
                 <PopoverContent side="left" className="w-auto p-2 z-[20000]">
-                  <div className="flex flex-col gap-2">
-                    <input
-                      type="color"
-                      value={val}
-                      onChange={(e) => updateConfig(key, e.target.value)}
-                      className="h-32 w-40 cursor-pointer rounded border-0"
-                    />
                     <div className="grid grid-cols-8 gap-1">
                       {["#3b82f6","#ef4444","#22c55e","#f59e0b","#8b5cf6","#ec4899","#06b6d4","#f97316",
                         "#ffffff","#94a3b8","#475569","#1e293b","#000000","#fbbf24","#34d399","#f87171"]
