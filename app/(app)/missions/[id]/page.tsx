@@ -2584,6 +2584,13 @@ function VisualConfigPopover({
   resetAll: () => void
   hasMissionOverrides: boolean
 }) {
+  const [openKey, setOpenKey] = useState<string | null>(null)
+
+  const PALETTE = [
+    "#3b82f6","#ef4444","#22c55e","#f59e0b","#8b5cf6","#ec4899","#06b6d4","#f97316",
+    "#ffffff","#94a3b8","#475569","#1e293b","#000000","#fbbf24","#34d399","#f87171",
+  ]
+
   return (
     <div className="flex flex-col gap-3">
       <div className="flex items-center justify-between">
@@ -2591,7 +2598,6 @@ function VisualConfigPopover({
         <button
           onClick={resetAll}
           className="flex items-center gap-1 text-[10px] text-muted-foreground hover:text-foreground transition-colors"
-          title={hasMissionOverrides ? "Revenir aux parametres globaux" : "Reinitialiser les valeurs par defaut"}
         >
           <RotateCw className="h-3 w-3" />
           {hasMissionOverrides ? "Global" : "Defaut"}
@@ -2603,39 +2609,36 @@ function VisualConfigPopover({
         {VC_COLOR_ROWS.map(({ key, label }) => {
           const val = (raw[key] ?? VISUAL_DEFAULTS[key]) as string
           const isCustom = val !== VISUAL_DEFAULTS[key]
+          const isOpen = openKey === key
           return (
-            <div key={key} className="flex items-center gap-2">
-              <Popover>
-                <PopoverTrigger asChild>
-                  <button
-                    className="h-5 w-5 rounded border border-border/50 shrink-0 cursor-pointer"
-                    style={{ backgroundColor: val }}
-                  />
-                </PopoverTrigger>
-                <PopoverContent side="left" className="w-auto p-2 z-[20000]">
-                    <div className="grid grid-cols-8 gap-1">
-                      {["#3b82f6","#ef4444","#22c55e","#f59e0b","#8b5cf6","#ec4899","#06b6d4","#f97316",
-                        "#ffffff","#94a3b8","#475569","#1e293b","#000000","#fbbf24","#34d399","#f87171"]
-                        .map(c => (
-                          <button
-                            key={c}
-                            className="h-5 w-5 rounded-sm border border-border/30"
-                            style={{ backgroundColor: c }}
-                            onClick={() => updateConfig(key, c)}
-                          />
-                        ))}
-                    </div>
-                </PopoverContent>
-              </Popover>
-              <span className="text-[10px] text-muted-foreground truncate flex-1">{label}</span>
-              {isCustom && (
+            <div key={key} className="flex flex-col gap-1">
+              <div className="flex items-center gap-2">
                 <button
-                  onClick={() => updateConfig(key, VISUAL_DEFAULTS[key])}
-                  className="text-[9px] text-muted-foreground/60 hover:text-foreground transition-colors shrink-0"
-                  title="Reinitialiser"
-                >
-                  <RotateCw className="h-2.5 w-2.5" />
-                </button>
+                  className="h-5 w-5 rounded border border-border/50 shrink-0 cursor-pointer"
+                  style={{ backgroundColor: val }}
+                  onClick={() => setOpenKey(isOpen ? null : key)}
+                />
+                <span className="text-[10px] text-muted-foreground truncate flex-1">{label}</span>
+                {isCustom && (
+                  <button
+                    onClick={() => { updateConfig(key, VISUAL_DEFAULTS[key]); setOpenKey(null) }}
+                    className="text-[9px] text-muted-foreground/60 hover:text-foreground transition-colors shrink-0"
+                  >
+                    <RotateCw className="h-2.5 w-2.5" />
+                  </button>
+                )}
+              </div>
+              {isOpen && (
+                <div className="grid grid-cols-8 gap-1 pl-7">
+                  {PALETTE.map(c => (
+                    <button
+                      key={c}
+                      className="h-5 w-5 rounded-sm border border-border/30"
+                      style={{ backgroundColor: c }}
+                      onClick={() => { updateConfig(key, c); setOpenKey(null) }}
+                    />
+                  ))}
+                </div>
               )}
             </div>
           )
@@ -2650,10 +2653,7 @@ function VisualConfigPopover({
           return (
             <div key={key} className="flex items-center gap-2">
               <input
-                type="range"
-                min={0}
-                max={100}
-                step={1}
+                type="range" min={0} max={100} step={1}
                 value={Math.round(val * 100)}
                 onChange={(e) => updateConfig(key, String(parseInt(e.target.value) / 100))}
                 className="w-20 accent-primary h-1"
@@ -2664,7 +2664,6 @@ function VisualConfigPopover({
                 <button
                   onClick={() => updateConfig(key, VISUAL_DEFAULTS[key])}
                   className="text-[9px] text-muted-foreground/60 hover:text-foreground transition-colors shrink-0"
-                  title="Reinitialiser"
                 >
                   <RotateCw className="h-2.5 w-2.5" />
                 </button>
