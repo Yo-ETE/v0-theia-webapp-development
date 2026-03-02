@@ -48,7 +48,7 @@ export function AppSidebar() {
   const visibleItems = navItems.filter((item) => !item.adminOnly || isAdmin)
 
   return (
-    <Sidebar>
+    <Sidebar collapsible="offcanvas">
       <SidebarHeader className="border-b border-sidebar-border px-4 py-4">
         <div className="flex items-center justify-between">
           <Link href="/dashboard" className="flex items-center gap-3">
