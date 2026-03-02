@@ -51,7 +51,11 @@ function severityColor(severity: string) {
 }
 
 function timeAgo(isoStr: string): string {
-  const diff = Date.now() - new Date(isoStr).getTime()
+  // Normalize: replace space with T and add Z if no timezone
+  const normalized = isoStr.includes("T")
+    ? (isoStr.endsWith("Z") ? isoStr : isoStr + "Z")
+    : isoStr.replace(" ", "T") + "Z"
+  const diff = Date.now() - new Date(normalized).getTime()
   const mins = Math.floor(diff / 60000)
   if (mins < 1) return "maintenant"
   if (mins < 60) return `${mins}min`
