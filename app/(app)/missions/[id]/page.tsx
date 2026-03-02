@@ -2625,7 +2625,6 @@ function VisualConfigPopover({
                           />
                         ))}
                     </div>
-                  </div>
                 </PopoverContent>
               </Popover>
               <span className="text-[10px] text-muted-foreground truncate flex-1">{label}</span>
