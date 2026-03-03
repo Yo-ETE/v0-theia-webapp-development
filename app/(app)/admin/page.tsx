@@ -1327,8 +1327,8 @@ export default function AdminPage() {
               </div>
               {tzList.length > 0 && (
                 <div>
-                  <Label className="text-xs text-muted-foreground mb-1 block">Fuseau horaire</Label>
-                  <ScrollArea className="h-32 rounded-md border border-border/50">
+                  <span id="tz-list-label" className="text-xs text-muted-foreground mb-1 block font-medium">Fuseau horaire</span>
+                  <ScrollArea className="h-32 rounded-md border border-border/50" role="listbox" aria-labelledby="tz-list-label">
                     <div className="p-1">
                       {tzList
                         .filter(tz => !tzSearch || tz.toLowerCase().includes(tzSearch.toLowerCase()))

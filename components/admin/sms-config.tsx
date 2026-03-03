@@ -125,9 +125,9 @@ export function SmsConfig() {
       <CardContent className="flex flex-col gap-4">
         {/* Provider select */}
         <div className="space-y-1">
-          <Label className="text-xs">Provider</Label>
-          <Select value={config.provider} onValueChange={(v) => update("provider", v)}>
-            <SelectTrigger className="h-8 text-xs">
+          <Label htmlFor="sms-provider" className="text-xs">Provider</Label>
+          <Select value={config.provider} onValueChange={(v) => update("provider", v)} name="sms-provider">
+            <SelectTrigger id="sms-provider" className="h-8 text-xs" aria-label="Provider SMS">
               <SelectValue placeholder="Choisir un provider..." />
             </SelectTrigger>
             <SelectContent>

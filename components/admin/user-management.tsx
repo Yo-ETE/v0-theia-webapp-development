@@ -227,8 +227,8 @@ export function UserManagement() {
               </div>
             </div>
             <div className="flex items-center gap-3">
-              <Label className="text-[10px] text-muted-foreground uppercase tracking-wider">Role :</Label>
-              <div className="flex gap-2">
+              <span id="role-label" className="text-[10px] text-muted-foreground uppercase tracking-wider font-medium">Role :</span>
+              <div className="flex gap-2" role="radiogroup" aria-labelledby="role-label">
                 <button
                   type="button"
                   onClick={() => setNewRole("viewer")}
