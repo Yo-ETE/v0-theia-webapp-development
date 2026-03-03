@@ -155,13 +155,18 @@ export default function MissionDetailPage() {
   const [timelapseMode, setTimelapseMode] = useState(false)
   const [heatmapMode, setHeatmapMode] = useState(false)
   const [estimatePosition, setEstimatePosition] = useState(false)
-  const { config: visualConfig, raw: visualRaw, updateConfig: updateVisualConfig, resetAll: resetVisualConfig, hasMissionOverrides } = useVisualConfig({
-    missionOverrides: mission?.visual_config as Record<string, string> | null ?? null,
-    missionId: id,
-    onMissionMutate: (patch?: Record<string, unknown>) => patch
-      ? mutate({ ...mission!, ...patch }, false)
-      : mutate(),
-  })
+  const visualConfigOverrides = mission?.visual_config as Record<string, string> | null ?? null
+    const { config: visualConfig, raw: visualRaw, updateConfig: updateVisualConfig, resetAll: resetVisualConfig, hasMissionOverrides } = useVisualConfig({
+      missionOverrides: visualConfigOverrides,
+      missionId: id,
+      onMissionMutate: (patch?: Record<string, unknown>) => {
+          if (patch && mission) {
+            mutate({ ...mission, ...patch }, false)
+          } else {
+            mutate()
+          }
+        },
+    })
   const [showFov, setShowFov] = useState(false)
   // Sync FOV default from visual config on first load
   useEffect(() => { setShowFov(visualConfig.fov_default_visible) }, []) // eslint-disable-line react-hooks/exhaustive-deps
@@ -2490,11 +2495,8 @@ export default function MissionDetailPage() {
                         {device.battery && (
                           <span className="text-[9px] text-muted-foreground font-mono">{device.battery}V</span>
                         )}
-                        <Badge variant="outline" className={cn(
-                          "text-[9px] px-1 py-0",
-                          (deviceStatusConfig[device.status] ?? deviceStatusConfig.unknown).className
-                        )}>
-                          {(deviceStatusConfig[device.status] ?? deviceStatusConfig.unknown).label}
+                        <Badge variant="outline" className="text-[9px] px-1 py-0">
+                          {device.last_seen ? "online" : device.status ?? "unknown"}
                         </Badge>
                       </div>
                     </button>
@@ -2586,13 +2588,6 @@ function VisualConfigPopover({
   resetAll: () => void
   hasMissionOverrides: boolean
 }) {
-  const [openKey, setOpenKey] = useState<string | null>(null)
-
-  const PALETTE = [
-    "#3b82f6","#ef4444","#22c55e","#f59e0b","#8b5cf6","#ec4899","#06b6d4","#f97316",
-    "#ffffff","#94a3b8","#475569","#1e293b","#000000","#fbbf24","#34d399","#f87171",
-  ]
-
   return (
     <div className="flex flex-col gap-3">
       <div className="flex items-center justify-between">
@@ -2600,6 +2595,7 @@ function VisualConfigPopover({
         <button
           onClick={resetAll}
           className="flex items-center gap-1 text-[10px] text-muted-foreground hover:text-foreground transition-colors"
+          title={hasMissionOverrides ? "Revenir aux parametres globaux" : "Reinitialiser les valeurs par defaut"}
         >
           <RotateCw className="h-3 w-3" />
           {hasMissionOverrides ? "Global" : "Defaut"}
@@ -2611,36 +2607,30 @@ function VisualConfigPopover({
         {VC_COLOR_ROWS.map(({ key, label }) => {
           const val = (raw[key] ?? VISUAL_DEFAULTS[key]) as string
           const isCustom = val !== VISUAL_DEFAULTS[key]
-          const isOpen = openKey === key
           return (
-            <div key={key} className="flex flex-col gap-1">
-              <div className="flex items-center gap-2">
-                <button
-                  className="h-5 w-5 rounded border border-border/50 shrink-0 cursor-pointer"
+            <div key={key} className="flex items-center gap-2">
+              <label className="relative cursor-pointer shrink-0">
+                <span
+                  className="block h-5 w-5 rounded border border-border/50"
                   style={{ backgroundColor: val }}
-                  onClick={() => setOpenKey(isOpen ? null : key)}
                 />
-                <span className="text-[10px] text-muted-foreground truncate flex-1">{label}</span>
-                {isCustom && (
-                  <button
-                    onClick={() => { updateConfig(key, VISUAL_DEFAULTS[key]); setOpenKey(null) }}
-                    className="text-[9px] text-muted-foreground/60 hover:text-foreground transition-colors shrink-0"
-                  >
-                    <RotateCw className="h-2.5 w-2.5" />
-                  </button>
-                )}
-              </div>
-              {isOpen && (
-                <div className="grid grid-cols-8 gap-1 pl-7">
-                  {PALETTE.map(c => (
-                    <button
-                      key={c}
-                      className="h-5 w-5 rounded-sm border border-border/30"
-                      style={{ backgroundColor: c }}
-                      onClick={() => { updateConfig(key, c); setOpenKey(null) }}
-                    />
-                  ))}
-                </div>
+                <input
+                  type="color"
+                  value={val}
+                  onChange={(e) => updateConfig(key, e.target.value)}
+                  onBlur={(e) => updateConfig(key, e.target.value)}
+                  className="absolute inset-0 h-full w-full cursor-pointer opacity-0"
+                />
+              </label>
+              <span className="text-[10px] text-muted-foreground truncate flex-1">{label}</span>
+              {isCustom && (
+                <button
+                  onClick={() => updateConfig(key, VISUAL_DEFAULTS[key])}
+                  className="text-[9px] text-muted-foreground/60 hover:text-foreground transition-colors shrink-0"
+                  title="Reinitialiser"
+                >
+                  <RotateCw className="h-2.5 w-2.5" />
+                </button>
               )}
             </div>
           )
@@ -2655,7 +2645,10 @@ function VisualConfigPopover({
           return (
             <div key={key} className="flex items-center gap-2">
               <input
-                type="range" min={0} max={100} step={1}
+                type="range"
+                min={0}
+                max={100}
+                step={1}
                 value={Math.round(val * 100)}
                 onChange={(e) => updateConfig(key, String(parseInt(e.target.value) / 100))}
                 className="w-20 accent-primary h-1"
@@ -2666,6 +2659,7 @@ function VisualConfigPopover({
                 <button
                   onClick={() => updateConfig(key, VISUAL_DEFAULTS[key])}
                   className="text-[9px] text-muted-foreground/60 hover:text-foreground transition-colors shrink-0"
+                  title="Reinitialiser"
                 >
                   <RotateCw className="h-2.5 w-2.5" />
                 </button>
