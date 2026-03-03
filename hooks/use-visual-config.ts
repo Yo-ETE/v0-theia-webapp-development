@@ -85,7 +85,6 @@ export function useVisualConfig(opts?: UseVisualConfigOptions) {
     try {
       await updateMission(missionId, { visual_config: newOverrides as never })
     } catch { /* ignore */ }
-    onMissionMutate?.()
   }, [missionId, missionOverrides, onMissionMutate])
 
   const resetAll = useCallback(async () => {
