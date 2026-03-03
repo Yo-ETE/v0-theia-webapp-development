@@ -13,7 +13,7 @@ class SSEManager:
         self._clients: list[asyncio.Queue] = []
 
     async def subscribe(self) -> asyncio.Queue:
-        queue: asyncio.Queue = asyncio.Queue()
+        queue: asyncio.Queue = asyncio.Queue(maxsize=100)
         self._clients.append(queue)
         return queue
 

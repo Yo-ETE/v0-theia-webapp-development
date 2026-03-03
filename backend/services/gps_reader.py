@@ -26,6 +26,19 @@ class GPSReader:
     def data(self) -> dict:
         return self._data
 
+    @staticmethod
+    def _safe_val(obj, attr, default=0.0):
+        """Safely get attribute, calling it if it's a method."""
+        val = getattr(obj, attr, default)
+        if callable(val):
+            try:
+                val = val()
+            except Exception:
+                val = default
+        if val is None:
+            val = default
+        return val
+
     def _read_gpsd(self) -> dict:
         """Read from gpsd synchronously."""
         try:
@@ -33,15 +46,23 @@ class GPSReader:
             gpsd.connect()
             packet = gpsd.get_current()
 
-            fix = packet.mode >= 2
+            mode = int(self._safe_val(packet, "mode", 0))
+            fix = mode >= 2
+            lat = float(self._safe_val(packet, "lat", 0.0)) if fix else 0.0
+            lon = float(self._safe_val(packet, "lon", 0.0)) if fix else 0.0
+            alt = float(self._safe_val(packet, "alt", 0.0)) if mode >= 3 else 0.0
+            speed = float(self._safe_val(packet, "speed", 0.0))
+            sats = int(self._safe_val(packet, "sats", 0))
+            hdop = float(self._safe_val(packet, "hdop", 0.0))
+
             return {
                 "fix": fix,
-                "latitude": packet.lat if fix else 0.0,
-                "longitude": packet.lon if fix else 0.0,
-                "altitude": packet.alt if packet.mode >= 3 else 0.0,
-                "speed": getattr(packet, "speed", 0.0) or 0.0,
-                "satellites": getattr(packet, "sats", 0) or 0,
-                "hdop": getattr(packet, "hdop", 0.0) or 0.0,
+                "latitude": lat,
+                "longitude": lon,
+                "altitude": alt,
+                "speed": speed,
+                "satellites": sats,
+                "hdop": hdop,
             }
         except Exception as e:
             print(f"[THEIA] gps_reader error: {e}")

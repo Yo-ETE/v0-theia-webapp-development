@@ -59,6 +59,36 @@ install_system_packages() {
 }
 
 # ============================================
+# STEP 1b: Arduino CLI (for TX firmware flashing)
+# ============================================
+install_arduino_cli() {
+    if command -v arduino-cli &>/dev/null; then
+        ok "arduino-cli already installed ($(arduino-cli version | head -1))"
+    else
+        info "Installing arduino-cli..."
+        curl -fsSL https://raw.githubusercontent.com/arduino/arduino-cli/master/install.sh | BINDIR=/usr/local/bin sh
+        ok "arduino-cli installed"
+    fi
+
+    info "Installing ESP32 board core (this may take a few minutes)..."
+    # Init config and add ESP32 board URL
+    sudo -u "$SERVICE_USER" arduino-cli config init --overwrite 2>/dev/null || true
+    sudo -u "$SERVICE_USER" arduino-cli config add board_manager.additional_urls \
+        "https://raw.githubusercontent.com/espressif/arduino-esp32/gh-pages/package_esp32_index.json" 2>/dev/null || true
+    sudo -u "$SERVICE_USER" arduino-cli core update-index 2>/dev/null || true
+
+    # Install ESP32 core (includes Heltec WiFi LoRa 32 V3 board def)
+    sudo -u "$SERVICE_USER" arduino-cli core install esp32:esp32 2>/dev/null || true
+
+    # Install libraries (RadioLib for LoRa SX1262, no Heltec SDK needed)
+    info "Installing Arduino libraries..."
+    sudo -u "$SERVICE_USER" arduino-cli lib install "RadioLib" 2>/dev/null || true
+    sudo -u "$SERVICE_USER" arduino-cli lib install "LD2450" 2>/dev/null || true
+
+    ok "Arduino CLI + ESP32 core + RadioLib configured"
+}
+
+# ============================================
 # STEP 2: Node.js (via NodeSource)
 # ============================================
 install_nodejs() {
@@ -124,6 +154,19 @@ setup_env() {
     # Force Pi mode
     sed -i 's/^NEXT_PUBLIC_MODE=.*/NEXT_PUBLIC_MODE=pi/' "$env_file"
 
+    # Clear hardcoded serial ports so auto-detection works
+    sed -i 's|^GPS_DEVICE=/dev/ttyUSB.*|GPS_DEVICE=|' "$env_file"
+    sed -i 's|^LORA_SERIAL_PORT=/dev/ttyACM.*|LORA_SERIAL_PORT=|' "$env_file"
+
+    # Generate a fixed JWT_SECRET if not already set
+    local jwt_secret
+    jwt_secret=$(grep '^JWT_SECRET=' "$env_file" | cut -d'=' -f2)
+    if [[ -z "$jwt_secret" ]]; then
+        jwt_secret=$(python3 -c "import secrets; print(secrets.token_hex(32))")
+        sed -i "s|^JWT_SECRET=.*|JWT_SECRET=$jwt_secret|" "$env_file"
+        info "Generated JWT_SECRET"
+    fi
+
     # Ensure all required keys exist (add missing ones from example)
     while IFS= read -r line; do
         if [[ "$line" =~ ^[A-Z_]+= ]]; then
@@ -162,38 +205,79 @@ setup_nodejs() {
     info "Installing Node.js dependencies..."
     cd "$APP_DIR"
 
-    # Install deps
-    sudo -u "$SERVICE_USER" npm ci --prefer-offline --no-audit 2>/dev/null || \
-    sudo -u "$SERVICE_USER" npm install --prefer-offline --no-audit
+    # Install deps (--legacy-peer-deps for react-leaflet React 19 compat)
+    sudo -u "$SERVICE_USER" npm ci --legacy-peer-deps --prefer-offline --no-audit 2>/dev/null || \
+    sudo -u "$SERVICE_USER" npm install --legacy-peer-deps --prefer-offline --no-audit
 
     info "Building Next.js application..."
     sudo -u "$SERVICE_USER" npm run build
+
+    # Standalone build requires manual copy of static assets + public
+    # See: https://nextjs.org/docs/app/api-reference/config/next-config-js/output#automatically-copying-traced-files
+    if [[ -d "$APP_DIR/.next/standalone" ]]; then
+        info "Copying static assets to standalone output..."
+        cp -r "$APP_DIR/.next/static" "$APP_DIR/.next/standalone/.next/static"
+        if [[ -d "$APP_DIR/public" ]]; then
+            cp -r "$APP_DIR/public" "$APP_DIR/.next/standalone/public"
+        fi
+        ok "Static assets copied to standalone"
+    fi
 
     ok "Next.js built successfully"
 }
 
 # ============================================
-# STEP 8: Configure GPSD
+# STEP 8a: Setup udev rules for stable USB names
+# ============================================
+setup_udev() {
+    info "Setting up udev rules for stable USB device names..."
+    if [[ -f "$APP_DIR/scripts/setup-udev-rules.sh" ]]; then
+        bash "$APP_DIR/scripts/setup-udev-rules.sh"
+        ok "udev rules configured"
+    else
+        warn "scripts/setup-udev-rules.sh not found, skipping udev setup"
+    fi
+}
+
+# ============================================
+# STEP 8b: Configure GPSD
 # ============================================
 setup_gpsd() {
-    local gps_device
-    gps_device=$(grep '^GPS_DEVICE=' "$APP_DIR/.env" | cut -d'=' -f2)
-    gps_device="${gps_device:-/dev/ttyUSB0}"
+    # Prefer /dev/theia-gps (udev symlink), then GPS_DEVICE from .env, then skip
+    local gps_device=""
 
-    if [[ -c "$gps_device" ]]; then
+    if [[ -e "/dev/theia-gps" ]]; then
+        gps_device="/dev/theia-gps"
+    else
+        gps_device=$(grep '^GPS_DEVICE=' "$APP_DIR/.env" 2>/dev/null | cut -d'=' -f2)
+    fi
+
+    if [[ -n "$gps_device" && -e "$gps_device" ]]; then
         info "Configuring gpsd for $gps_device..."
 
         cat > /etc/default/gpsd <<EOF
 START_DAEMON="true"
 GPSD_OPTIONS="-n"
 DEVICES="$gps_device"
-USBAUTO="true"
+USBAUTO="false"
 EOF
         systemctl restart gpsd 2>/dev/null || true
         systemctl enable gpsd 2>/dev/null || true
         ok "gpsd configured for $gps_device"
     else
-        warn "GPS device $gps_device not found, skipping gpsd config"
+        # No GPS device found -- configure gpsd with no device
+        # CRITICAL: USBAUTO=false prevents gpsd from grabbing the LoRa port!
+        info "No GPS device found. Configuring gpsd with no device..."
+
+        cat > /etc/default/gpsd <<EOF
+START_DAEMON="true"
+GPSD_OPTIONS="-n"
+DEVICES=""
+USBAUTO="false"
+EOF
+        systemctl restart gpsd 2>/dev/null || true
+        systemctl enable gpsd 2>/dev/null || true
+        ok "gpsd configured (no device -- LoRa port protected)"
     fi
 }
 
@@ -284,6 +368,11 @@ verify_install() {
     echo -e "  Dashboard:  ${GREEN}http://localhost:3000/dashboard${NC}"
     echo -e "  API Docs:   ${GREEN}http://localhost:8000/docs${NC}"
     echo ""
+    echo -e "  ${YELLOW}Default login:${NC}"
+    echo -e "    Username: ${GREEN}admin${NC}"
+    echo -e "    Password: ${GREEN}admin${NC}"
+    echo -e "    ${RED}IMPORTANT: Change this password after first login!${NC}"
+    echo ""
 
     # Service status
     echo -e "  ${CYAN}Service Status:${NC}"
@@ -324,12 +413,14 @@ main() {
 
     check_root
     install_system_packages
+    install_arduino_cli
     install_nodejs
     create_directories
     copy_app_files
     setup_env
     setup_python
     setup_nodejs
+    setup_udev
     setup_gpsd
     install_services
     verify_install

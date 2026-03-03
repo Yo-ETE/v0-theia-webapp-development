@@ -9,12 +9,11 @@ export async function GET() {
 
   try {
     const res = await proxyToBackend("/api/status")
+    if (!res.ok) throw new Error(`Backend ${res.status}`)
     const data = await res.json()
     return NextResponse.json(data)
   } catch {
-    return NextResponse.json(
-      { error: "Backend unreachable" },
-      { status: 502 },
-    )
+    // Fallback to mock data when backend is unreachable
+    return NextResponse.json({ ...mockSystemStatus, _fallback: true })
   }
 }

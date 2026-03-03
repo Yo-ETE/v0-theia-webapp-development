@@ -1,17 +1,51 @@
-import { NextResponse } from "next/server"
+import { NextResponse, type NextRequest } from "next/server"
 import { isPreviewMode, proxyToBackend } from "@/lib/api-mode"
-import { mockDevices } from "@/lib/mock-data"
+import { store } from "@/lib/preview-store"
 
-export async function GET() {
-  if (isPreviewMode()) {
-    return NextResponse.json(mockDevices)
-  }
+export async function GET(request: NextRequest) {
+  const includeDisabled = request.nextUrl.searchParams.get("include_disabled") === "true"
+  const qs = includeDisabled ? "?include_disabled=true" : ""
 
+  // Always try the real backend first (even in preview mode)
   try {
-    const res = await proxyToBackend("/api/devices")
-    const data = await res.json()
-    return NextResponse.json(data)
+    const res = await proxyToBackend(`/api/devices${qs}`)
+    if (!res.ok) throw new Error(`Backend ${res.status}`)
+    const devices = await res.json()
+    // Sync backend into local store for fallback
+    for (const dev of devices) {
+      const existing = store.getDevice(dev.id)
+      if (existing) store.updateDevice(dev.id, dev)
+      else store.createDevice({ ...dev })
+    }
+    return NextResponse.json(devices)
   } catch {
-    return NextResponse.json({ error: "Backend unreachable" }, { status: 502 })
+    // Backend unreachable -- fall back to local store
+    return NextResponse.json(store.getDevices())
+  }
+}
+
+export async function POST(request: NextRequest) {
+  const body = await request.json()
+
+  // Always create locally first
+  const localDevice = store.createDevice({
+    name: body.name ?? "New Device",
+    dev_eui: body.dev_eui ?? "",
+    hw_id: body.dev_eui ?? "",
+    type: body.type ?? "microwave_tx",
+    serial_port: body.serial_port ?? "",
+  })
+
+  // Always try backend first
+  try {
+    const res = await proxyToBackend("/api/devices", {
+      method: "POST",
+      body: JSON.stringify(body),
+    })
+    if (!res.ok) throw new Error(`Backend ${res.status}`)
+    return NextResponse.json(await res.json(), { status: 201 })
+  } catch {
+    // Backend down -- local device already created
+    return NextResponse.json(localDevice, { status: 201 })
   }
 }

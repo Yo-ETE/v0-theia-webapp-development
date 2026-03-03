@@ -1,8 +1,20 @@
 "use client"
 
 import type { Zone, DetectionEvent } from "@/lib/types"
+import type { VisualConfig } from "@/hooks/use-visual-config"
 import { cn } from "@/lib/utils"
 import MapInner from "./map-inner"
+
+interface LiveDetection {
+  presence: boolean
+  distance: number
+  direction: string
+  device_name: string
+  side: string
+  rssi: number | null
+  timestamp: string
+  [key: string]: unknown
+}
 
 interface MissionMapProps {
   centerLat: number
@@ -10,7 +22,36 @@ interface MissionMapProps {
   zoom: number
   zones: Zone[]
   events?: DetectionEvent[]
+  liveDetections?: Record<string, LiveDetection>
+  liveByDevice?: Record<string, LiveDetection>
+  sensorPlacements?: {
+    device_id: string
+    device_name: string
+    zone_id: string
+    side: string
+    sensor_position: number
+    device_type?: string
+  }[]
+  heatmapMode?: boolean
   className?: string
+  drawingMode?: boolean
+  onPolygonDrawn?: (polygon: [number, number][]) => void
+  onZoneClick?: (zoneId: string) => void
+  sensorPlaceMode?: {
+    zoneId: string
+    side: string
+    deviceId: string
+    deviceName: string
+  } | null
+  onSensorPlace?: (zoneId: string, side: string, position: number) => void
+  onMapMove?: (lat: number, lon: number, zoom: number) => void
+  editingZoneId?: string | null
+  editingPolygon?: [number, number][] | null
+  onZonePolygonUpdate?: (zoneId: string, polygon: [number, number][]) => void
+  estimatePosition?: boolean
+  showFov?: boolean
+  replayMode?: boolean
+  visualConfig?: VisualConfig | null
 }
 
 export function MissionMap({ className, ...props }: MissionMapProps) {

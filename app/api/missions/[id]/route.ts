@@ -1,6 +1,6 @@
 import { NextResponse, type NextRequest } from "next/server"
 import { isPreviewMode, proxyToBackend } from "@/lib/api-mode"
-import { mockMissions } from "@/lib/mock-data"
+import { store } from "@/lib/preview-store"
 
 export async function GET(
   _request: NextRequest,
@@ -8,20 +8,55 @@ export async function GET(
 ) {
   const { id } = await params
 
-  if (isPreviewMode()) {
-    const mission = mockMissions.find((m) => m.id === id)
-    if (!mission) {
-      return NextResponse.json({ error: "Mission not found" }, { status: 404 })
-    }
-    return NextResponse.json(mission)
-  }
+  // Local store has freshest coords/zones (drawn in UI)
+  const local = store.getMission(id)
 
+  // Always try the real backend first (even in preview mode)
   try {
     const res = await proxyToBackend(`/api/missions/${id}`)
-    const data = await res.json()
-    return NextResponse.json(data, { status: res.status })
+    if (!res.ok) throw new Error(`Backend ${res.status}`)
+    const backend = await res.json()
+    // Merge: local store has freshest geo/zones (drawn in the UI).
+    // Backend is ALWAYS authoritative for status, event_count, device_count.
+    const localZones = local?.zones ?? []
+    const localFloors = local?.floors ?? []
+    const merged = {
+      ...backend,
+      // Local store wins ONLY for geo/zones/floors/environment (drawn in UI)
+      center_lat: local?.center_lat ?? backend.center_lat,
+      center_lon: local?.center_lon ?? backend.center_lon,
+      zoom: local?.zoom ?? backend.zoom,
+      zones: localZones.length > 0 ? localZones : (backend.zones ?? []),
+      floors: localFloors.length > 0 ? localFloors : (backend.floors ?? []),
+      environment: local?.environment ?? backend.environment ?? "horizontal",
+      // Backend ALWAYS wins for these (never override with local store)
+      status: backend.status ?? local?.status,
+      event_count: backend.event_count ?? 0,
+      device_count: backend.device_count ?? 0,
+    }
+    store.updateMission(id, merged)
+    return NextResponse.json(merged)
   } catch {
-    return NextResponse.json({ error: "Backend unreachable" }, { status: 502 })
+    if (local) return NextResponse.json(local)
+    return NextResponse.json({ error: "Not found" }, { status: 404 })
+  }
+}
+
+export async function DELETE(
+  _request: NextRequest,
+  { params }: { params: Promise<{ id: string }> },
+) {
+  const { id } = await params
+  store.deleteMission(id)
+
+  // Always try backend first
+  try {
+    const res = await proxyToBackend(`/api/missions/${id}`, { method: "DELETE" })
+    if (!res.ok) throw new Error(`Backend ${res.status}`)
+    return NextResponse.json({ ok: true })
+  } catch {
+    // Local store already deleted -- return success regardless
+    return NextResponse.json({ ok: true })
   }
 }
 
@@ -30,25 +65,59 @@ export async function PATCH(
   { params }: { params: Promise<{ id: string }> },
 ) {
   const { id } = await params
+  const body = await request.json()
 
-  if (isPreviewMode()) {
-    const body = await request.json()
-    const mission = mockMissions.find((m) => m.id === id)
-    if (!mission) {
-      return NextResponse.json({ error: "Mission not found" }, { status: 404 })
+  // Always update local store first -- never lose data
+  const localUpdated = store.updateMission(id, body)
+
+  // Always try the real backend (even in preview mode)
+  // Retry up to 2 times for critical status changes
+  const maxRetries = body.status ? 2 : 1
+  let lastErr: unknown = null
+
+  for (let attempt = 0; attempt < maxRetries; attempt++) {
+    try {
+      const res = await proxyToBackend(`/api/missions/${id}`, {
+        method: "PATCH",
+        body: JSON.stringify(body),
+      })
+      if (!res.ok) {
+        const errText = await res.text().catch(() => "")
+        console.error(`[THEIA] Mission PATCH backend error ${res.status}: ${errText}`)
+        throw new Error(`Backend ${res.status}`)
+      }
+      const backend = await res.json()
+      console.log(`[THEIA] Mission PATCH OK: id=${id} status=${backend.status}`)
+      // Merge: backend ALWAYS wins for status/event_count/device_count
+      // Local wins ONLY for geo/zones/floors (drawn in UI)
+      const merged = {
+        ...backend,
+        center_lat: localUpdated?.center_lat ?? backend.center_lat,
+        center_lon: localUpdated?.center_lon ?? backend.center_lon,
+        zoom: localUpdated?.zoom ?? backend.zoom,
+        zones: localUpdated?.zones?.length ? localUpdated.zones : (backend.zones ?? []),
+        floors: localUpdated?.floors?.length ? localUpdated.floors : (backend.floors ?? []),
+        environment: localUpdated?.environment ?? backend.environment,
+        // Backend ALWAYS wins for these (never override with local store)
+        status: backend.status ?? localUpdated?.status,
+        event_count: backend.event_count ?? 0,
+        device_count: backend.device_count ?? 0,
+      }
+      store.updateMission(id, merged)
+      return NextResponse.json(merged)
+    } catch (err) {
+      lastErr = err
+      console.error(`[THEIA] Mission PATCH attempt ${attempt + 1}/${maxRetries} FAILED for ${id}:`, err)
+      if (attempt < maxRetries - 1) {
+        await new Promise(r => setTimeout(r, 500))
+      }
     }
-    return NextResponse.json({ ...mission, ...body, updated_at: new Date().toISOString() })
   }
 
-  try {
-    const body = await request.text()
-    const res = await proxyToBackend(`/api/missions/${id}`, {
-      method: "PATCH",
-      body,
-    })
-    const data = await res.json()
-    return NextResponse.json(data, { status: res.status })
-  } catch {
-    return NextResponse.json({ error: "Backend unreachable" }, { status: 502 })
-  }
+  // All retries failed -- return error so frontend knows it failed
+  console.error(`[THEIA] Mission PATCH ALL RETRIES FAILED for ${id}, body:`, JSON.stringify(body), "error:", lastErr)
+  return NextResponse.json(
+    { error: `Backend unreachable after ${maxRetries} attempts` },
+    { status: 502 },
+  )
 }

@@ -23,28 +23,68 @@ async def list_events(
     params: list = []
 
     if mission_id:
-        conditions.append("mission_id=?")
+        conditions.append("e.mission_id=?")
         params.append(mission_id)
     if device_id:
-        conditions.append("device_id=?")
+        conditions.append("e.device_id=?")
         params.append(device_id)
     if event_type:
-        conditions.append("event_type=?")
+        conditions.append("e.event_type=?")
         params.append(event_type)
     if from_ts:
-        conditions.append("timestamp>=?")
+        conditions.append("e.timestamp>=?")
         params.append(from_ts)
     if to_ts:
-        conditions.append("timestamp<=?")
+        conditions.append("e.timestamp<=?")
         params.append(to_ts)
 
     where = " AND ".join(conditions) if conditions else "1=1"
-    query = f"SELECT * FROM events WHERE {where} ORDER BY timestamp DESC LIMIT ? OFFSET ?"
+    # Try query with new columns first, fall back to old schema
+    query_new = f"""
+        SELECT
+            e.id, e.mission_id, e.device_id,
+            e.event_type AS type,
+            e.zone AS zone_name,
+            e.zone_id,
+            e.side,
+            e.rssi, e.snr, e.payload, e.timestamp,
+            e.sensor_position, e.orientation, e.floor,
+            COALESCE(e.device_name, d.name) AS device_name,
+            d.dev_eui AS tx_id,
+            COALESCE(e.zone, d.zone_label) AS zone_label
+        FROM events e
+        LEFT JOIN devices d ON d.id = e.device_id
+        WHERE {where}
+        ORDER BY e.timestamp DESC
+        LIMIT ? OFFSET ?
+    """
+    query_old = f"""
+        SELECT
+            e.id, e.mission_id, e.device_id,
+            e.event_type AS type,
+            e.zone AS zone_name,
+            '' AS zone_id,
+            '' AS side,
+            e.rssi, e.snr, e.payload, e.timestamp,
+            '' AS sensor_position, '' AS orientation, NULL AS floor,
+            d.name AS device_name,
+            d.dev_eui AS tx_id,
+            COALESCE(e.zone, d.zone_label) AS zone_label
+        FROM events e
+        LEFT JOIN devices d ON d.id = e.device_id
+        WHERE {where}
+        ORDER BY e.timestamp DESC
+        LIMIT ? OFFSET ?
+    """
     params.extend([limit, offset])
 
-    cursor = await db.execute(query, params)
+    try:
+        cursor = await db.execute(query_new, params)
+    except Exception:
+        cursor = await db.execute(query_old, params)
     rows = await cursor.fetchall()
 
+    # All stored events are already validated (presence=True, d>15, rate-limited)
     result = []
     for r in rows:
         d = dict(r)
@@ -55,3 +95,15 @@ async def list_events(
                 pass
         result.append(d)
     return result
+
+
+@router.delete("")
+async def purge_events(mission_id: str | None = None):
+    """Delete all events for a mission (or all events if no mission_id)."""
+    db = await get_db()
+    if mission_id:
+        await db.execute("DELETE FROM events WHERE mission_id=?", (mission_id,))
+    else:
+        await db.execute("DELETE FROM events")
+    await db.commit()
+    return {"ok": True}

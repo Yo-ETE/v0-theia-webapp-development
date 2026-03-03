@@ -1,42 +1,141 @@
 """
 THEIA - Missions CRUD router
+Field names aligned with frontend: center_lat, center_lon, zoom, environment, location
 """
 import json
 import uuid
-from datetime import datetime, timezone
-from fastapi import APIRouter, HTTPException
-from pydantic import BaseModel
+from datetime import datetime
+from fastapi import APIRouter, HTTPException, Request
+from pydantic import BaseModel, Field
 from backend.database import get_db
 
 router = APIRouter(prefix="/missions", tags=["missions"])
 
 
+def _normalize_reset_at(reset_at: str) -> str:
+    """Normalize a detection_reset_at timestamp to 'YYYY-MM-DD HH:MM:SS' local time.
+    Handles both old UTC ISO format and new local format."""
+    if not reset_at:
+        return reset_at
+    # If it looks like UTC ISO (contains T and Z or +00:00)
+    if "T" in reset_at:
+        try:
+            from datetime import timezone as tz
+            dt = datetime.fromisoformat(reset_at.replace("Z", "+00:00"))
+            # Convert to local time
+            local_dt = dt.astimezone(tz=None)  # system local timezone
+            return local_dt.strftime("%Y-%m-%d %H:%M:%S")
+        except Exception:
+            pass
+    # Already local format or fallback: just strip cruft
+    return reset_at.replace("T", " ").replace("Z", "").split(".")[0].split("+")[0]
+
+
 class MissionCreate(BaseModel):
+    id: str | None = None
     name: str
     description: str = ""
-    location_lat: float | None = None
-    location_lon: float | None = None
-    location_label: str = ""
-    zones: list = []
+    location: str = ""
+    environment: str = "horizontal"
+    center_lat: float = 48.8566
+    center_lon: float = 2.3522
+    zoom: int = 19
+    zones: list = Field(default_factory=list)
+    floors: list = Field(default_factory=list)
+    plan_image: str | None = None
+    plan_width: int | None = None
+    plan_height: int | None = None
+    plan_scale: float | None = None
 
 
 class MissionUpdate(BaseModel):
     name: str | None = None
     description: str | None = None
     status: str | None = None
-    location_lat: float | None = None
-    location_lon: float | None = None
-    location_label: str | None = None
+    location: str | None = None
+    environment: str | None = None
+    center_lat: float | None = None
+    center_lon: float | None = None
+    zoom: int | None = None
     zones: list | None = None
+    floors: list | None = None
+    plan_image: str | None = None
+    plan_width: int | None = None
+    plan_height: int | None = None
+    plan_scale: float | None = None
+    detection_reset_at: str | None = None
+    started_at: str | None = None
+    ended_at: str | None = None
+    visual_config: dict | str | None = None
+    device_placements: dict | str | None = None
+    notification_config: dict | str | None = None
+    device_count: int | None = None
+    event_count: int | None = None
 
 
 def _row_to_dict(row) -> dict:
+    """Convert a DB row to a frontend-compatible dict."""
     d = dict(row)
-    if "zones" in d and isinstance(d["zones"], str):
+    for json_field in ("zones", "floors"):
+        if json_field in d and isinstance(d[json_field], str):
+            try:
+                d[json_field] = json.loads(d[json_field])
+            except Exception:
+                d[json_field] = []
+    # Parse visual_config JSON
+    if "visual_config" in d and isinstance(d["visual_config"], str):
         try:
-            d["zones"] = json.loads(d["zones"])
+            d["visual_config"] = json.loads(d["visual_config"])
         except Exception:
-            d["zones"] = []
+            d["visual_config"] = None
+    # Parse device_placements JSON
+    if "device_placements" in d and isinstance(d["device_placements"], str):
+        try:
+            d["device_placements"] = json.loads(d["device_placements"])
+        except Exception:
+            d["device_placements"] = {}
+    # Ensure all expected fields exist
+    d.setdefault("environment", "horizontal")
+    d.setdefault("center_lat", 48.8566)
+    d.setdefault("center_lon", 2.3522)
+    d.setdefault("zoom", 19)
+    d.setdefault("floors", [])
+    d.setdefault("started_at", None)
+    d.setdefault("ended_at", None)
+    d.setdefault("device_count", 0)
+    d.setdefault("event_count", 0)
+    d.setdefault("plan_image", None)
+    d.setdefault("plan_width", None)
+    d.setdefault("plan_height", None)
+    d.setdefault("plan_scale", None)
+    d.setdefault("detection_reset_at", None)
+    d.setdefault("visual_config", None)
+    d.setdefault("device_placements", {})
+    # Parse notification_config JSON
+    if "notification_config" in d and isinstance(d["notification_config"], str):
+        try:
+            d["notification_config"] = json.loads(d["notification_config"])
+        except Exception:
+            d["notification_config"] = None
+    d.setdefault("notification_config", None)
+    return d
+
+
+async def _get_full_mission(db, mission_id: str) -> dict:
+    """Fetch a mission and return full dict."""
+    cursor = await db.execute("SELECT * FROM missions WHERE id=?", (mission_id,))
+    row = await cursor.fetchone()
+    if not row:
+        return None
+    d = _row_to_dict(row)
+    # Count devices assigned to this mission
+    cursor2 = await db.execute("SELECT COUNT(*) FROM devices WHERE mission_id=? AND enabled=1", (mission_id,))
+    count = await cursor2.fetchone()
+    d["device_count"] = count[0] if count else 0
+    # Count all events (reset only affects live feed, not total count)
+    cursor3 = await db.execute("SELECT COUNT(*) FROM events WHERE mission_id=?", (mission_id,))
+    ecount = await cursor3.fetchone()
+    d["event_count"] = ecount[0] if ecount else 0
     return d
 
 
@@ -45,58 +144,127 @@ async def list_missions():
     db = await get_db()
     cursor = await db.execute("SELECT * FROM missions ORDER BY created_at DESC")
     rows = await cursor.fetchall()
-    return [_row_to_dict(r) for r in rows]
+    missions = [_row_to_dict(r) for r in rows]
+
+    # Bulk-count devices and events per mission (total count, reset only affects live feed)
+    dc = await db.execute("SELECT mission_id, COUNT(*) FROM devices WHERE mission_id != '' AND enabled=1 GROUP BY mission_id")
+    dev_counts = {r[0]: r[1] for r in await dc.fetchall()}
+    ec = await db.execute("SELECT mission_id, COUNT(*) FROM events GROUP BY mission_id")
+    evt_counts_all = {r[0]: r[1] for r in await ec.fetchall()}
+
+    for m in missions:
+        m["device_count"] = dev_counts.get(m["id"], 0)
+        m["event_count"] = evt_counts_all.get(m["id"], 0)
+    return missions
 
 
 @router.get("/{mission_id}")
 async def get_mission(mission_id: str):
     db = await get_db()
-    cursor = await db.execute("SELECT * FROM missions WHERE id=?", (mission_id,))
-    row = await cursor.fetchone()
-    if not row:
+    result = await _get_full_mission(db, mission_id)
+    if not result:
         raise HTTPException(status_code=404, detail="Mission not found")
-    return _row_to_dict(row)
+    return result
 
 
 @router.post("", status_code=201)
 async def create_mission(body: MissionCreate):
     db = await get_db()
-    mid = str(uuid.uuid4())[:8]
-    now = datetime.now(timezone.utc).isoformat()
+    # Use client-provided ID if present, otherwise generate one
+    mid = body.id if body.id else str(uuid.uuid4())[:8]
+    now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     await db.execute(
-        """INSERT INTO missions (id, name, description, location_lat, location_lon, location_label, zones, created_at, updated_at)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)""",
-        (mid, body.name, body.description, body.location_lat, body.location_lon,
-         body.location_label, json.dumps(body.zones), now, now),
+        """INSERT INTO missions
+           (id, name, description, location, environment, center_lat, center_lon, zoom, zones, floors,
+            plan_image, plan_width, plan_height, plan_scale, status, created_at, updated_at)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+        (mid, body.name, body.description, body.location, body.environment,
+         body.center_lat, body.center_lon, body.zoom,
+         json.dumps(body.zones), json.dumps(body.floors),
+         body.plan_image, body.plan_width, body.plan_height, body.plan_scale,
+         "draft", now, now),
     )
     await db.commit()
-    # Insert log
     await db.execute(
         "INSERT INTO logs (level, source, message) VALUES (?, ?, ?)",
         ("info", "api", f"Mission created: {body.name} ({mid})"),
     )
     await db.commit()
-    return {"id": mid, "name": body.name, "status": "planning"}
+    # Return full mission object
+    return await _get_full_mission(db, mid)
 
 
-@router.put("/{mission_id}")
-async def update_mission(mission_id: str, body: MissionUpdate):
+@router.patch("/{mission_id}")
+async def patch_mission(mission_id: str, body: MissionUpdate):
+    """Partial update -- only updates fields that are not None."""
     db = await get_db()
-    cursor = await db.execute("SELECT * FROM missions WHERE id=?", (mission_id,))
-    existing = await cursor.fetchone()
-    if not existing:
+    cursor = await db.execute("SELECT id FROM missions WHERE id=?", (mission_id,))
+    if not await cursor.fetchone():
         raise HTTPException(status_code=404, detail="Mission not found")
 
-    updates = body.model_dump(exclude_none=True)
-    if "zones" in updates:
-        updates["zones"] = json.dumps(updates["zones"])
-    updates["updated_at"] = datetime.now(timezone.utc).isoformat()
+    # exclude_unset keeps explicitly-sent null values (e.g. ended_at=null)
+    updates = body.model_dump(exclude_unset=True)
+    # Remove computed fields that are NOT real columns in the missions table
+    # (device_count and event_count are computed via COUNT queries, not stored)
+    updates.pop("device_count", None)
+    updates.pop("event_count", None)
+    if not updates:
+        return await _get_full_mission(db, mission_id)
+
+    # JSON-serialize list/dict fields
+    for json_field in ("zones", "floors"):
+        if json_field in updates:
+            updates[json_field] = json.dumps(updates[json_field])
+    if "visual_config" in updates:
+        vc = updates["visual_config"]
+        if vc is None:
+            updates["visual_config"] = None
+        elif isinstance(vc, str):
+            updates["visual_config"] = vc  # already JSON string
+        else:
+            updates["visual_config"] = json.dumps(vc)
+    if "device_placements" in updates:
+        dp = updates["device_placements"]
+        if dp is None:
+            updates["device_placements"] = "{}"
+        elif isinstance(dp, str):
+            updates["device_placements"] = dp
+        else:
+            updates["device_placements"] = json.dumps(dp)
+    if "notification_config" in updates:
+        nc = updates["notification_config"]
+        if nc is None:
+            updates["notification_config"] = None
+        elif isinstance(nc, str):
+            updates["notification_config"] = nc
+        else:
+            updates["notification_config"] = json.dumps(nc)
+
+    updates["updated_at"] = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+
+    if "status" in updates:
+        print(f"[THEIA] Mission {mission_id} status -> {updates['status']}")
 
     set_clause = ", ".join(f"{k}=?" for k in updates)
     values = list(updates.values()) + [mission_id]
     await db.execute(f"UPDATE missions SET {set_clause} WHERE id=?", values)
     await db.commit()
-    return {"ok": True}
+
+    # Invalidate LoRa bridge mission status cache so recording starts/stops immediately
+    if "status" in updates:
+        try:
+            from backend.services.lora_bridge import lora_bridge
+            lora_bridge.invalidate_mission_cache(mission_id)
+        except Exception:
+            pass
+
+    return await _get_full_mission(db, mission_id)
+
+
+@router.put("/{mission_id}")
+async def update_mission(mission_id: str, body: MissionUpdate):
+    """Full update -- same behavior as PATCH for backwards compat."""
+    return await patch_mission(mission_id, body)
 
 
 @router.delete("/{mission_id}")
@@ -105,3 +273,144 @@ async def delete_mission(mission_id: str):
     await db.execute("DELETE FROM missions WHERE id=?", (mission_id,))
     await db.commit()
     return {"ok": True}
+
+
+# ── Plan Image Upload ────────────────────��──��────────────────
+import os
+from fastapi import UploadFile, File
+
+# Use the same data directory as the database (default: /opt/theia/data)
+_DATA_DIR = os.getenv("THEIA_DATA_DIR", "/opt/theia/data")
+PLANS_DIR = os.path.join(_DATA_DIR, "plans")
+
+
+def _convert_to_jpeg(src_path: str, dst_path: str, max_dim: int = 4096) -> tuple:
+    """Convert any PIL-supported image to JPEG, resize if too large. Returns (width, height)."""
+    from PIL import Image
+    img = Image.open(src_path)
+    img = img.convert("RGB")  # drop alpha / handle palette
+    w, h = img.size
+    if max(w, h) > max_dim:
+        ratio = max_dim / max(w, h)
+        w, h = int(w * ratio), int(h * ratio)
+        img = img.resize((w, h), Image.LANCZOS)
+    img.save(dst_path, "JPEG", quality=85, optimize=True)
+    img.close()
+    return w, h
+
+
+@router.post("/{mission_id}/plan-image")
+async def upload_plan_image(mission_id: str, request: Request):
+    """Upload a floor plan image for a plan-type mission.
+    Accepts raw binary body with X-Filename and Content-Type headers.
+    Supports JPEG, PNG, WebP, HEIC, PDF. Converts everything to JPEG."""
+    db = await get_db()
+    cursor = await db.execute("SELECT id FROM missions WHERE id=?", (mission_id,))
+    if not await cursor.fetchone():
+        raise HTTPException(status_code=404, detail="Mission not found")
+
+    os.makedirs(PLANS_DIR, exist_ok=True)
+
+    content = await request.body()
+    ct = request.headers.get("content-type", "")
+    filename_header = request.headers.get("x-filename", "image.jpg")
+    print(f"[THEIA] Plan image upload: mission={mission_id}, filename={filename_header}, content-type={ct}, body={len(content)} bytes")
+
+    if len(content) == 0:
+        raise HTTPException(status_code=400, detail="Empty body")
+    if len(content) > 50 * 1024 * 1024:
+        raise HTTPException(status_code=413, detail="Fichier trop volumineux (max 50 Mo)")
+
+    # Delete any previous plan file for this mission
+    for old_ext in ("jpg", "png", "webp", "heic", "pdf", "tmp"):
+        old_path = os.path.join(PLANS_DIR, f"{mission_id}.{old_ext}")
+        if os.path.exists(old_path):
+            os.remove(old_path)
+
+    # Save raw upload to a temp file first
+    fn_lower = filename_header.lower()
+    tmp_path = os.path.join(PLANS_DIR, f"{mission_id}.tmp")
+    with open(tmp_path, "wb") as f:
+        f.write(content)
+
+    # Always convert to JPEG for consistency + size reduction
+    final_path = os.path.join(PLANS_DIR, f"{mission_id}.jpg")
+    plan_width, plan_height = None, None
+
+    try:
+        # HEIC needs pillow-heif registered
+        if "heic" in ct or fn_lower.endswith((".heic", ".heif")):
+            try:
+                import pillow_heif
+                pillow_heif.register_heif_opener()
+            except ImportError:
+                print("[THEIA] pillow-heif not installed, trying raw PIL")
+
+        # PDF: extract first page as image
+        if "pdf" in ct or fn_lower.endswith(".pdf"):
+            try:
+                import fitz  # PyMuPDF
+                doc = fitz.open(tmp_path)
+                page = doc[0]
+                pix = page.get_pixmap(dpi=200)
+                pix.save(tmp_path + ".png")
+                doc.close()
+                os.replace(tmp_path + ".png", tmp_path)
+            except ImportError:
+                print("[THEIA] PyMuPDF not installed, cannot convert PDF")
+                os.remove(tmp_path)
+                raise HTTPException(status_code=400, detail="PDF non supporte (PyMuPDF manquant)")
+
+        plan_width, plan_height = _convert_to_jpeg(tmp_path, final_path)
+        print(f"[THEIA] Plan image saved as JPEG: {final_path} ({os.path.getsize(final_path)} bytes, {plan_width}x{plan_height})")
+    except HTTPException:
+        raise
+    except Exception as e:
+        print(f"[THEIA] Plan image conversion error: {e}")
+        # Fallback: save as-is with original extension
+        src_ext = fn_lower.rsplit(".", 1)[-1] if "." in fn_lower else "jpg"
+        if src_ext not in ("jpg", "jpeg", "png", "webp"):
+            src_ext = "jpg"
+        final_path = os.path.join(PLANS_DIR, f"{mission_id}.{src_ext}")
+        os.replace(tmp_path, final_path)
+        print(f"[THEIA] Saved raw file as fallback: {final_path}")
+    finally:
+        if os.path.exists(tmp_path):
+            os.remove(tmp_path)
+
+    plan_url = f"/api/missions/{mission_id}/plan-image/file"
+    await db.execute(
+        "UPDATE missions SET plan_image=?, plan_width=?, plan_height=?, updated_at=? WHERE id=?",
+        (plan_url, plan_width, plan_height, datetime.now().strftime("%Y-%m-%d %H:%M:%S"), mission_id),
+    )
+    await db.commit()
+
+    return {"url": plan_url, "width": plan_width, "height": plan_height}
+
+
+@router.delete("/{mission_id}/plan-image")
+async def delete_plan_image(mission_id: str):
+    """Delete the floor plan image for a mission."""
+    db = await get_db()
+    for ext in ("jpg", "jpeg", "png", "webp"):
+        filepath = os.path.join(PLANS_DIR, f"{mission_id}.{ext}")
+        if os.path.exists(filepath):
+            os.remove(filepath)
+    await db.execute(
+        "UPDATE missions SET plan_image=NULL, plan_width=NULL, plan_height=NULL, updated_at=? WHERE id=?",
+        (datetime.now().strftime("%Y-%m-%d %H:%M:%S"), mission_id),
+    )
+    await db.commit()
+    return {"ok": True}
+
+
+@router.get("/{mission_id}/plan-image/file")
+async def get_plan_image(mission_id: str):
+    """Serve the floor plan image file."""
+    from fastapi.responses import FileResponse
+    for ext in ("jpg", "jpeg", "png", "webp"):
+        filepath = os.path.join(PLANS_DIR, f"{mission_id}.{ext}")
+        if os.path.exists(filepath):
+            media = {"jpg": "image/jpeg", "jpeg": "image/jpeg", "png": "image/png", "webp": "image/webp"}[ext]
+            return FileResponse(filepath, media_type=media)
+    raise HTTPException(status_code=404, detail="Plan image not found")

@@ -8,7 +8,7 @@ export const missionStatusConfig: Record<
 > = {
   draft: {
     label: "DRAFT",
-    className: "border-muted-foreground/30 bg-muted text-muted-foreground",
+    className: "border-sky-500/30 bg-sky-500/10 text-sky-400",
   },
   active: {
     label: "ACTIVE",
@@ -38,6 +38,11 @@ export const deviceStatusConfig: Record<
     label: "ONLINE",
     className: "border-success/30 bg-success/10 text-success",
     dot: "bg-success",
+  },
+  idle: {
+    label: "IDLE",
+    className: "border-warning/30 bg-warning/10 text-warning",
+    dot: "bg-warning",
   },
   offline: {
     label: "OFFLINE",

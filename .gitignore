@@ -1,10 +1,37 @@
-# v0 runtime files (should only exist in preview, not in git)
+# Dependencies
+node_modules/
+
+# Next.js
+.next/
+out/
+
+# Environment
+.env
+.env*.local
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Python
+*.pyc
+__pycache__/
+*.db
+*.db-journal
+/backend/.venv/
+
+# v0 runtime (preview only)
 __v0_runtime_loader.js
 __v0_devtools.tsx
 __v0_jsx-dev-runtime.ts
+v0_plans/
 
-# Common ignores
-node_modules/
-.next/
-.env*.local
-.DS_Store
+# Logs
+*.log
+npm-debug.log*
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo

@@ -1,31 +1,57 @@
 "use client"
 
+import { useCallback } from "react"
 import Link from "next/link"
 import { useParams } from "next/navigation"
-import { ArrowLeft, Radio, Signal, Battery, Wifi } from "lucide-react"
+import { ArrowLeft, Radio, Signal, Battery, Wifi, Unlink } from "lucide-react"
 import { TopHeader } from "@/components/top-header"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
+  Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
 } from "@/components/ui/table"
 import { useMission, useDevices } from "@/hooks/use-api"
+import { updateDevice, updateMission } from "@/lib/api-client"
 import { deviceStatusConfig, formatRelative } from "@/lib/format"
 import { cn } from "@/lib/utils"
 
 export default function SensorsPage() {
   const { id } = useParams<{ id: string }>()
-  const { data: mission } = useMission(id)
-  const { data: allDevices, isLoading } = useDevices()
+  const { data: mission, mutate: mutateMission } = useMission(id)
+  const { data: allDevices, isLoading, mutate: mutateDevices } = useDevices()
 
   const missionDevices = allDevices?.filter((d) => d.mission_id === id) ?? []
-  const unassigned = allDevices?.filter((d) => !d.mission_id) ?? []
+  // Show ALL devices not assigned to THIS mission (including those on other missions)
+  const unassigned = allDevices?.filter((d) => d.mission_id !== id) ?? []
+
+  const assignToMission = useCallback(async (deviceId: string) => {
+    if (!mission) return
+    await updateDevice(deviceId, { mission_id: id })
+    mutateMission()
+    mutateDevices()
+  }, [mission, id, mutateMission, mutateDevices])
+
+  const unassignFromMission = useCallback(async (deviceId: string) => {
+    if (!mission) return
+    try {
+      await updateDevice(deviceId, { mission_id: "", zone_id: "", zone_label: "", side: "", sensor_position: 0.5 } as Partial<import("@/lib/types").Device>)
+    } catch (err) {
+      console.warn("[THEIA] Failed to update device, continuing with mission update:", err)
+    }
+    // Remove device from zone devices arrays
+    const zones = (mission.zones ?? []).map((z) => ({
+      ...z,
+      devices: z.devices.filter((did) => did !== deviceId),
+    }))
+    try {
+      const updated = await updateMission(id, { zones })
+      mutateMission(updated, false)
+    } catch (err) {
+      console.warn("[THEIA] Failed to update mission:", err)
+    }
+    mutateDevices()
+  }, [mission, id, mutateMission, mutateDevices])
 
   return (
     <>
@@ -62,24 +88,25 @@ export default function SensorsPage() {
                   <TableHeader>
                     <TableRow className="border-border/50">
                       <TableHead className="text-[10px]">Name</TableHead>
-                      <TableHead className="text-[10px]">HW ID</TableHead>
+                      <TableHead className="text-[10px]">TX ID</TableHead>
                       <TableHead className="text-[10px]">Status</TableHead>
-                      <TableHead className="text-[10px]">Zone</TableHead>
+                      <TableHead className="text-[10px]">Zone / Side</TableHead>
                       <TableHead className="text-[10px]">RSSI</TableHead>
                       <TableHead className="text-[10px]">Battery</TableHead>
                       <TableHead className="text-[10px]">Last Seen</TableHead>
+                      <TableHead className="text-[10px]">Action</TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
                     {missionDevices.map((device) => {
-                      const sCfg = deviceStatusConfig[device.status]
+                      const sCfg = deviceStatusConfig[device.status] ?? deviceStatusConfig.unknown
                       return (
                         <TableRow key={device.id} className="border-border/30">
                           <TableCell className="font-mono text-xs font-medium text-foreground">
                             {device.name}
                           </TableCell>
                           <TableCell className="font-mono text-[11px] text-muted-foreground">
-                            {device.hw_id}
+                            {device.dev_eui || device.hw_id || "---"}
                           </TableCell>
                           <TableCell>
                             <Badge variant="outline" className={cn("text-[9px] px-1 py-0", sCfg.className)}>
@@ -88,28 +115,33 @@ export default function SensorsPage() {
                             </Badge>
                           </TableCell>
                           <TableCell className="text-xs text-muted-foreground">
-                            {device.zone_label ?? "---"}
+                            {device.zone_label ? (
+                              <span>
+                                {device.zone_label}
+                                {device.side && <span className="ml-1 text-primary font-mono">[{device.side}]</span>}
+                              </span>
+                            ) : "---"}
                           </TableCell>
                           <TableCell>
-                            {device.rssi !== null ? (
+                            {device.rssi !== null && device.rssi !== 0 ? (
                               <span className={cn(
                                 "font-mono text-xs",
                                 device.rssi >= -70 ? "text-success" : device.rssi >= -85 ? "text-warning" : "text-destructive"
                               )}>
-                                {device.rssi} dBm
+                                {Math.round(device.rssi)} dBm
                               </span>
                             ) : (
                               <span className="text-xs text-muted-foreground">---</span>
                             )}
                           </TableCell>
                           <TableCell>
-                            {device.battery !== null ? (
+                            {device.battery !== null && device.battery > 0 ? (
                               <div className="flex items-center gap-1">
                                 <Battery className={cn(
                                   "h-3 w-3",
-                                  device.battery > 50 ? "text-success" : device.battery > 20 ? "text-warning" : "text-destructive"
+                                  device.battery > 4.0 ? "text-success" : device.battery > 3.5 ? "text-warning" : "text-destructive"
                                 )} />
-                                <span className="font-mono text-xs text-foreground">{device.battery}%</span>
+                                <span className="font-mono text-xs text-foreground">{Number(device.battery).toFixed(2)}V</span>
                               </div>
                             ) : (
                               <span className="text-xs text-muted-foreground">---</span>
@@ -117,6 +149,16 @@ export default function SensorsPage() {
                           </TableCell>
                           <TableCell className="text-[11px] text-muted-foreground">
                             {device.last_seen ? formatRelative(device.last_seen) : "Never"}
+                          </TableCell>
+                          <TableCell>
+                            <Button
+                              variant="ghost" size="sm"
+                              className="h-6 text-[10px] px-2 text-destructive hover:text-destructive/80"
+                              onClick={() => unassignFromMission(device.id)}
+                            >
+                              <Unlink className="mr-1 h-3 w-3" />
+                              Remove
+                            </Button>
                           </TableCell>
                         </TableRow>
                       )
@@ -141,35 +183,45 @@ export default function SensorsPage() {
                   <TableHeader>
                     <TableRow className="border-border/50">
                       <TableHead className="text-[10px]">Name</TableHead>
-                      <TableHead className="text-[10px]">HW ID</TableHead>
+                      <TableHead className="text-[10px]">TX ID</TableHead>
+                      <TableHead className="text-[10px]">Type</TableHead>
                       <TableHead className="text-[10px]">Status</TableHead>
-                      <TableHead className="text-[10px]">Firmware</TableHead>
                       <TableHead className="text-[10px]">Action</TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
                     {unassigned.map((device) => {
-                      const sCfg = deviceStatusConfig[device.status]
+                      const sCfg = deviceStatusConfig[device.status] ?? deviceStatusConfig.unknown
+                      const isElsewhere = !!device.mission_id
                       return (
                         <TableRow key={device.id} className="border-border/30">
                           <TableCell className="font-mono text-xs font-medium text-foreground">
                             {device.name}
                           </TableCell>
                           <TableCell className="font-mono text-[11px] text-muted-foreground">
-                            {device.hw_id}
+                            {device.dev_eui || device.hw_id || "---"}
+                          </TableCell>
+                          <TableCell className="text-[11px] text-muted-foreground">
+                            {device.type || "TX"}
+                            {isElsewhere && (
+                              <Badge variant="outline" className="ml-1 text-[8px] px-1 py-0 text-warning border-warning/30">
+                                other mission
+                              </Badge>
+                            )}
                           </TableCell>
                           <TableCell>
                             <Badge variant="outline" className={cn("text-[9px] px-1 py-0", sCfg.className)}>
                               {sCfg.label}
                             </Badge>
                           </TableCell>
-                          <TableCell className="font-mono text-[11px] text-muted-foreground">
-                            {device.firmware}
-                          </TableCell>
                           <TableCell>
-                            <Button variant="outline" size="sm" className="h-6 text-[10px] px-2">
+                            <Button
+                              variant="outline" size="sm"
+                              className="h-6 text-[10px] px-2"
+                              onClick={() => assignToMission(device.id)}
+                            >
                               <Signal className="mr-1 h-3 w-3" />
-                              Assign
+                              {isElsewhere ? "Reassign" : "Assign"}
                             </Button>
                           </TableCell>
                         </TableRow>

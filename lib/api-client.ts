@@ -2,21 +2,101 @@
 // All requests go to /api/* (Next.js API routes)
 // The API routes decide: mock data in preview, proxy to FastAPI in pi mode
 
+import { getAuthToken } from "@/lib/auth-context"
+
 const API_BASE = "/api"
+
+/** Build headers including Bearer token for cross-port auth */
+function _bearerHeaders(extra?: HeadersInit): Record<string, string> {
+  const h: Record<string, string> = {}
+  if (extra) {
+    if (extra instanceof Headers) {
+      extra.forEach((v, k) => { h[k] = v })
+    } else if (Array.isArray(extra)) {
+      extra.forEach(([k, v]) => { h[k] = v })
+    } else {
+      Object.assign(h, extra)
+    }
+  }
+  const token = getAuthToken()
+  if (token && !h["Authorization"]) h["Authorization"] = `Bearer ${token}`
+  return h
+}
+
+/**
+ * Authenticated fetch wrapper. Sends credentials + Bearer token.
+ * Use this instead of raw `fetch()` for any request to the backend.
+ */
+export function authFetch(url: string, init?: RequestInit): Promise<Response> {
+  return fetch(url, {
+    ...init,
+    credentials: "include",
+    headers: _bearerHeaders(init?.headers),
+  })
+}
+
+// Direct backend URL for write operations (bypasses Next.js API routes entirely)
+// On the Pi, Next.js and FastAPI run on the same host.
+// We derive the backend URL from the current browser location.
+function getDirectBackendUrl(): string | null {
+  if (typeof window === "undefined") return null
+  // If we're on the Pi (not localhost:3000 on v0 preview), use port 8000
+  const host = window.location.hostname
+  // Always try direct backend on port 8000
+  return `http://${host}:8000`
+}
 
 async function request<T>(path: string, options?: RequestInit): Promise<T> {
   const url = `${API_BASE}${path}`
   const res = await fetch(url, {
     ...options,
-    headers: {
+    credentials: "include",
+    headers: _bearerHeaders({
       "Content-Type": "application/json",
-      ...options?.headers,
-    },
+      ...(options?.headers as Record<string, string> || {}),
+    }),
   })
 
   if (!res.ok) {
+    if (res.status === 401 && typeof window !== "undefined") {
+      window.location.href = "/login"
+      throw new Error("Session expired")
+    }
     const error = await res.json().catch(() => ({ error: res.statusText }))
+    console.error(`[THEIA] API Error ${res.status} on ${url}:`, error)
     throw new Error(error.error || `API Error: ${res.status}`)
+  }
+
+  return res.json()
+}
+
+// Direct request to FastAPI backend (bypasses Next.js routes)
+// Used for critical write operations that MUST reach the database
+async function directBackendRequest<T>(path: string, options?: RequestInit): Promise<T> {
+  const backendUrl = getDirectBackendUrl()
+  if (!backendUrl) {
+    // SSR or can't determine backend -- fall back to Next.js route
+    return request<T>(path, options)
+  }
+
+  const url = `${backendUrl}/api${path}`
+  const res = await fetch(url, {
+    ...options,
+    credentials: "include",
+    headers: _bearerHeaders({
+      "Content-Type": "application/json",
+      ...(options?.headers as Record<string, string> || {}),
+    }),
+  })
+
+  if (!res.ok) {
+    if (res.status === 401 && typeof window !== "undefined") {
+      window.location.href = "/login"
+      throw new Error("Session expired")
+    }
+    const error = await res.json().catch(() => ({ error: res.statusText }))
+    console.error(`[THEIA] Direct backend error ${res.status} on ${url}:`, error)
+    throw new Error(error.error || `Backend Error: ${res.status}`)
   }
 
   return res.json()
@@ -49,24 +129,67 @@ export function createMission(data: Partial<import("./types").Mission>) {
   })
 }
 
-export function updateMission(id: string, data: Partial<import("./types").Mission>) {
-  return request<import("./types").Mission>(`/missions/${id}`, {
-    method: "PATCH",
-    body: JSON.stringify(data),
-  })
+export async function updateMission(id: string, data: Partial<import("./types").Mission>) {
+  // Critical: call backend directly to ensure SQLite is updated
+  try {
+    return await directBackendRequest<import("./types").Mission>(`/missions/${id}`, {
+      method: "PATCH",
+      body: JSON.stringify(data),
+    })
+  } catch {
+    // Fallback to Next.js route
+    return request<import("./types").Mission>(`/missions/${id}`, {
+      method: "PATCH",
+      body: JSON.stringify(data),
+    })
+  }
+}
+
+export async function deleteMission(id: string) {
+  try {
+    return await directBackendRequest<{ ok: boolean }>(`/missions/${id}`, { method: "DELETE" })
+  } catch {
+    return request<{ ok: boolean }>(`/missions/${id}`, { method: "DELETE" })
+  }
 }
 
 // ─── Devices ─────────────────────────────────────────────────────
 
-export function fetchDevices() {
-  return request<import("./types").Device[]>("/devices")
+export function fetchDevices(includeDisabled = false) {
+  const qs = includeDisabled ? "?include_disabled=true" : ""
+  return request<import("./types").Device[]>(`/devices${qs}`)
 }
 
-export function updateDevice(id: string, data: Partial<import("./types").Device>) {
-  return request<import("./types").Device>(`/devices/${id}`, {
-    method: "PATCH",
+export function createDevice(data: { dev_eui: string; name: string; type?: string; serial_port?: string }) {
+  return request<import("./types").Device>("/devices", {
+    method: "POST",
     body: JSON.stringify(data),
   })
+}
+
+export async function updateDevice(id: string, data: Partial<import("./types").Device>) {
+  // Critical: call backend directly to ensure SQLite is updated
+  try {
+    return await directBackendRequest<import("./types").Device>(`/devices/${id}`, {
+      method: "PATCH",
+      body: JSON.stringify(data),
+    })
+  } catch {
+    // Fallback to Next.js route if direct call fails
+    return request<import("./types").Device>(`/devices/${id}`, {
+      method: "PATCH",
+      body: JSON.stringify(data),
+    })
+  }
+}
+
+export async function deleteDevice(id: string, hard = false) {
+  const qs = hard ? "?hard=true" : ""
+  try {
+    return await directBackendRequest<{ ok: boolean }>(`/devices/${id}${qs}`, { method: "DELETE" })
+  } catch {
+    return request<{ ok: boolean }>(`/devices/${id}${qs}`, { method: "DELETE" })
+  }
 }
 
 // ─── Events ──────────────────────────────────────────────────────
