@@ -158,7 +158,9 @@ export default function MissionDetailPage() {
   const { config: visualConfig, raw: visualRaw, updateConfig: updateVisualConfig, resetAll: resetVisualConfig, hasMissionOverrides } = useVisualConfig({
     missionOverrides: mission?.visual_config as Record<string, string> | null ?? null,
     missionId: id,
-    onMissionMutate: mutate,
+    onMissionMutate: (patch?: Record<string, unknown>) => patch
+      ? mutate({ ...mission!, ...patch }, false)
+      : mutate(),
   })
   const [showFov, setShowFov] = useState(false)
   // Sync FOV default from visual config on first load
