@@ -1,6 +1,7 @@
 "use client"
 
 import { useCallback, useMemo } from "react"
+import { updateMission } from "@/lib/api-client"
 
 // ── Default visual settings ──────────────────────────────────────
 
@@ -52,21 +53,12 @@ function resolve(r: Record<string, string>): VisualConfig {
   }
 }
 
-// ── Helpers ──────────────────────────────────────────────────────
-
-function getBackendBase(): string | null {
-  if (typeof window === "undefined") return null
-  return `http://${window.location.hostname}:8000`
-}
-
 // ── Hook ─────────────────────────────────────────────────────────
-// Each mission has its own independent visual_config.
-// Merge: VISUAL_DEFAULTS < mission.visual_config overrides.
 
 interface UseVisualConfigOptions {
   missionOverrides?: Record<string, string> | null
   missionId?: string | null
-  onMissionMutate?: (patch?: Record<string, unknown>) => void  // ← changer cette ligne
+  onMissionMutate?: (patch?: Record<string, unknown>) => void
 }
 
 export function useVisualConfig(opts?: UseVisualConfigOptions) {
@@ -74,7 +66,6 @@ export function useVisualConfig(opts?: UseVisualConfigOptions) {
   const missionId = opts?.missionId ?? null
   const onMissionMutate = opts?.onMissionMutate
 
-  // Merge: defaults < per-mission overrides
   const merged: Record<string, string> = useMemo(() => {
     const base: Record<string, string> = { ...VISUAL_DEFAULTS }
     if (missionOverrides) {
@@ -87,51 +78,21 @@ export function useVisualConfig(opts?: UseVisualConfigOptions) {
 
   const config: VisualConfig = useMemo(() => resolve(merged), [merged])
 
-  // Save a single key to mission's visual_config
   const updateConfig = useCallback(async (key: VisualConfigKey, value: string) => {
     if (!missionId) return
     const newOverrides = { ...(missionOverrides ?? {}), [key]: value }
-    
-    // Optimistic update immédiat via mutate avec la nouvelle valeur
     onMissionMutate?.({ visual_config: newOverrides })
-  
-    const base = getBackendBase()
-    const url = base
-      ? `${base}/api/missions/${missionId}`
-      : `/api/missions/${missionId}`
     try {
-      const _t = typeof window !== "undefined" ? localStorage.getItem("theia_token") : null
-      await fetch(url, {
-        method: "PATCH",
-        credentials: "include",
-        headers: {
-          "Content-Type": "application/json",
-          ...(_t ? { Authorization: `Bearer ${_t}` } : {}),
-        },
-        body: JSON.stringify({ visual_config: newOverrides }),
-      })
+      await updateMission(missionId, { visual_config: newOverrides as never })
     } catch { /* ignore */ }
     onMissionMutate?.()
   }, [missionId, missionOverrides, onMissionMutate])
 
-  // Reset: clear all per-mission overrides (revert to defaults)
   const resetAll = useCallback(async () => {
     if (!missionId) return
-    const base = getBackendBase()
-    const url = base
-      ? `${base}/api/missions/${missionId}`
-      : `/api/missions/${missionId}`
+    onMissionMutate?.({ visual_config: null })
     try {
-      const _t = typeof window !== "undefined" ? localStorage.getItem("theia_token") : null
-      await fetch(url, {
-        method: "PATCH",
-        credentials: "include",
-        headers: {
-          "Content-Type": "application/json",
-          ...(_t ? { Authorization: `Bearer ${_t}` } : {}),
-        },
-        body: JSON.stringify({ visual_config: null }),
-      })
+      await updateMission(missionId, { visual_config: null as never })
     } catch { /* ignore */ }
     onMissionMutate?.()
   }, [missionId, onMissionMutate])
@@ -143,4 +104,3 @@ export function useVisualConfig(opts?: UseVisualConfigOptions) {
 
   return { config, raw: merged, updateConfig, resetAll, hasMissionOverrides }
 }
-
