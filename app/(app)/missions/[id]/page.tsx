@@ -160,12 +160,12 @@ export default function MissionDetailPage() {
       missionOverrides: visualConfigOverrides,
       missionId: id,
       onMissionMutate: (patch?: Record<string, unknown>) => {
-        if (patch) {
-          mutate({ ...mission!, ...patch }, false)
-        } else {
-          mutate()
-        }
-      },
+          if (patch && mission) {
+            mutate({ ...mission, ...patch }, false)
+          } else {
+            mutate()
+          }
+        },
     })
   const [showFov, setShowFov] = useState(false)
   // Sync FOV default from visual config on first load
@@ -2618,6 +2618,7 @@ function VisualConfigPopover({
                   type="color"
                   value={val}
                   onChange={(e) => updateConfig(key, e.target.value)}
+                  onBlur={(e) => updateConfig(key, e.target.value)}
                   className="absolute inset-0 h-full w-full cursor-pointer opacity-0"
                 />
               </label>
