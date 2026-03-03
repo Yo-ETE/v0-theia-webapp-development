@@ -80,7 +80,6 @@ async function directBackendRequest<T>(path: string, options?: RequestInit): Pro
   }
 
   const url = `${backendUrl}/api${path}`
-  console.log("[THEIA] Direct backend call:", options?.method ?? "GET", url)
   const res = await fetch(url, {
     ...options,
     credentials: "include",

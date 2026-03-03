@@ -73,14 +73,16 @@ app = FastAPI(
     lifespan=lifespan,
 )
 
-# CORS: allow_origins=["*"] + allow_credentials=True is spec-invalid.
-# Use allow_origin_regex to match any origin while keeping credentials.
+# CORS: With credentials=True, the spec requires an explicit origin (not "*").
+# We list common origins for the Pi (Next.js :3000, direct :8000, Tailscale IPs).
+# allow_origin_regex echoes back the exact request Origin, which satisfies browsers.
 app.add_middleware(
     CORSMiddleware,
-    allow_origin_regex=r".*",
+    allow_origin_regex=r"^https?://.*$",
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
+    expose_headers=["*"],
 )
 
 # Auth middleware -- must be added AFTER CORS middleware (starlette processes in reverse)
@@ -103,7 +105,17 @@ if firmware:
     app.include_router(firmware.router, prefix="/api")
 
 
-THEIA_BUILD = "2026-02-22-v9-canvas-heatmap"
+def _get_build_tag() -> str:
+    import subprocess
+    try:
+        return subprocess.check_output(
+            ["git", "describe", "--tags", "--always", "--dirty"],
+            cwd=os.path.dirname(__file__), stderr=subprocess.DEVNULL,
+        ).decode().strip() or "unknown"
+    except Exception:
+        return "unknown"
+
+THEIA_BUILD = _get_build_tag()
 
 @app.get("/")
 async def root():

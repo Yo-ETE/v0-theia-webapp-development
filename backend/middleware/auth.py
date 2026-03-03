@@ -61,13 +61,15 @@ class AuthMiddleware(BaseHTTPMiddleware):
                 return await call_next(request)
         for prefix in PUBLIC_PREFIXES:
             if path.startswith(prefix):
-                # For SSE stream, validate token query param
+                # For SSE stream, require token query param
                 if path.startswith("/api/stream"):
                     token = request.query_params.get("token")
-                    if token:
-                        payload = jwt_decode(token)
-                        if payload:
-                            request.state.user = payload
+                    if not token:
+                        return JSONResponse({"detail": "Token required"}, status_code=401)
+                    payload = jwt_decode(token)
+                    if not payload:
+                        return JSONResponse({"detail": "Invalid token"}, status_code=401)
+                    request.state.user = payload
                 return await call_next(request)
 
         # Extract JWT from cookie

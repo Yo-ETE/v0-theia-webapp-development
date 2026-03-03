@@ -1,6 +1,7 @@
 "use client"
 
 import { useEffect, useRef, useCallback, useState } from "react"
+import { getAuthToken } from "@/lib/auth-context"
 
 type SSEEvent = {
   type: string
@@ -10,7 +11,8 @@ type SSEEvent = {
 type SSEHandler = (event: SSEEvent) => void
 
 /**
- * Robust SSE connection directly to the backend.
+ * Robust SSE connection directly to the backend (:8000).
+ * - Sends JWT token as query param (EventSource can't send headers)
  * - Reconnects automatically on error
  * - Monitors for stale connections (no data for 45s) and forces reconnect
  * - Handler is stored via ref so it never triggers reconnection
@@ -52,9 +54,13 @@ export function useSSE(onEvent?: SSEHandler) {
         esRef.current = null
       }
 
-      // Try same-origin proxy first (avoids CORS issues),
-      // health check below will force reconnect if it stalls
-      const es = new EventSource("/api/stream")
+      // Connect directly to FastAPI backend with JWT token as query param
+      const token = getAuthToken()
+      const backendBase = `http://${window.location.hostname}:8000`
+      const url = token
+        ? `${backendBase}/api/stream?token=${encodeURIComponent(token)}`
+        : "/api/stream"  // fallback to Next.js proxy (preview)
+      const es = new EventSource(url)
       esRef.current = es
 
       es.onopen = () => {
