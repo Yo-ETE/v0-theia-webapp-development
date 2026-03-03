@@ -66,12 +66,9 @@ function getBackendBase(): string | null {
 // Merge: VISUAL_DEFAULTS < mission.visual_config overrides.
 
 interface UseVisualConfigOptions {
-  /** Per-mission visual_config from mission record */
   missionOverrides?: Record<string, string> | null
-  /** Mission ID for saving overrides via PATCH */
   missionId?: string | null
-  /** Callback after saving (to re-fetch mission SWR) */
-  onMissionMutate?: () => void
+  onMissionMutate?: (patch?: Record<string, unknown>) => void  // ← changer cette ligne
 }
 
 export function useVisualConfig(opts?: UseVisualConfigOptions) {
@@ -96,6 +93,10 @@ export function useVisualConfig(opts?: UseVisualConfigOptions) {
   const updateConfig = useCallback(async (key: VisualConfigKey, value: string) => {
     if (!missionId) return
     const newOverrides = { ...(missionOverrides ?? {}), [key]: value }
+    
+    // Optimistic update immédiat via mutate avec la nouvelle valeur
+    onMissionMutate?.({ visual_config: newOverrides })
+  
     const base = getBackendBase()
     const url = base
       ? `${base}/api/missions/${missionId}`
