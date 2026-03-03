@@ -1216,6 +1216,7 @@ export default function MapInner({
                 color: isBeingEdited ? "#f59e0b" : (heatmapMode ? "#666" : zc),
                 fillColor: isBeingEdited ? "#f59e0b" : (heatmapMode ? "transparent" : zc),
                 fillOpacity: isBeingEdited ? 0.05 : (heatmapMode ? 0 : (hasPresence ? vc.zone_fill_opacity : vc.zone_fill_opacity + 0.04)),
+                opacity: isBeingEdited ? 1 : (heatmapMode ? 0.5 : vc.zone_stroke_opacity),
                 weight: isBeingEdited ? 0 : (heatmapMode ? 1 : (hasPresence ? 2 : 1.5)),
                 dashArray: heatmapMode ? "4 4" : undefined,
               }}
@@ -1240,11 +1241,11 @@ export default function MapInner({
               key={`fov-${sm.id}`}
               positions={arcPositions}
               pathOptions={{
-                color: "#90b8d8",
-                fillColor: "#90b8d8",
+                color: vc.fov_overlay_color,
+                fillColor: vc.fov_overlay_color,
                 weight: 1.5,
-                opacity: 0.35,
-                fillOpacity: 0.1,
+                opacity: vc.fov_fill_opacity + 0.25,
+                fillOpacity: vc.fov_fill_opacity,
                 dashArray: "4 3",
               }}
             />
