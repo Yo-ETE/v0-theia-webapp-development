@@ -259,10 +259,12 @@ export default function NewMissionPage() {
                 <CardContent className="flex flex-col gap-4">
                   {/* Search bar */}
                   <div className="flex flex-col gap-2">
-                    <Label className="text-xs text-muted-foreground">Address Search</Label>
+                    <Label htmlFor="address-search" className="text-xs text-muted-foreground">Address Search</Label>
                     <div className="flex gap-2">
                       <div className="relative flex-1">
                         <Input
+                          id="address-search"
+                          name="address-search"
                           placeholder="12 rue de la Paix, Paris..."
                           value={searchQuery}
                           onChange={(e) => setSearchQuery(e.target.value)}
@@ -307,8 +309,10 @@ export default function NewMissionPage() {
                   {/* Manual coordinates */}
                   <div className="grid grid-cols-3 gap-3">
                     <div className="flex flex-col gap-1.5">
-                      <Label className="text-[10px] text-muted-foreground font-mono">Latitude</Label>
+                      <Label htmlFor="center-lat" className="text-[10px] text-muted-foreground font-mono">Latitude</Label>
                       <Input
+                        id="center-lat"
+                        name="center_lat"
                         type="number"
                         step="0.000001"
                         value={form.center_lat}
@@ -321,8 +325,10 @@ export default function NewMissionPage() {
                       />
                     </div>
                     <div className="flex flex-col gap-1.5">
-                      <Label className="text-[10px] text-muted-foreground font-mono">Longitude</Label>
+                      <Label htmlFor="center-lon" className="text-[10px] text-muted-foreground font-mono">Longitude</Label>
                       <Input
+                        id="center-lon"
+                        name="center_lon"
                         type="number"
                         step="0.000001"
                         value={form.center_lon}
@@ -335,8 +341,10 @@ export default function NewMissionPage() {
                       />
                     </div>
                     <div className="flex flex-col gap-1.5">
-                      <Label className="text-[10px] text-muted-foreground font-mono">Zoom</Label>
+                      <Label htmlFor="zoom-level" className="text-[10px] text-muted-foreground font-mono">Zoom</Label>
                       <Input
+                        id="zoom-level"
+                        name="zoom"
                         type="number" min={1} max={22}
                         value={form.zoom}
                         onChange={(e) => setForm((f) => ({ ...f, zoom: parseInt(e.target.value) || 19 }))}
@@ -347,8 +355,10 @@ export default function NewMissionPage() {
 
                   {/* Location label */}
                   <div className="flex flex-col gap-1.5">
-                    <Label className="text-[10px] text-muted-foreground">Location Label</Label>
+                    <Label htmlFor="location-label" className="text-[10px] text-muted-foreground">Location Label</Label>
                     <Input
+                      id="location-label"
+                      name="location"
                       placeholder="e.g. Zone Industrielle Nord"
                       value={form.location}
                       onChange={(e) => setForm({ ...form, location: e.target.value })}

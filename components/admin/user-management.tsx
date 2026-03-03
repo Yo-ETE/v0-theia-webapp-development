@@ -201,8 +201,11 @@ export function UserManagement() {
             </p>
             <div className="grid grid-cols-2 gap-3">
               <div className="flex flex-col gap-1.5">
-                <Label className="text-[10px] text-muted-foreground uppercase tracking-wider">Identifiant</Label>
+                <Label htmlFor="new-username" className="text-[10px] text-muted-foreground uppercase tracking-wider">Identifiant</Label>
                 <Input
+                  id="new-username"
+                  name="new-username"
+                  autoComplete="off"
                   value={newUsername}
                   onChange={(e) => setNewUsername(e.target.value)}
                   placeholder="nom"
@@ -210,9 +213,12 @@ export function UserManagement() {
                 />
               </div>
               <div className="flex flex-col gap-1.5">
-                <Label className="text-[10px] text-muted-foreground uppercase tracking-wider">Mot de passe</Label>
+                <Label htmlFor="new-password" className="text-[10px] text-muted-foreground uppercase tracking-wider">Mot de passe</Label>
                 <Input
+                  id="new-password"
+                  name="new-password"
                   type="password"
+                  autoComplete="new-password"
                   value={newPassword}
                   onChange={(e) => setNewPassword(e.target.value)}
                   placeholder="****"
@@ -347,7 +353,10 @@ export function UserManagement() {
                 {changingPassword === u.id && (
                   <div className="flex items-center gap-2 border-t border-border/30 px-3 py-2 bg-muted/20">
                     <Input
+                      id={`change-pw-${u.id}`}
+                      name="change-password"
                       type="password"
+                      autoComplete="new-password"
                       value={newPw}
                       onChange={(e) => setNewPw(e.target.value)}
                       placeholder="Nouveau mot de passe"

@@ -146,12 +146,12 @@ export function SmsConfig() {
               Activable dans votre espace abonne : Mes Options &gt; Notifications par SMS.
             </p>
             <div className="space-y-1">
-              <Label className="text-xs">Identifiant utilisateur</Label>
-              <Input className="h-8 text-xs" value={config.free_user} onChange={(e) => update("free_user", e.target.value)} placeholder="12345678" />
+              <Label htmlFor="sms-free-user" className="text-xs">Identifiant utilisateur</Label>
+              <Input id="sms-free-user" name="free_user" className="h-8 text-xs" value={config.free_user} onChange={(e) => update("free_user", e.target.value)} placeholder="12345678" />
             </div>
             <div className="space-y-1">
-              <Label className="text-xs">Cle API</Label>
-              <Input className="h-8 text-xs" type="password" value={config.free_api_key} onChange={(e) => update("free_api_key", e.target.value)} placeholder="xxxxxxxxxxxx" />
+              <Label htmlFor="sms-free-key" className="text-xs">Cle API</Label>
+              <Input id="sms-free-key" name="free_api_key" className="h-8 text-xs" type="password" value={config.free_api_key} onChange={(e) => update("free_api_key", e.target.value)} placeholder="xxxxxxxxxxxx" />
             </div>
           </div>
         )}
@@ -160,16 +160,16 @@ export function SmsConfig() {
         {config.provider === "twilio" && (
           <div className="flex flex-col gap-3 rounded-lg border border-border/50 p-3">
             <div className="space-y-1">
-              <Label className="text-xs">Account SID</Label>
-              <Input className="h-8 text-xs" value={config.twilio_sid} onChange={(e) => update("twilio_sid", e.target.value)} placeholder="AC..." />
+              <Label htmlFor="sms-twilio-sid" className="text-xs">Account SID</Label>
+              <Input id="sms-twilio-sid" name="twilio_sid" className="h-8 text-xs" value={config.twilio_sid} onChange={(e) => update("twilio_sid", e.target.value)} placeholder="AC..." />
             </div>
             <div className="space-y-1">
-              <Label className="text-xs">Auth Token</Label>
-              <Input className="h-8 text-xs" type="password" value={config.twilio_token} onChange={(e) => update("twilio_token", e.target.value)} />
+              <Label htmlFor="sms-twilio-token" className="text-xs">Auth Token</Label>
+              <Input id="sms-twilio-token" name="twilio_token" className="h-8 text-xs" type="password" value={config.twilio_token} onChange={(e) => update("twilio_token", e.target.value)} />
             </div>
             <div className="space-y-1">
-              <Label className="text-xs">Numero expediteur</Label>
-              <Input className="h-8 text-xs" value={config.twilio_from} onChange={(e) => update("twilio_from", e.target.value)} placeholder="+1234567890" />
+              <Label htmlFor="sms-twilio-from" className="text-xs">Numero expediteur</Label>
+              <Input id="sms-twilio-from" name="twilio_from" className="h-8 text-xs" value={config.twilio_from} onChange={(e) => update("twilio_from", e.target.value)} placeholder="+1234567890" />
             </div>
           </div>
         )}
@@ -181,12 +181,12 @@ export function SmsConfig() {
               ntfy.sh est un service de notifications push gratuit et auto-hebergeable.
             </p>
             <div className="space-y-1">
-              <Label className="text-xs">Serveur</Label>
-              <Input className="h-8 text-xs" value={config.ntfy_server} onChange={(e) => update("ntfy_server", e.target.value)} placeholder="https://ntfy.sh" />
+              <Label htmlFor="sms-ntfy-server" className="text-xs">Serveur</Label>
+              <Input id="sms-ntfy-server" name="ntfy_server" className="h-8 text-xs" value={config.ntfy_server} onChange={(e) => update("ntfy_server", e.target.value)} placeholder="https://ntfy.sh" />
             </div>
             <div className="space-y-1">
-              <Label className="text-xs">Topic</Label>
-              <Input className="h-8 text-xs" value={config.ntfy_topic} onChange={(e) => update("ntfy_topic", e.target.value)} placeholder="theia" />
+              <Label htmlFor="sms-ntfy-topic" className="text-xs">Topic</Label>
+              <Input id="sms-ntfy-topic" name="ntfy_topic" className="h-8 text-xs" value={config.ntfy_topic} onChange={(e) => update("ntfy_topic", e.target.value)} placeholder="theia" />
             </div>
           </div>
         )}

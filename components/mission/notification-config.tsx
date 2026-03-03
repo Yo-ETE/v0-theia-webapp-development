@@ -126,8 +126,10 @@ export function NotificationConfig({ missionId, missionName, zones = [], initial
           <>
             {/* Cooldown */}
             <div className="space-y-1">
-              <Label className="text-xs">Delai minimum entre alertes (min)</Label>
+              <Label htmlFor="notif-cooldown" className="text-xs">Delai minimum entre alertes (min)</Label>
               <Input
+                id="notif-cooldown"
+                name="cooldown_minutes"
                 type="number"
                 min={1}
                 max={60}

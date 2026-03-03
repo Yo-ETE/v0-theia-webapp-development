@@ -727,8 +727,10 @@ export function FloorManager({
                 </div>
               </div>
               <div className="flex flex-col gap-1.5 flex-1">
-                <Label className="text-[10px] text-muted-foreground">Nom</Label>
+                <Label htmlFor="add-floor-label" className="text-[10px] text-muted-foreground">Nom</Label>
                 <Input
+                  id="add-floor-label"
+                  name="floor-label"
                   value={addLabel}
                   onChange={e => setAddLabel(e.target.value)}
                   placeholder={mode === "floor" ? "ex: Etage 2" : "ex: Troncon B"}

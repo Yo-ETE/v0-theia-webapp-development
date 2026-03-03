@@ -26,9 +26,7 @@ export default function AboutPage() {
                 {/* Center dot */}
                 <circle cx="150" cy="150" r="6" fill="currentColor" />
                 {/* Target blip */}
-                <circle cx="215" cy="125" r="4" fill="currentColor" opacity="0.8">
-                  <animate attributeName="opacity" values="0.8;0.2;0.8" dur="2s" repeatCount="indefinite" />
-                </circle>
+                <circle cx="215" cy="125" r="4" fill="currentColor" className="animate-pulse" />
               </svg>
             </div>
 

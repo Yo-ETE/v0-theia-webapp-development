@@ -1313,8 +1313,10 @@ export default function AdminPage() {
             </CardHeader>
             <CardContent className="flex flex-col gap-3">
               <div>
-                <Label className="text-xs text-muted-foreground mb-1 block">Rechercher un fuseau</Label>
+                <Label htmlFor="tz-search" className="text-xs text-muted-foreground mb-1 block">Rechercher un fuseau</Label>
                 <Input
+                  id="tz-search"
+                  name="tz-search"
                   value={tzSearch}
                   onChange={(e) => setTzSearch(e.target.value)}
                   placeholder="Ex: Paris, Tokyo, New_York..."
