@@ -121,16 +121,19 @@ export default function LogsPage() {
             <div className="relative flex-1 min-w-48">
               <Search className="absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" />
               <Input
+                id="log-search"
+                name="log-search"
                 placeholder="Rechercher dans les logs..."
                 value={search}
                 onChange={(e) => setSearch(e.target.value)}
                 className="pl-8 bg-input/50 border-border text-sm h-8"
+                aria-label="Rechercher dans les logs"
               />
             </div>
             <div className="flex items-center gap-2">
               <Filter className="h-3.5 w-3.5 text-muted-foreground" />
-              <Select value={source} onValueChange={setSource}>
-                <SelectTrigger className="h-8 w-28 text-xs bg-input/50 border-border">
+              <Select value={source} onValueChange={setSource} name="log-source">
+                <SelectTrigger className="h-8 w-28 text-xs bg-input/50 border-border" aria-label="Filtrer par source">
                   <SelectValue placeholder="Source" />
                 </SelectTrigger>
                 <SelectContent>
@@ -143,8 +146,8 @@ export default function LogsPage() {
                   <SelectItem value="device">Device</SelectItem>
                 </SelectContent>
               </Select>
-              <Select value={level} onValueChange={setLevel}>
-                <SelectTrigger className="h-8 w-28 text-xs bg-input/50 border-border">
+              <Select value={level} onValueChange={setLevel} name="log-level">
+                <SelectTrigger className="h-8 w-28 text-xs bg-input/50 border-border" aria-label="Filtrer par niveau">
                   <SelectValue placeholder="Level" />
                 </SelectTrigger>
                 <SelectContent>
@@ -169,8 +172,8 @@ export default function LogsPage() {
           <div className="flex items-center gap-3">
             <div className="flex items-center gap-2">
               <Terminal className="h-3.5 w-3.5 text-muted-foreground" />
-              <Select value={systemUnit} onValueChange={setSystemUnit}>
-                <SelectTrigger className="h-8 w-36 text-xs bg-input/50 border-border font-mono">
+              <Select value={systemUnit} onValueChange={setSystemUnit} name="system-unit">
+                <SelectTrigger className="h-8 w-36 text-xs bg-input/50 border-border font-mono" aria-label="Service systeme">
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>

@@ -1097,6 +1097,8 @@ export default function AdminPage() {
                     </div>
                     <div className="relative">
                       <select
+                        id="git-branch"
+                        name="git-branch"
                         value={selectedBranch}
                         onChange={(e) => setSelectedBranch(e.target.value)}
                         disabled={isUpdating || isFetchingBranches}
