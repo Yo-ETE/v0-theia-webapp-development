@@ -2315,8 +2315,10 @@ export default function MissionDetailPage() {
           </DialogHeader>
           <div className="flex flex-col gap-4 py-2">
             <div className="flex flex-col gap-2">
-              <Label className="text-xs text-muted-foreground">Zone Name</Label>
+              <Label htmlFor="zone-name" className="text-xs text-muted-foreground">Zone Name</Label>
               <Input
+                id="zone-name"
+                name="zone-name"
                 placeholder="e.g. Facade Nord"
                 value={zoneName}
                 onChange={(e) => setZoneName(e.target.value)}
@@ -2356,6 +2358,8 @@ export default function MissionDetailPage() {
                           </span>
                         </div>
                         <Input
+                          id={`side-label-${groupKey}`}
+                          name={`side-label-${groupKey}`}
                           placeholder={`Face ${groupKey}${segmentLetters.length > 1 ? ` (${segmentLetters.join("+")} parallels)` : ""}`}
                           value={sideLabels[groupKey]}
                           onChange={(e) => setSideLabels((prev) => ({ ...prev, [groupKey]: e.target.value }))}
@@ -2392,8 +2396,10 @@ export default function MissionDetailPage() {
           </DialogHeader>
           <div className="flex flex-col gap-4 py-2">
             <div className="flex flex-col gap-2">
-              <Label className="text-xs text-muted-foreground">Zone Name</Label>
+              <Label htmlFor="edit-zone-name" className="text-xs text-muted-foreground">Zone Name</Label>
               <Input
+                id="edit-zone-name"
+                name="edit-zone-name"
                 placeholder="e.g. Facade Nord"
                 value={editZoneName}
                 onChange={(e) => setEditZoneName(e.target.value)}
@@ -2433,6 +2439,8 @@ export default function MissionDetailPage() {
                           </span>
                         </div>
                         <Input
+                          id={`edit-side-label-${groupKey}`}
+                          name={`edit-side-label-${groupKey}`}
                           placeholder={`Face ${groupKey}${segmentLetters.length > 1 ? ` (${segmentLetters.join("+")} parallel)` : ""}`}
                           value={editSideLabels[groupKey]}
                           onChange={(e) => setEditSideLabels((prev) => ({ ...prev, [groupKey]: e.target.value }))}

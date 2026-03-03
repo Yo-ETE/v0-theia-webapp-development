@@ -8,6 +8,16 @@ from starlette.responses import JSONResponse
 
 from backend.routers.auth import jwt_decode
 
+
+def _cors_response(request: Request, data: dict, status_code: int) -> JSONResponse:
+    """Return a JSONResponse with CORS headers so browsers don't block error responses."""
+    origin = request.headers.get("origin", "")
+    response = JSONResponse(data, status_code=status_code)
+    if origin:
+        response.headers["Access-Control-Allow-Origin"] = origin
+        response.headers["Access-Control-Allow-Credentials"] = "true"
+    return response
+
 # Routes that do NOT require authentication
 PUBLIC_ROUTES = {
     ("POST", "/api/auth/login"),
@@ -65,10 +75,10 @@ class AuthMiddleware(BaseHTTPMiddleware):
                 if path.startswith("/api/stream"):
                     token = request.query_params.get("token")
                     if not token:
-                        return JSONResponse({"detail": "Token required"}, status_code=401)
+                        return _cors_response(request, {"detail": "Token required"}, 401)
                     payload = jwt_decode(token)
                     if not payload:
-                        return JSONResponse({"detail": "Invalid token"}, status_code=401)
+                        return _cors_response(request, {"detail": "Invalid token"}, 401)
                     request.state.user = payload
                 return await call_next(request)
 
@@ -81,11 +91,11 @@ class AuthMiddleware(BaseHTTPMiddleware):
                 token = auth_header[7:]
 
         if not token:
-            return JSONResponse({"detail": "Not authenticated"}, status_code=401)
+            return _cors_response(request, {"detail": "Not authenticated"}, 401)
 
         payload = jwt_decode(token)
         if not payload:
-            response = JSONResponse({"detail": "Invalid or expired session"}, status_code=401)
+            response = _cors_response(request, {"detail": "Invalid or expired session"}, 401)
             response.delete_cookie("theia_session", path="/")
             return response
 
@@ -106,6 +116,6 @@ class AuthMiddleware(BaseHTTPMiddleware):
                 break
 
         if is_admin_route and payload.get("role") != "admin":
-            return JSONResponse({"detail": "Admin access required"}, status_code=403)
+            return _cors_response(request, {"detail": "Admin access required"}, 403)
 
         return await call_next(request)
