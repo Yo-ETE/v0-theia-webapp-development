@@ -89,7 +89,7 @@ install_arduino_cli() {
 }
 
 # ============================================
-# STEP 2: Node.js (via NodeSource)
+# STEP 2: Node.js (via NodeSource) + pnpm
 # ============================================
 install_nodejs() {
     if command -v node &>/dev/null; then
@@ -97,16 +97,27 @@ install_nodejs() {
         current_version=$(node -v | cut -d'v' -f2 | cut -d'.' -f1)
         if [[ "$current_version" -ge "$NODE_MAJOR" ]]; then
             ok "Node.js v$(node -v) already installed"
-            return
+        else
+            info "Installing Node.js ${NODE_MAJOR}.x..."
+            curl -fsSL "https://deb.nodesource.com/setup_${NODE_MAJOR}.x" | bash -
+            apt-get install -y -qq nodejs
+            ok "Node.js $(node -v) installed"
         fi
+    else
+        info "Installing Node.js ${NODE_MAJOR}.x..."
+        curl -fsSL "https://deb.nodesource.com/setup_${NODE_MAJOR}.x" | bash -
+        apt-get install -y -qq nodejs
+        ok "Node.js $(node -v) installed"
     fi
 
-    info "Installing Node.js ${NODE_MAJOR}.x..."
-    curl -fsSL "https://deb.nodesource.com/setup_${NODE_MAJOR}.x" | bash -
-    apt-get install -y -qq nodejs
-    npm install -g npm@latest 2>/dev/null || true
-
-    ok "Node.js $(node -v) installed"
+    # Install pnpm (required for Next.js 16 lockfile handling)
+    if command -v pnpm &>/dev/null; then
+        ok "pnpm already installed ($(pnpm -v))"
+    else
+        info "Installing pnpm..."
+        npm install -g pnpm
+        ok "pnpm $(pnpm -v) installed"
+    fi
 }
 
 # ============================================
@@ -205,12 +216,12 @@ setup_nodejs() {
     info "Installing Node.js dependencies..."
     cd "$APP_DIR"
 
-    # Install deps (--legacy-peer-deps for react-leaflet React 19 compat)
-    sudo -u "$SERVICE_USER" npm ci --legacy-peer-deps --prefer-offline --no-audit 2>/dev/null || \
-    sudo -u "$SERVICE_USER" npm install --legacy-peer-deps --prefer-offline --no-audit
+    # Install deps using pnpm (matches pnpm-lock.yaml)
+    sudo -u "$SERVICE_USER" pnpm install --frozen-lockfile 2>/dev/null || \
+    sudo -u "$SERVICE_USER" pnpm install
 
     info "Building Next.js application..."
-    sudo -u "$SERVICE_USER" npm run build
+    sudo -u "$SERVICE_USER" pnpm run build
 
     # Standalone build requires manual copy of static assets + public
     # See: https://nextjs.org/docs/app/api-reference/config/next-config-js/output#automatically-copying-traced-files
