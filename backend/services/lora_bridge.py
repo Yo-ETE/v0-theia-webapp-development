@@ -287,6 +287,8 @@ class PortReader:
                     # Gravity MW binary presence: d=1 means present
                     sensor_type = "gravity_mw"
                     presence = (d == 1)
+                    if _DEBUG or True:  # Always log gravity_mw for debugging
+                        print(f"[THEIA] gravity_mw frame: tx={tx_id} d={d} presence={presence}")
                 elif x == 0 and y == d and d > 0:
                     sensor_type = "c4001"
                     presence = d > 15
@@ -560,6 +562,8 @@ class PortReader:
         # Muted devices skip event creation entirely
         # For presence-only / C4001 sensors, distance can be 0 -- just check presence
         distance_ok = d > 15 or sensor_type in ("gravity_mw", "c4001")
+        if sensor_type == "gravity_mw":
+            print(f"[THEIA] gravity_mw check: mission_id={mission_id} active={mission_active} presence={presence} d={d} distance_ok={distance_ok} muted={is_muted} validated={self._tx_validated.get(phantom_key, False)}")
         if mission_id and mission_active and presence and distance_ok and not is_muted:
             device_key = device_id or self.port
             now_ts = time.time()
