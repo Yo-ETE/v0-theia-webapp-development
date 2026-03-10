@@ -108,13 +108,14 @@ interface SensorPlacement {
 }
 
 /** Sensor hardware specs for FOV cone visualization */
-const SENSOR_SPECS: Record<string, { fovDeg: number; maxRangeM: number; label: string }> = {
+const SENSOR_SPECS: Record<string, { fovDeg: number; maxRangeM: number; label: string; presenceOnly?: boolean }> = {
   microwave_tx:  { fovDeg: 120, maxRangeM: 6,  label: "LD2450" },
   tx_microwave:  { fovDeg: 120, maxRangeM: 6,  label: "LD2450" },
+  ld2450:        { fovDeg: 120, maxRangeM: 6,  label: "LD2450" },
   c4001:         { fovDeg: 100, maxRangeM: 8,  label: "C4001" },
-  gravity_mw:    { fovDeg: 75,  maxRangeM: 6,  label: "Gravity MW V2" },
+  gravity_mw:    { fovDeg: 72,  maxRangeM: 12, label: "Gravity MW V2", presenceOnly: true },  // 72deg H, 2-16m adjustable
 }
-const DEFAULT_SENSOR_SPECS = { fovDeg: 90, maxRangeM: 6, label: "Unknown" }
+const DEFAULT_SENSOR_SPECS = { fovDeg: 90, maxRangeM: 6, label: "Unknown", presenceOnly: false }
 
 interface SensorPlaceMode {
   zoneId: string
@@ -453,7 +454,8 @@ export default function MapInner({
     const now = Date.now()
     for (const [zoneId, det] of Object.entries(liveDetections)) {
       lastEventTsRef.current[zoneId] = now
-      if (det.presence && det.distance > 0) {
+      // For presence-only sensors, distance=0 is valid when presence=true
+      if (det.presence) {
         lastGoodRef.current[zoneId] = det
         lastPresenceTsRef.current[zoneId] = now
       }
@@ -467,7 +469,8 @@ export default function MapInner({
     const now = Date.now()
     for (const [devId, det] of Object.entries(liveByDevice)) {
       lastEventTsByDevRef.current[devId] = now
-      if (det.presence && det.distance > 0) {
+      // For presence-only sensors, distance=0 is valid when presence=true
+      if (det.presence) {
         lastGoodByDevRef.current[devId] = det
         lastPresenceTsByDevRef.current[devId] = now
       }
@@ -490,7 +493,8 @@ export default function MapInner({
     // In replay mode, keys are "zoneId::deviceId" composites
     // Extract zone_id and trust the data directly (no stale/hold/fade)
     for (const [compositeKey, det] of Object.entries(liveDetections)) {
-      if (det.distance > 0) {
+      // Accept presence-only sensors (distance=0) as well as distance-based
+      if (det.presence || det.distance > 0) {
         // Extract zone_id from composite key or from det.zone_id
         const zoneId = compositeKey.includes("::") ? compositeKey.split("::")[0] : (det.zone_id || compositeKey)
         // Use zone_id as key (last device per zone wins for zone highlighting)
@@ -499,8 +503,9 @@ export default function MapInner({
     }
   } else {
     // 1) Current live detections from SSE -- if SSE says presence:true, it's live NOW
+    // For presence-only sensors (gravity_mw), distance=0 but presence=true is valid
     for (const [zoneId, det] of Object.entries(liveDetections)) {
-      if (det.presence && det.distance > 0) {
+      if (det.presence && (det.distance > 0 || det.distance === 0)) {
         effectiveDetections[zoneId] = { ...det, _state: "live" }
       }
     }
@@ -552,13 +557,15 @@ export default function MapInner({
     // Extract device_id from each detection
     for (const [, det] of Object.entries(liveDetections)) {
       const devId = det.device_id || det.device_name
-      if (devId && det.distance > 0) {
+      // Accept presence-only sensors (distance=0)
+      if (devId && (det.presence || det.distance > 0)) {
         effectiveByDevice[devId] = { ...det, _state: "live" }
       }
     }
   } else {
     for (const [devId, det] of Object.entries(liveByDevice)) {
-      if (det.presence && det.distance > 0) {
+      // Accept presence-only sensors (distance=0)
+      if (det.presence) {
         effectiveByDevice[devId] = { ...det, _state: "live" }
       }
     }
@@ -913,6 +920,9 @@ export default function MapInner({
   fovDeg: number
   maxRangeM: number
   sensorLabel: string
+  // Presence-only sensors (no distance info, just presence flag)
+  presenceOnly?: boolean
+  hasPresenceDetection?: boolean
   }
 
   // ── Heatmap: project each detection event to a lat/lon point ──
@@ -1076,7 +1086,12 @@ export default function MapInner({
     // Per-device detection ONLY -- no zone fallback to prevent TX02 copying TX01
     const det = effectiveByDevice[sp.device_id] || null
     let detectionLatLon: [number, number] | null = null
+    // Check if this is a presence-only sensor (no distance info)
+    const isPresenceOnly = specs.presenceOnly || false
+    const hasPresenceDetection = det?.presence && (det.distance > 0 || (det.distance === 0 && isPresenceOnly))
+    
     if (det?.presence && det.distance > 0) {
+      // Distance-based sensors: project detection point
       const distM = det.distance / 100 // cm -> meters
       const sensorM = toMeters(sensorLatLon)
 
@@ -1094,6 +1109,15 @@ export default function MapInner({
       const detM: [number, number] = [
         sensorM[0] + normalM[0] * distM + leftM[0] * lateralM,
         sensorM[1] + normalM[1] * distM + leftM[1] * lateralM,
+      ]
+      detectionLatLon = toLatLon(detM)
+    } else if (isPresenceOnly && det?.presence) {
+      // Presence-only sensors: use center of FOV at half max range as fallback point
+      const distM = specs.maxRangeM / 2 // midpoint of detection range
+      const sensorM = toMeters(sensorLatLon)
+      const detM: [number, number] = [
+        sensorM[0] + normalM[0] * distM,
+        sensorM[1] + normalM[1] * distM,
       ]
       detectionLatLon = toLatLon(detM)
     }
@@ -1116,6 +1140,8 @@ export default function MapInner({
       fovDeg: specs.fovDeg,
       maxRangeM: specs.maxRangeM,
       sensorLabel: specs.label,
+      presenceOnly: isPresenceOnly,
+      hasPresenceDetection,
     }
   }).filter(Boolean) as SensorMarkerData[]
 
@@ -1234,19 +1260,29 @@ export default function MapInner({
         })}
 
         {/* ── FOV detection cones (declarative JSX, no extra hooks) ── */}
+        {/* Presence-only sensors: illuminate FOV when detecting */}
         {showFov && sensorMarkers.map((sm) => {
           const arcPositions = buildFovArc(sm.sensorPos, sm.normalBearingDeg, sm.fovDeg, sm.maxRangeM)
+          // For presence-only sensors, illuminate the FOV when detecting
+          const isDetecting = sm.presenceOnly && sm.hasPresenceDetection
+          const detState = (sm.detection as LiveDetection & { _state?: string })?._state ?? "live"
+          const fovColor = isDetecting 
+            ? (detState === "live" ? vc.detection_dot_live : vc.detection_dot_hold)
+            : vc.fov_overlay_color
+          const fovFillOpacity = isDetecting ? 0.25 : vc.fov_fill_opacity
+          const fovStrokeOpacity = isDetecting ? 0.7 : vc.fov_fill_opacity + 0.25
           return (
             <Polygon
               key={`fov-${sm.id}`}
               positions={arcPositions}
               pathOptions={{
-                color: vc.fov_overlay_color,
-                fillColor: vc.fov_overlay_color,
-                weight: 1.5,
-                opacity: vc.fov_fill_opacity + 0.25,
-                fillOpacity: vc.fov_fill_opacity,
-                dashArray: "4 3",
+                color: fovColor,
+                fillColor: fovColor,
+                weight: isDetecting ? 2.5 : 1.5,
+                opacity: fovStrokeOpacity,
+                fillOpacity: fovFillOpacity,
+                dashArray: isDetecting ? undefined : "4 3",
+                className: isDetecting && detState === "live" ? "detection-pulse" : "",
               }}
             />
           )
@@ -1471,8 +1507,10 @@ export default function MapInner({
                   background: "rgba(255,255,255,0.92)", padding: "1px 5px",
                   borderRadius: 3, border: `1px solid ${color}55`,
                 }}>
-                  {sm.detection!.distance}cm {sm.detection!.direction === "G" ? "G" : sm.detection!.direction === "D" ? "D" : "C"}
-                  {!isLive && " (last)"}
+                  {sm.presenceOnly 
+                    ? `Presence${!isLive ? " (last)" : ""}`
+                    : `${sm.detection!.distance}cm ${sm.detection!.direction === "G" ? "G" : sm.detection!.direction === "D" ? "D" : "C"}${!isLive ? " (last)" : ""}`
+                  }
                 </span>
               </Tooltip>
             </CircleMarker>
