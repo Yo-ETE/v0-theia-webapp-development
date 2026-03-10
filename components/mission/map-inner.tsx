@@ -968,7 +968,17 @@ export default function MapInner({
     for (const evt of events) {
       const p = evt.payload ?? {}
       const dist = Number(p.distance ?? 0)
-      if (dist <= 0) continue
+      const sensorType = String(p.sensor_type ?? "ld2450")
+      const isPresenceOnly = sensorType === "gravity_mw"
+      const isDepthOnly = sensorType === "c4001" || sensorType === "depth_only"
+      
+      // Skip non-presence events for presence-only sensors, skip zero-distance for others
+      if (isPresenceOnly) {
+        // Presence-only: accept if presence=true (d=1), skip if d=0
+        if (dist !== 1) continue
+      } else {
+        if (dist <= 0) continue
+      }
 
       const zId = evt.zone_id
       if (!zId) continue
@@ -977,15 +987,39 @@ export default function MapInner({
       const sg = (evt.device_id ? sensorByDevice[evt.device_id] : null)
         ?? sensorByZone[zId]?.[0]
       if (!sg) continue
-      const dm = dist / 100 // cm to meters
 
-      // Projection method depends on sensor type:
-      // - ld2450: has real x,y (cm) -> exact 2D position
-      // - c4001/depth_only: only distance -> project along inward normal
-      // - gravity_mw: only distance -> project along inward normal
-      // NOTE: LD2450 payload x,y are in cm (TX firmware divides raw mm by 10)
-      const sensorType = String(p.sensor_type ?? "ld2450")
-      const isDepthOnly = sensorType === "c4001" || sensorType === "gravity_mw" || sensorType === "depth_only"
+      // rightM = -leftM: points right when facing the inward normal direction
+      const rM: [number, number] = [-sg.leftM[0], -sg.leftM[1]]
+
+      // For presence-only sensors, scatter points across the FOV instead of a single point
+      if (isPresenceOnly) {
+        const specs = SENSOR_SPECS[sensorType] ?? DEFAULT_SENSOR_SPECS
+        const fovRad = (specs.fovDeg / 2) * Math.PI / 180
+        const maxR = specs.maxRangeM
+        // Generate 5 points spread across the FOV (low weight each)
+        const spreadAngles = [-0.4, -0.2, 0, 0.2, 0.4] // fraction of half-FOV
+        const spreadDists = [0.3, 0.5, 0.7] // fraction of max range
+        for (const angleFrac of spreadAngles) {
+          for (const distFrac of spreadDists) {
+            const angle = angleFrac * fovRad
+            const d = distFrac * maxR
+            const cosA = Math.cos(angle)
+            const sinA = Math.sin(angle)
+            const dirX = cosA * sg.normalM[0] + sinA * rM[0]
+            const dirY = cosA * sg.normalM[1] + sinA * rM[1]
+            const ptM: [number, number] = [
+              sg.sensorM[0] + d * dirX,
+              sg.sensorM[1] + d * dirY,
+            ]
+            const ll = toLatLon(ptM)
+            // Lower weight for presence-only (spread across area)
+            pts.push({ lat: ll[0], lon: ll[1], weight: 0.15 })
+          }
+        }
+        continue // Skip normal point processing
+      }
+
+      const dm = dist / 100 // cm to meters
 
       const x_cm = Number(p.x ?? 0)
       const y_cm = Number(p.y ?? 0)
@@ -995,8 +1029,6 @@ export default function MapInner({
       const hasAngle = !isDepthOnly && evtAngle !== 0
 
       let ptM: [number, number]
-      // rightM = -leftM: points right when facing the inward normal direction
-      const rM: [number, number] = [-sg.leftM[0], -sg.leftM[1]]
 
       if (hasRealXY) {
         // LD2450 x,y in cm: x = lateral (+ = right), y = depth (always positive)
@@ -1019,7 +1051,7 @@ export default function MapInner({
           sg.sensorM[1] + dm * dirY,
         ]
       } else {
-        // Depth-only (C4001, gravity_mw, or no x/y): project along inward normal
+        // Depth-only (C4001, or no x/y): project along inward normal
         ptM = [
           sg.sensorM[0] + dm * sg.normalM[0],
           sg.sensorM[1] + dm * sg.normalM[1],
@@ -1540,7 +1572,7 @@ export default function MapInner({
           )
         })}
 
-        {/* ── Drawing polyline with measurements ── */}
+        {/* ── Drawing polyline with measurements ��─ */}
         {drawPoints.length > 0 && (
           <>
             <Polyline
