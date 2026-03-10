@@ -1002,14 +1002,14 @@ export default function MapInner({
         for (const angleFrac of spreadAngles) {
           for (const distFrac of spreadDists) {
             const angle = angleFrac * fovRad
-            const d = distFrac * maxR
+            const distM = distFrac * maxR
             const cosA = Math.cos(angle)
             const sinA = Math.sin(angle)
             const dirX = cosA * sg.normalM[0] + sinA * rM[0]
             const dirY = cosA * sg.normalM[1] + sinA * rM[1]
             const ptM: [number, number] = [
-              sg.sensorM[0] + d * dirX,
-              sg.sensorM[1] + d * dirY,
+              sg.sensorM[0] + distM * dirX,
+              sg.sensorM[1] + distM * dirY,
             ]
             const ll = toLatLon(ptM)
             // Lower weight for presence-only (spread across area)
@@ -1118,6 +1118,8 @@ export default function MapInner({
     // Per-device detection ONLY -- no zone fallback to prevent TX02 copying TX01
     const det = effectiveByDevice[sp.device_id] || null
     let detectionLatLon: [number, number] | null = null
+    // Get sensor specs early (needed for presence-only check)
+    const specs = SENSOR_SPECS[sp.device_type ?? ""] ?? DEFAULT_SENSOR_SPECS
     // Check if this is a presence-only sensor (no distance info)
     const isPresenceOnly = specs.presenceOnly || false
     const hasPresenceDetection = det?.presence && (det.distance > 0 || (det.distance === 0 && isPresenceOnly))
@@ -1156,9 +1158,6 @@ export default function MapInner({
     // Compute inward normal bearing (degrees from north, clockwise)
     // normalM is [east, north] unit vector -> bearing = atan2(east, north)
     const normalBearingDeg = ((Math.atan2(normalM[0], normalM[1]) * 180 / Math.PI) + 360) % 360
-
-    // Look up sensor specs from device type
-    const specs = SENSOR_SPECS[sp.device_type ?? ""] ?? DEFAULT_SENSOR_SPECS
 
     return {
       id: sp.device_id,
