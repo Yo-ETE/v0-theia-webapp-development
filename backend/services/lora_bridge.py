@@ -37,6 +37,28 @@ LORA_SERIAL_PORT = os.getenv("LORA_SERIAL_PORT", "")
 SCAN_INTERVAL = 10
 _DEBUG = os.getenv("THEIA_DEBUG", "").lower() in ("1", "true", "yes")
 
+# Blacklist for recently deleted TX (prevents immediate re-enroll after hard delete)
+# Format: {dev_eui: deletion_timestamp}
+_deleted_tx_blacklist: dict[str, float] = {}
+BLACKLIST_DURATION = 300  # 5 minutes blacklist after hard delete
+
+
+def blacklist_tx(dev_eui: str):
+    """Add a TX to the deletion blacklist (called from devices router on hard delete)."""
+    _deleted_tx_blacklist[dev_eui] = time.time()
+    print(f"[THEIA] TX {dev_eui} blacklisted for {BLACKLIST_DURATION}s (prevents re-enroll)")
+
+
+def is_tx_blacklisted(dev_eui: str) -> bool:
+    """Check if a TX is blacklisted (recently hard deleted)."""
+    if dev_eui not in _deleted_tx_blacklist:
+        return False
+    elapsed = time.time() - _deleted_tx_blacklist[dev_eui]
+    if elapsed > BLACKLIST_DURATION:
+        del _deleted_tx_blacklist[dev_eui]
+        return False
+    return True
+
 
 class PortReader:
     """Reads one serial port and processes frames."""
@@ -350,6 +372,10 @@ class PortReader:
                 if "c4001" in db_type.lower() or db_type == "depth_only":
                     sensor_type = "c4001"
             if not row:
+                # Check blacklist first (recently hard-deleted devices)
+                if is_tx_blacklisted(tx_id):
+                    return  # Silently ignore frames from recently deleted TX
+
                 cursor = await db.execute(
                     "SELECT id FROM devices WHERE dev_eui=? AND enabled=0",
                     (tx_id,),
