@@ -6,6 +6,7 @@ from datetime import datetime, timedelta
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 from backend.database import get_db
+from backend.services.lora_bridge import blacklist_tx
 
 
 def _compute_status(device: dict) -> dict:
@@ -221,12 +222,15 @@ async def delete_device(device_id: str, hard: bool = False):
 
     if hard:
         # Hard DELETE: completely remove the device from DB
-        # (Use for already-disabled devices that will never come back)
+        # Blacklist the dev_eui to prevent immediate re-enroll from LoRa frames
+        dev_eui = device.get("dev_eui", "")
+        if dev_eui:
+            blacklist_tx(dev_eui)
         await db.execute("DELETE FROM devices WHERE id=?", (device_id,))
         await db.commit()
         await db.execute(
             "INSERT INTO logs (level, source, message) VALUES (?, ?, ?)",
-            ("info", "api", f"Device hard-deleted: {device.get('name', '')} ({device.get('dev_eui', '')})"),
+            ("info", "api", f"Device hard-deleted: {device.get('name', '')} ({dev_eui}) - blacklisted 5min"),
         )
         await db.commit()
     else:

@@ -48,6 +48,11 @@ def _detect_sensor_type(name: str, content: str) -> str:
     """Detect sensor type from firmware name or content."""
     name_lower = name.lower()
     content_lower = content.lower()
+    # RX firmware detection FIRST (before sensor patterns, as RX may reference sensor code)
+    if "_rx" in name_lower or name_lower.endswith("rx") or name_lower == "rx":
+        return "rx"
+    if "// THEIA RX" in content or "LORA_RX" in content or "#define RX_MODE" in content:
+        return "rx"
     # Known sensor patterns
     if "ld2450" in name_lower or "ld2450" in content_lower:
         return "ld2450"
@@ -55,8 +60,6 @@ def _detect_sensor_type(name: str, content: str) -> str:
         return "c4001"
     if "gravity" in name_lower or "sen0192" in content_lower or "microwave" in name_lower:
         return "gravity_mw"
-    if "_rx" in name_lower or "RX" in name:
-        return "rx"
     # Fallback: derive from name
     return name_lower.replace("custom_", "").replace("tx_", "").replace(" ", "_")
 # Heltec WiFi LoRa 32 V3 FQBN from standard ESP32 core

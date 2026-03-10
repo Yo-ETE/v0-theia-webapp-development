@@ -180,11 +180,12 @@ export default function DevicesPage() {
     logEndRef.current?.scrollIntoView({ behavior: "smooth" })
   }, [flashLogs])
 
-  // Validate TX_ID uniqueness
+  // Check TX_ID existence (warn but don't block - allow re-flashing existing devices)
   useEffect(() => {
     if (!flashForm.tx_id.trim()) { setTxIdError(""); return }
-    const existing = devices?.find(d => d.dev_eui === flashForm.tx_id.trim())
-    setTxIdError(existing ? `${flashForm.tx_id} deja utilise` : "")
+    const existing = devices?.find(d => d.dev_eui === flashForm.tx_id.trim() && d.enabled)
+    // Warning only, not a blocking error (allows re-flashing)
+    setTxIdError(existing ? `${flashForm.tx_id} existe deja (re-flash)` : "")
   }, [flashForm.tx_id, devices])
 
   // Fetch firmwares when wizard opens
@@ -197,7 +198,7 @@ export default function DevicesPage() {
   }, [flashOpen, backendBase])
 
   const handleFlash = useCallback(async () => {
-    if (!flashForm.tx_id.trim() || !flashForm.port || txIdError) return
+    if (!flashForm.tx_id.trim() || !flashForm.port) return
     setFlashing(true)
     setFlashDone(null)
     setFlashLogs([])
@@ -702,7 +703,7 @@ export default function DevicesPage() {
                   className="h-10 text-sm bg-input/50 border-border font-mono"
                   autoFocus
                 />
-                {txIdError && <p className="text-[10px] text-destructive">{txIdError}</p>}
+                {txIdError && <p className="text-[10px] text-warning">{txIdError}</p>}
                 <p className="text-[10px] text-muted-foreground">
                   Identifiant unique du capteur (ex: TX03, TX04...). Sera ecrit dans le firmware.
                 </p>
@@ -980,7 +981,7 @@ Symlinks : {systemPorts.map(s => `${s.symlink} -> ${s.real} (${s.role})`).join("
               <Button variant="outline" size="sm" onClick={() => setWizardStep(s => s - 1)}>Retour</Button>
             )}
             {wizardStep === 1 && (
-              <Button size="sm" onClick={() => setWizardStep(2)} disabled={!flashForm.tx_id.trim() || !!txIdError}>
+              <Button size="sm" onClick={() => setWizardStep(2)} disabled={!flashForm.tx_id.trim()}>
                 Suivant
               </Button>
             )}
