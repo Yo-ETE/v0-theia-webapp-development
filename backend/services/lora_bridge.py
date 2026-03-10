@@ -37,28 +37,6 @@ LORA_SERIAL_PORT = os.getenv("LORA_SERIAL_PORT", "")
 SCAN_INTERVAL = 10
 _DEBUG = os.getenv("THEIA_DEBUG", "").lower() in ("1", "true", "yes")
 
-# Blacklist for recently deleted TX (prevents immediate re-enroll after hard delete)
-# Format: {dev_eui: deletion_timestamp}
-_deleted_tx_blacklist: dict[str, float] = {}
-BLACKLIST_DURATION = 300  # 5 minutes blacklist after hard delete
-
-
-def blacklist_tx(dev_eui: str):
-    """Add a TX to the deletion blacklist (called from devices router on hard delete)."""
-    _deleted_tx_blacklist[dev_eui] = time.time()
-    print(f"[THEIA] TX {dev_eui} blacklisted for {BLACKLIST_DURATION}s (prevents re-enroll)")
-
-
-def is_tx_blacklisted(dev_eui: str) -> bool:
-    """Check if a TX is blacklisted (recently hard deleted)."""
-    if dev_eui not in _deleted_tx_blacklist:
-        return False
-    elapsed = time.time() - _deleted_tx_blacklist[dev_eui]
-    if elapsed > BLACKLIST_DURATION:
-        del _deleted_tx_blacklist[dev_eui]
-        return False
-    return True
-
 
 class PortReader:
     """Reads one serial port and processes frames."""
@@ -67,7 +45,7 @@ class PortReader:
         self.port = port
         self.baud = baud
         self.running = False
-        self.connected_real: str | None = None  # realpath at time of serial.open()
+        self.connected_real: str | None = None
         self.packets_ok = 0
         self.packets_err = 0
         self.last_rssi: int = -120
@@ -77,12 +55,9 @@ class PortReader:
         self._presence_window: dict[str, list] = {}
         self._tx_validated: dict[str, bool] = {}
         self._PRESENCE_WITHOUT_EMPTY_LIMIT = 200
-        self._mission_status_cache: dict[str, tuple[str, float]] = {}  # mission_id -> (status, timestamp)
-        # Per-device alert tracking: {tx_id: last_seen_ts}
+        self._mission_status_cache: dict[str, tuple[str, float]] = {}
         self._device_last_seen: dict[str, float] = {}
-        # Anti-spam: {(type, device_id): last_notif_ts}
         self._notif_cooldown: dict[tuple[str, str], float] = {}
-        # Detection notification cooldown: {mission_id: last_detection_notif_ts}
         self._detection_notif_ts: dict[str, float] = {}
 
     async def _create_notification(self, ntype: str, severity: str, device_id: str | None, device_name: str, message: str):
@@ -91,7 +66,7 @@ class PortReader:
         now = time.time()
         last = self._notif_cooldown.get(cooldown_key, 0)
         if now - last < 3600:
-            return  # anti-spam: 1 per type/device per hour
+            return
         self._notif_cooldown[cooldown_key] = now
         try:
             db = await get_db()
@@ -126,12 +101,10 @@ class PortReader:
             if not config.get("enabled", False):
                 return
 
-            # Zone filter
             zones = config.get("zones", ["all"])
             if zones != ["all"] and zone_id not in zones:
                 return
 
-            # Cooldown check
             cooldown_min = config.get("cooldown_minutes", 5)
             now = time.time()
             last = self._detection_notif_ts.get(mission_id, 0)
@@ -143,7 +116,6 @@ class PortReader:
             msg = f"Detection sur {mission_name} - {device_name} ({direction}, {distance}cm)"
             channels = config.get("channels", [])
 
-            # 1. In-app notification
             await db.execute(
                 "INSERT INTO notifications (type, severity, device_name, message) VALUES (?, ?, ?, ?)",
                 ("detection_alert", "warning", device_name, msg),
@@ -154,7 +126,6 @@ class PortReader:
                 "device_name": device_name, "message": msg,
             })
 
-            # 2. Web Push
             if "web_push" in channels:
                 try:
                     from backend.services.push_service import broadcast_push
@@ -167,11 +138,9 @@ class PortReader:
                 except Exception as e:
                     print(f"[THEIA-NOTIF] Push error: {e}")
 
-            # 3. SMS
             if "sms" in channels:
                 try:
                     from backend.services.sms_service import send_sms
-                    # Load SMS provider config from settings
                     cursor2 = await db.execute("SELECT value FROM settings WHERE key='sms_config'")
                     sms_row = await cursor2.fetchone()
                     if sms_row:
@@ -189,7 +158,6 @@ class PortReader:
         self.running = True
         while self.running:
             try:
-                # Resolve realpath BEFORE opening (this is what the kernel will use)
                 self.connected_real = os.path.realpath(self.port)
                 ser = await asyncio.get_event_loop().run_in_executor(
                     None,
@@ -204,7 +172,7 @@ class PortReader:
                             await self._process_line(line)
             except Exception as e:
                 print(f"[THEIA] LoRa reader error on {self.port}: {e}")
-                await asyncio.sleep(2)  # fast reconnect (USB re-enumeration)
+                await asyncio.sleep(2)
 
     def stop(self):
         self.running = False
@@ -213,8 +181,6 @@ class PortReader:
         if line.startswith("[RX]"):
             await self._parse_rx_frame(line)
         elif line.startswith("[TX]"):
-            # TX frames have same format as RX: [TX] TX03 | x=0 y=0 ...
-            # Treat them identically (TX might be read directly via USB)
             await self._parse_rx_frame("[RX]" + line[4:])
         elif line.startswith("LD45;"):
             await self._parse_ld45(line)
@@ -255,7 +221,6 @@ class PortReader:
             self._last_empty_ts[key] = time.time()
             self._presence_count[key] = 0
             self._tx_validated[key] = True
-            # sensor_type will be overridden from DB in _handle_detection if device is known
             await self._handle_detection(
                 tx_id=tx_id, sensor_type="unknown",
                 x=0, y=0, d=0, v=0,
@@ -263,7 +228,7 @@ class PortReader:
             )
             return
 
-        # LD45 semicolon format: LD45;TXnn;x;y;d;v;battV
+        # LD45 semicolon format embedded in RX frame: LD45;TXnn;x;y;d;v;battV
         if data_str.startswith("LD45;"):
             parts = data_str.split(";")
             if len(parts) >= 6:
@@ -278,23 +243,24 @@ class PortReader:
                     return
                 self.packets_ok += 1
                 angle = math.degrees(math.atan2(x, y)) if (x != 0 or y != 0) else 0.0
-                
-                # Detect sensor type and presence:
-                # - gravity_mw: x=0, y=0, d is 0/1 binary presence indicator
-                # - c4001: x=0, y=d (depth-only sensor), d>1
-                # - ld2450: real x,y coordinates
-                if x == 0 and y == 0 and d in (0, 1):
-                    # Gravity MW binary presence: d=1 means present
+
+                # Détection type capteur (même logique que _parse_ld45)
+                if x == 0 and y == 0 and d == 1:
                     sensor_type = "gravity_mw"
-                    presence = (d == 1)
-                    if _DEBUG or True:  # Always log gravity_mw for debugging
-                        print(f"[THEIA] gravity_mw frame: tx={tx_id} d={d} presence={presence}")
+                    presence = True
+                    d = 0
+                elif x == 0 and y == 0 and d == 0:
+                    sensor_type = "gravity_mw"
+                    presence = False
                 elif x == 0 and y == d and d > 0:
                     sensor_type = "c4001"
-                    presence = d > 15
+                    presence = True
                 else:
                     sensor_type = "ld2450"
                     presence = (x != 0 or y != 0) and 15 < d < 600
+                    if not presence and d > 15:
+                        presence = True
+
                 await self._handle_detection(
                     tx_id=tx_id, sensor_type=sensor_type,
                     x=x, y=y, d=d, v=v,
@@ -302,6 +268,7 @@ class PortReader:
                 )
                 return
 
+        # key=value format: x=0 y=0 d=1 v=0 rssi=-45 battTX=4.10
         kv = {}
         for match in re.finditer(r'(\w+)=([^\s]+)', data_str):
             kv[match.group(1)] = match.group(2)
@@ -326,7 +293,6 @@ class PortReader:
             else:
                 self.packets_err += 1
                 return
-            # Accept both "battTX" (RX format) and "vbatt" (TX direct format)
             batt_key = "battTX" if "battTX" in kv else ("vbatt" if "vbatt" in kv else None)
             vbatt = float(kv[batt_key]) if batt_key else None
         except (ValueError, KeyError):
@@ -335,23 +301,27 @@ class PortReader:
 
         self.packets_ok += 1
         angle = math.degrees(math.atan2(x, y)) if (x != 0 or y != 0) else 0.0
+
+        # Détection type capteur — gravity_mw via marqueur d=1 ou presence= explicite
         if has_presence_only:
             presence = kv.get("presence", "0") == "1"
-        else:
-            presence = (x != 0 or y != 0) and 15 < d < 600
-
-        # Detect sensor type:
-        # - gravity_mw: presence-only sensor (no x,y)
-        # - c4001: depth-only sensor (x always 0, y == d)
-        # - ld2450: full 2D sensor (real x,y coordinates)
-        if has_presence_only:
             sensor_type = "gravity_mw"
+        elif x == 0 and y == 0 and d == 1:
+            # Marqueur gravity_mw (SEN0192) : x=0 y=0 d=1
+            sensor_type = "gravity_mw"
+            presence = True
+            d = 0
+        elif x == 0 and y == 0 and d == 0:
+            # Absence gravity_mw
+            sensor_type = "gravity_mw"
+            presence = False
         elif x == 0 and y == d and d > 0:
             sensor_type = "c4001"
+            presence = True
         else:
             sensor_type = "ld2450"
+            presence = (x != 0 or y != 0) and 15 < d < 600
 
-        # Phantom suppression is handled ONLY in _handle_detection (single gate).
         await self._handle_detection(
             tx_id=tx_id, sensor_type=sensor_type,
             x=x, y=y, d=d, v=v,
@@ -376,33 +346,28 @@ class PortReader:
             )
             row = await cursor.fetchone()
             if row:
-                # Override sensor_type from DB device type for known sensors
                 db_type = row["type"] or ""
                 if "c4001" in db_type.lower() or db_type == "depth_only":
                     sensor_type = "c4001"
             if not row:
-                # Check blacklist first (recently hard-deleted devices)
-                if is_tx_blacklisted(tx_id):
-                    return  # Silently ignore frames from recently deleted TX
-                
-                # Check if a disabled (soft-deleted) device with this dev_eui exists
-                # If so, do NOT re-create it -- the user intentionally removed it
                 cursor = await db.execute(
                     "SELECT id FROM devices WHERE dev_eui=? AND enabled=0",
                     (tx_id,),
                 )
                 disabled_row = await cursor.fetchone()
                 if disabled_row:
-                    # Device was soft-deleted, silently ignore frames from it
                     return
 
                 import uuid
                 did = str(uuid.uuid4())[:8]
-                # Detect C4001 pattern: x==0 and y==d (depth-only sensor)
-                is_c4001 = (x == 0 and y == d and d > 0) or sensor_type == "gravity_mw"
-                dev_type = "c4001" if is_c4001 else ("gravity_mw" if sensor_type == "gravity_mw" else "microwave_tx")
-                if is_c4001:
+                is_c4001 = (x == 0 and y == d and d > 0)
+                if sensor_type == "gravity_mw":
+                    dev_type = "gravity_mw"
+                elif is_c4001:
+                    dev_type = "c4001"
                     sensor_type = "c4001"
+                else:
+                    dev_type = "microwave_tx"
                 await db.execute(
                     "INSERT INTO devices (id, dev_eui, name, type, serial_port, enabled) VALUES (?, ?, ?, ?, ?, 1)",
                     (did, tx_id, f"TX-{tx_id}", dev_type, self.port),
@@ -437,7 +402,6 @@ class PortReader:
         zone_id = row["zone_id"] if row else None
         zone_label = row["zone_label"] if row else ""
 
-        # For floor-mode devices: derive zone_label from floor number if zone_label is empty
         device_floor = None
         if row:
             try:
@@ -447,8 +411,6 @@ class PortReader:
         if not zone_label and device_floor is not None:
             zone_label = f"Etage {device_floor}"
 
-        # Check mission status: only record events if mission is "active"
-        # Use a 5-second cache to avoid querying SQLite on every frame
         mission_active = False
         mission_status_db = None
         if mission_id and mission_id.strip():
@@ -467,7 +429,8 @@ class PortReader:
                     mission_status_db = "NOT_FOUND"
                 self._mission_status_cache[mission_id] = (mission_status_db, now_cache)
         else:
-            mission_id = None  # Normalize empty string to None
+            mission_id = None
+
         side = row["side"] if row else ""
         device_name = row["name"] if row else (tx_id or self.port)
         sensor_position = None
@@ -487,7 +450,6 @@ class PortReader:
                 "UPDATE devices SET battery=?, last_seen=?, rssi=?, serial_port=? WHERE id=?",
                 (vbatt, now_iso, self.last_rssi, self.port, device_id),
             )
-            # Record battery history (throttled: max 1 per 30 seconds per device)
             if vbatt is not None and vbatt > 0:
                 cache_key = f"batt_{device_id}"
                 last_batt_ts = self._last_insert_ts.get(cache_key, 0)
@@ -514,16 +476,12 @@ class PortReader:
             "floor": device_floor,
         }
 
-        # --- SINGLE phantom gate (for ALL code paths) ---
-        # Validation: explicit EMPTY frame OR 2+ consecutive presence frames.
-        # Uses a sliding window of last N frames to be resilient to occasional
-        # no-presence frames interleaved with real detections.
+        # --- SINGLE phantom gate ---
         phantom_key = tx_id or self.port
-        PHANTOM_CONSEC = 2          # consecutive presence frames to auto-validate
-        PHANTOM_WINDOW = 6          # sliding window size
-        PHANTOM_RATIO_THRESH = 3    # min presence frames in window to validate
+        PHANTOM_CONSEC = 2
+        PHANTOM_WINDOW = 6
+        PHANTOM_RATIO_THRESH = 3
 
-        # Update sliding window (True=presence, False=absence)
         window = self._presence_window.get(phantom_key, [])
         window.append(presence)
         if len(window) > PHANTOM_WINDOW:
@@ -533,7 +491,6 @@ class PortReader:
         if presence and not self._tx_validated.get(phantom_key, False):
             count = self._presence_count.get(phantom_key, 0) + 1
             self._presence_count[phantom_key] = count
-            # Validate if 2+ consecutive OR 3+ in last 6 frames
             presence_in_window = sum(1 for v in window if v)
             if count >= PHANTOM_CONSEC or presence_in_window >= PHANTOM_RATIO_THRESH:
                 self._tx_validated[phantom_key] = True
@@ -545,25 +502,16 @@ class PortReader:
                 payload["presence"] = False
                 payload["distance"] = 0
         elif presence and self._tx_validated.get(phantom_key, False):
-            # TX is validated -- allow all presence through.
             self._presence_count[phantom_key] = self._presence_count.get(phantom_key, 0) + 1
         elif not presence:
             self._presence_count[phantom_key] = 0
 
-        # Check muted flag: muted devices still broadcast SSE but skip DB event storage
-        # sqlite3.Row doesn't support .get(), so convert to dict or use try/except
         try:
             is_muted = bool(dict(row).get("muted", 0)) if row else False
         except Exception:
             is_muted = False
 
-        # Store detection in DB (rate-limited: 1 per 2s per device)
-        # Only record when mission status is "active" (Pause stops recording)
-        # Muted devices skip event creation entirely
-        # For presence-only / C4001 sensors, distance can be 0 -- just check presence
         distance_ok = d > 15 or sensor_type in ("gravity_mw", "c4001")
-        if sensor_type == "gravity_mw":
-            print(f"[THEIA] gravity_mw check: mission_id={mission_id} active={mission_active} presence={presence} d={d} distance_ok={distance_ok} muted={is_muted} validated={self._tx_validated.get(phantom_key, False)}")
         if mission_id and mission_active and presence and distance_ok and not is_muted:
             device_key = device_id or self.port
             now_ts = time.time()
@@ -583,12 +531,11 @@ class PortReader:
                     )
                 if _DEBUG:
                     print(f"[THEIA-DB] INSERT event: d={d} dir={direction} zone_id={zone_id} mission={mission_id}")
-                # Check notification rules for this mission
                 await self._check_notification_rules(mission_id, device_name or device_id or "", zone_id or "", d, direction if presence else "C")
         elif presence and mission_id and not mission_active:
-            pass  # Mission paused/completed -- SSE still broadcasts but no DB insert
+            pass
         elif presence and not mission_id:
-            pass  # No mission assigned -- skip silently
+            pass
 
         await db.commit()
 
@@ -616,20 +563,17 @@ class PortReader:
             "timestamp": now_iso,
         })
 
-        # --- Health monitoring: track device activity + check battery/RSSI ---
         dev_key = tx_id or self.port
         was_offline = (dev_key in self._device_last_seen and
                        time.time() - self._device_last_seen.get(dev_key, 0) > 60)
         self._device_last_seen[dev_key] = time.time()
 
-        # Device came back online after being offline
         if was_offline and device_id:
             await self._create_notification(
                 "device_online", "info", device_id, device_name,
                 f"{device_name} reconnecte"
             )
 
-        # Battery alerts
         if vbatt is not None and vbatt > 0 and device_id:
             if vbatt < 3.3:
                 await self._create_notification(
@@ -642,7 +586,6 @@ class PortReader:
                     f"{device_name} batterie faible ({vbatt:.2f}V)"
                 )
 
-        # RSSI alert (persistent weak signal)
         if self.last_rssi < -90 and device_id:
             await self._create_notification(
                 "rssi_weak", "warning", device_id, device_name,
@@ -677,7 +620,7 @@ class PortReader:
 
         self.packets_ok += 1
         angle = math.degrees(math.atan2(x, y)) if (x != 0 or y != 0) else 0.0
-    
+
         # Détection type capteur
         if x == 0 and y == 0 and d == 1:
             # Marqueur gravity_mw (SEN0192) : présence sans distance
@@ -699,7 +642,6 @@ class PortReader:
             if not presence and d > 15:
                 presence = True
 
-        # Phantom suppression handled in _handle_detection (single gate)
         await self._handle_detection(
             tx_id=tx_id, sensor_type=sensor_type,
             x=x, y=y, d=d, v=v,
@@ -758,7 +700,6 @@ class PortReader:
                 try: vbatt = float(vbatt_raw)
                 except (ValueError, TypeError): pass
 
-        # Delegate to unified _handle_detection (phantom gate, event insert, SSE broadcast)
         await self._handle_detection(
             tx_id=dev_eui, sensor_type=sensor_type,
             x=x_val, y=y_val, d=distance, v=v_val,
@@ -800,9 +741,7 @@ class LoRaBridge:
             port: {"packets_ok": r.packets_ok, "packets_err": r.packets_err, "rssi": r.last_rssi}
             for port, r in self._readers.items()
         }
-        # Use real RSSI if available, otherwise keep default -120
         best_rssi = first_reader.last_rssi if first_reader else None
-        # If still at default (-120), check other readers for a better value
         if best_rssi == -120:
             for r in self._readers.values():
                 if r.last_rssi != -120:
@@ -843,7 +782,7 @@ class LoRaBridge:
 
     async def _device_watchdog(self):
         """Background task: check all devices for offline status every 30s."""
-        await asyncio.sleep(60)  # Wait 60s at startup before first check
+        await asyncio.sleep(60)
         while self._running:
             try:
                 db = await get_db()
@@ -860,7 +799,6 @@ class LoRaBridge:
                     try:
                         if last_seen_str.endswith("Z"):
                             last_seen_str = last_seen_str[:-1]
-                        # Normalize to naive local time string
                         last_seen_str = last_seen_str.replace("T", " ").split("+")[0].split(".")[0]
                         ls_dt = datetime.fromisoformat(last_seen_str)
                         delta_s = now_ts - ls_dt.timestamp()
@@ -870,18 +808,15 @@ class LoRaBridge:
                     device_id = d["id"]
                     device_name = d["name"]
 
-                    # Offline > 120s and not already notified recently
                     if delta_s > 120:
                         cooldown_key = ("device_offline", device_id)
                         last_notif = self._watchdog_cooldown.get(cooldown_key, 0)
                         if now_ts - last_notif > 3600:
-                            # Check DB for existing non-dismissed offline notif (survives restarts)
                             existing = await db.execute(
                                 "SELECT id FROM notifications WHERE device_id=? AND type='device_offline' AND dismissed=0 LIMIT 1",
                                 (device_id,),
                             )
                             if await existing.fetchone():
-                                # Already has an active offline notification -- skip
                                 self._watchdog_cooldown[cooldown_key] = now_ts
                                 continue
                             self._watchdog_cooldown[cooldown_key] = now_ts
@@ -907,7 +842,6 @@ class LoRaBridge:
     async def start(self):
         self._running = True
         print("[THEIA] LoRa bridge starting (multi-port mode)")
-        # Start device health watchdog
         self._tasks.append(asyncio.create_task(self._device_watchdog()))
         _first_scan = True
         while self._running:
@@ -917,8 +851,6 @@ class LoRaBridge:
                 if udev_ok:
                     real = os.path.realpath(self.THEIA_RX_SYMLINK)
                     print(f"[THEIA] Port scan: /dev/theia-rx -> {real}")
-                    # RX identification is now done via bridge port tracking (not MAC)
-                    # Bridge _readers dict contains the actual RX port after connection
                 else:
                     by_id = [os.path.basename(p) for p in glob.glob("/dev/serial/by-id/*")]
                     print(f"[THEIA] Port scan: /dev/theia-rx NOT found, by-id={by_id}, selected={ports}")
