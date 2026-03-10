@@ -640,15 +640,27 @@ class PortReader:
 
         self.packets_ok += 1
         angle = math.degrees(math.atan2(x, y)) if (x != 0 or y != 0) else 0.0
-        presence = (x != 0 or y != 0) and 15 < d < 600
-        # Also detect presence when x==0 but d>15 (C4001 depth-only pattern)
-        if not presence and d > 15:
+    
+        # Détection type capteur
+        if x == 0 and y == 0 and d == 1:
+            # Marqueur gravity_mw (SEN0192) : présence sans distance
+            sensor_type = "gravity_mw"
             presence = True
-        # Detect sensor type
-        if x == 0 and y == d and d > 0:
+            d = 0
+        elif x == 0 and y == 0 and d == 0:
+            # Absence gravity_mw
+            sensor_type = "gravity_mw"
+            presence = False
+        elif x == 0 and y == d and d > 0:
+            # C4001 depth-only
             sensor_type = "c4001"
+            presence = True
         else:
+            # LD2450 full 2D
             sensor_type = "ld2450"
+            presence = (x != 0 or y != 0) and 15 < d < 600
+            if not presence and d > 15:
+                presence = True
 
         # Phantom suppression handled in _handle_detection (single gate)
         await self._handle_detection(
