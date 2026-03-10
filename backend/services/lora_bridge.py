@@ -328,15 +328,15 @@ class PortReader:
         if has_presence_only:
             presence = kv.get("presence", "0") == "1"
             sensor_type = "gravity_mw"
-                elif x == 0 and y == 0 and d == 1:
-                    # Marqueur gravity_mw (SEN0192) : x=0 y=0 d=1 (presence)
-                    sensor_type = "gravity_mw"
-                    presence = True
-                    # Keep d=1 to indicate presence in payload (heatmap needs this)
-                elif x == 0 and y == 0 and d == 0:
-                    # Absence gravity_mw (d=0)
-                    sensor_type = "gravity_mw"
-                    presence = False
+        elif x == 0 and y == 0 and d == 1:
+            # Marqueur gravity_mw (SEN0192) : x=0 y=0 d=1 (presence)
+            sensor_type = "gravity_mw"
+            presence = True
+            # Keep d=1 to indicate presence in payload (heatmap needs this)
+        elif x == 0 and y == 0 and d == 0:
+            # Absence gravity_mw (d=0)
+            sensor_type = "gravity_mw"
+            presence = False
         elif x == 0 and y == d and d > 0:
             sensor_type = "c4001"
             presence = True
