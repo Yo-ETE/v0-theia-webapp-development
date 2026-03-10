@@ -648,15 +648,15 @@ class PortReader:
         angle = math.degrees(math.atan2(x, y)) if (x != 0 or y != 0) else 0.0
 
         # Détection type capteur
-                if x == 0 and y == 0 and d == 1:
-                    # Marqueur gravity_mw (SEN0192) : présence (d=1)
-                    sensor_type = "gravity_mw"
-                    presence = True
-                    # Keep d=1 for heatmap
-                elif x == 0 and y == 0 and d == 0:
-                    # Absence gravity_mw (d=0)
-                    sensor_type = "gravity_mw"
-                    presence = False
+        if x == 0 and y == 0 and d == 1:
+            # Marqueur gravity_mw (SEN0192) : présence (d=1)
+            sensor_type = "gravity_mw"
+            presence = True
+            # Keep d=1 for heatmap
+        elif x == 0 and y == 0 and d == 0:
+            # Absence gravity_mw (d=0)
+            sensor_type = "gravity_mw"
+            presence = False
         elif x == 0 and y == d and d > 0:
             # C4001 depth-only
             sensor_type = "c4001"
