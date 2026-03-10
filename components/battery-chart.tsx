@@ -8,7 +8,7 @@ import {
 } from "recharts"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
-import { Battery, Clock, TrendingDown } from "lucide-react"
+import { Battery, Clock, TrendingDown, WifiOff } from "lucide-react"
 import { cn } from "@/lib/utils"
 
 // --- types ---
@@ -62,6 +62,9 @@ const VBATT_EMPTY = 3.0 // LiPo cutoff
 const VBATT_WARN = 3.5
 const VBATT_CRIT = 3.3
 
+// Gap threshold: if no data for this many minutes, consider it a disconnection
+const GAP_THRESHOLD_MINUTES = 5
+
 function estimateBattery(readings: BatteryReading[]) {
   if (readings.length < 2) return null
 
@@ -77,8 +80,19 @@ function estimateBattery(readings: BatteryReading[]) {
   const dropPerH = voltDrop / deltaH
   const remaining = last.voltage - VBATT_EMPTY
 
+  // Count disconnections (gaps > GAP_THRESHOLD_MINUTES)
+  let disconnections = 0
+  for (let i = 1; i < readings.length; i++) {
+    const prevTs = new Date(readings[i - 1].timestamp).getTime()
+    const currTs = new Date(readings[i].timestamp).getTime()
+    const gapMinutes = (currTs - prevTs) / 60000
+    if (gapMinutes > GAP_THRESHOLD_MINUTES) {
+      disconnections++
+    }
+  }
+
   if (dropPerH <= 0.001) {
-    return { dropPerH: 0, hoursLeft: Infinity, current: last.voltage, pct: Math.round(((last.voltage - VBATT_EMPTY) / (VBATT_FULL - VBATT_EMPTY)) * 100) }
+    return { dropPerH: 0, hoursLeft: Infinity, current: last.voltage, pct: Math.round(((last.voltage - VBATT_EMPTY) / (VBATT_FULL - VBATT_EMPTY)) * 100), disconnections }
   }
 
   const hoursLeft = remaining / dropPerH
@@ -88,6 +102,7 @@ function estimateBattery(readings: BatteryReading[]) {
     hoursLeft: Math.max(0, Math.round(hoursLeft * 10) / 10),
     current: last.voltage,
     pct: Math.min(100, Math.max(0, Math.round(((last.voltage - VBATT_EMPTY) / (VBATT_FULL - VBATT_EMPTY)) * 100))),
+    disconnections,
   }
 }
 
@@ -170,18 +185,40 @@ export function BatteryChart() {
   const visibleDevices = allDevices.filter(d => isDeviceVisible(d.eui))
 
   // Transform data for recharts: merge all devices into time-aligned rows
+  // Insert null values when there's a gap > GAP_THRESHOLD_MINUTES to show disconnections
   const chartData = useMemo(() => {
     if (!data || data.length === 0) return []
 
-    const allPoints: Map<string, Record<string, number>> = new Map()
+    const allPoints: Map<string, Record<string, number | null>> = new Map()
 
     for (const device of data) {
       if (!isDeviceVisible(device.dev_eui)) continue
       const key = `v_${device.dev_eui}`
-      for (const r of device.readings) {
+      const readings = device.readings
+      
+      for (let i = 0; i < readings.length; i++) {
+        const r = readings[i]
         const ts = new Date(r.timestamp)
         ts.setSeconds(0, 0)
         const tsKey = ts.toISOString()
+        
+        // Check for gap from previous reading
+        if (i > 0) {
+          const prevTs = new Date(readings[i - 1].timestamp).getTime()
+          const currTs = new Date(r.timestamp).getTime()
+          const gapMinutes = (currTs - prevTs) / 60000
+          if (gapMinutes > GAP_THRESHOLD_MINUTES) {
+            // Insert a null point to break the line
+            const gapTs = new Date(prevTs + 60000) // 1 minute after last reading
+            gapTs.setSeconds(0, 0)
+            const gapKey = gapTs.toISOString()
+            if (!allPoints.has(gapKey)) {
+              allPoints.set(gapKey, {})
+            }
+            allPoints.get(gapKey)![key] = null
+          }
+        }
+        
         if (!allPoints.has(tsKey)) {
           allPoints.set(tsKey, {})
         }
@@ -324,7 +361,6 @@ export function BatteryChart() {
                       stroke={dev.color}
                       strokeWidth={2}
                       dot={false}
-                      connectNulls
                     />
                   ))}
                 </LineChart>
@@ -377,6 +413,12 @@ export function BatteryChart() {
                         </>
                       ) : (
                         <span className="text-[9px] text-success">Stable</span>
+                      )}
+                      {est.disconnections > 0 && (
+                        <div className="flex items-center gap-0.5 text-[9px] text-warning mt-0.5" title="Nombre de deconnexions detectees">
+                          <WifiOff className="h-2.5 w-2.5" />
+                          <span className="font-mono">{est.disconnections}</span>
+                        </div>
                       )}
                     </div>
                   </div>

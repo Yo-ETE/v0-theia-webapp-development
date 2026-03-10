@@ -170,11 +170,12 @@ async def update_device(device_id: str, body: DeviceUpdate):
 async def get_all_battery_history(hours: int = 24):
     """Return battery history for ALL enabled devices (for overlay chart)."""
     db = await get_db()
+    # Use 'localtime' since timestamps are stored in local time
     cursor = await db.execute(
         """SELECT bh.device_id, d.name, d.dev_eui, bh.voltage, bh.timestamp
            FROM battery_history bh
            JOIN devices d ON d.id = bh.device_id AND d.enabled=1
-           WHERE bh.timestamp >= datetime('now', ?)
+           WHERE bh.timestamp >= datetime('now', 'localtime', ?)
            ORDER BY bh.timestamp ASC""",
         (f"-{hours} hours",),
     )
@@ -199,7 +200,7 @@ async def get_battery_history(device_id: str, hours: int = 24):
 
     cursor = await db.execute(
         """SELECT voltage, timestamp FROM battery_history
-           WHERE device_id=? AND timestamp >= datetime('now', ?)
+           WHERE device_id=? AND timestamp >= datetime('now', 'localtime', ?)
            ORDER BY timestamp ASC""",
         (device_id, f"-{hours} hours"),
     )

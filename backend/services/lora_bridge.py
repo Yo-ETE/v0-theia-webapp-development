@@ -256,14 +256,21 @@ class PortReader:
                     return
                 self.packets_ok += 1
                 angle = math.degrees(math.atan2(x, y)) if (x != 0 or y != 0) else 0.0
-                presence = (x != 0 or y != 0) and 15 < d < 600
-                # Also detect presence when x==0 but d>15 (C4001 depth-only)
-                if not presence and d > 15:
-                    presence = True
-                if x == 0 and y == d and d > 0:
+                
+                # Detect sensor type and presence:
+                # - gravity_mw: x=0, y=0, d is 0/1 binary presence indicator
+                # - c4001: x=0, y=d (depth-only sensor), d>1
+                # - ld2450: real x,y coordinates
+                if x == 0 and y == 0 and d in (0, 1):
+                    # Gravity MW binary presence: d=1 means present
+                    sensor_type = "gravity_mw"
+                    presence = (d == 1)
+                elif x == 0 and y == d and d > 0:
                     sensor_type = "c4001"
+                    presence = d > 15
                 else:
                     sensor_type = "ld2450"
+                    presence = (x != 0 or y != 0) and 15 < d < 600
                 await self._handle_detection(
                     tx_id=tx_id, sensor_type=sensor_type,
                     x=x, y=y, d=d, v=v,

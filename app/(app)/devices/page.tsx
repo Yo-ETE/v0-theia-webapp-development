@@ -52,6 +52,8 @@ export default function DevicesPage() {
   const logEndRef = useRef<HTMLDivElement>(null)
   const baselineRef = useRef<Set<string>>(new Set())
   const fileInputRef = useRef<HTMLInputElement>(null)
+  type FirmwareInfo = { name: string; file: string; sensor_type?: string; is_template?: boolean; is_custom?: boolean }
+  const [firmwares, setFirmwares] = useState<FirmwareInfo[]>([])
 
   const backendBase = typeof window !== "undefined" ? `http://${window.location.hostname}:8000` : ""
   const _bH = (): Record<string, string> => { const t = typeof window !== "undefined" ? localStorage.getItem("theia_token") : null; return t ? { Authorization: `Bearer ${t}` } : {} }
@@ -184,6 +186,15 @@ export default function DevicesPage() {
     const existing = devices?.find(d => d.dev_eui === flashForm.tx_id.trim())
     setTxIdError(existing ? `${flashForm.tx_id} deja utilise` : "")
   }, [flashForm.tx_id, devices])
+
+  // Fetch firmwares when wizard opens
+  useEffect(() => {
+    if (!flashOpen) return
+    fetch(`${backendBase}/api/firmware/sketches`, { credentials: "include", headers: _bH() })
+      .then(r => r.ok ? r.json() : [])
+      .then(data => setFirmwares(data ?? []))
+      .catch(() => setFirmwares([]))
+  }, [flashOpen, backendBase])
 
   const handleFlash = useCallback(async () => {
     if (!flashForm.tx_id.trim() || !flashForm.port || txIdError) return
@@ -825,7 +836,7 @@ Symlinks : {systemPorts.map(s => `${s.symlink} -> ${s.real} (${s.role})`).join("
             </div>
           )}
 
-          {/* Step 3: Sensor type */}
+          {/* Step 3: Firmware selection */}
           {wizardStep === 3 && (
             <div className="flex flex-col gap-4 py-2">
               <div className="rounded-md border border-border/50 bg-muted/30 px-3 py-2 flex items-center gap-3">
@@ -834,28 +845,36 @@ Symlinks : {systemPorts.map(s => `${s.symlink} -> ${s.real} (${s.role})`).join("
                 <span className="font-mono text-[9px] text-muted-foreground">{flashForm.port}</span>
               </div>
               <div className="flex flex-col gap-1.5">
-                <Label className="text-xs font-medium">Type de capteur</Label>
-                <div className="grid grid-cols-2 gap-2">
-                  {([
-                    { val: "ld2450", name: "LD2450", desc: "Radar mmWave HLK-LD2450. Multi-cible, distance + angle.", sketch: "TX_LD2450" },
-                    { val: "c4001", name: "C4001", desc: "Radar DFRobot SEN0609. Mono-cible, presence + distance.", sketch: "TX_C4001" },
-                  ] as const).map(opt => (
-                    <button
-                      key={opt.val}
-                      onClick={() => setFlashForm(f => ({ ...f, sensor_type: opt.val, sketch_name: "__default__", custom_sketch: null }))}
-                      className={cn(
-                        "rounded-md border p-3 text-left transition-colors",
-                        flashForm.sensor_type === opt.val && !flashForm.custom_sketch
-                          ? "border-primary bg-primary/5"
-                          : "border-border/50 hover:border-border"
-                      )}
-                    >
-                      <span className="text-xs font-medium text-foreground">{opt.name}</span>
-                      <p className="text-[9px] text-muted-foreground mt-0.5">{opt.desc}</p>
-                      <p className="text-[8px] text-muted-foreground/60 mt-1 font-mono">Sketch: {opt.sketch}</p>
-                    </button>
-                  ))}
-                </div>
+                <Label className="text-xs font-medium">Firmware a flasher</Label>
+                {firmwares.length === 0 ? (
+                  <p className="text-xs text-muted-foreground">Chargement des firmwares...</p>
+                ) : (
+                  <div className="grid grid-cols-2 gap-2 max-h-[240px] overflow-y-auto pr-1">
+                    {firmwares.filter(fw => fw.name !== "custom_RX" && !fw.name.toLowerCase().includes("_rx")).map(fw => {
+                      const isSelected = flashForm.sketch_name === fw.name && !flashForm.custom_sketch
+                      const sensorType = fw.sensor_type || fw.name.toLowerCase().replace(/[^a-z0-9]/g, "_")
+                      return (
+                        <button
+                          key={fw.name}
+                          onClick={() => setFlashForm(f => ({ ...f, sensor_type: sensorType, sketch_name: fw.name, custom_sketch: null }))}
+                          className={cn(
+                            "rounded-md border p-3 text-left transition-colors",
+                            isSelected
+                              ? "border-primary bg-primary/5"
+                              : "border-border/50 hover:border-border"
+                          )}
+                        >
+                          <div className="flex items-center gap-1.5">
+                            <span className="text-xs font-medium text-foreground">{fw.name}</span>
+                            {fw.is_template && <Badge variant="outline" className="text-[8px] px-1 py-0">Template</Badge>}
+                            {fw.is_custom && <Badge variant="secondary" className="text-[8px] px-1 py-0">Custom</Badge>}
+                          </div>
+                          <p className="text-[8px] text-muted-foreground/60 mt-1 font-mono truncate">{fw.file}</p>
+                        </button>
+                      )
+                    })}
+                  </div>
+                )}
               </div>
               {/* Import custom sketch */}
               <div className="border-t border-border/50 pt-3">
@@ -867,7 +886,7 @@ Symlinks : {systemPorts.map(s => `${s.symlink} -> ${s.real} (${s.role})`).join("
                   onChange={(e) => {
                     const file = e.target.files?.[0]
                     if (file) {
-                      setFlashForm(f => ({ ...f, custom_sketch: file, sketch_name: file.name }))
+                      setFlashForm(f => ({ ...f, custom_sketch: file, sketch_name: file.name, sensor_type: file.name.replace(/\.[^.]+$/, "").toLowerCase().replace(/[^a-z0-9]/g, "_") }))
                     }
                   }}
                 />
@@ -876,7 +895,7 @@ Symlinks : {systemPorts.map(s => `${s.symlink} -> ${s.real} (${s.role})`).join("
                     <Upload className="h-3.5 w-3.5 text-primary shrink-0" />
                     <div className="flex-1 min-w-0">
                       <p className="text-xs font-medium text-foreground truncate">{flashForm.custom_sketch.name}</p>
-                      <p className="text-[9px] text-muted-foreground">Sketch personnalise</p>
+                      <p className="text-[9px] text-muted-foreground">Sketch personnalise (upload)</p>
                     </div>
                     <Button
                       variant="ghost"
@@ -895,7 +914,7 @@ Symlinks : {systemPorts.map(s => `${s.symlink} -> ${s.real} (${s.role})`).join("
                     onClick={() => fileInputRef.current?.click()}
                   >
                     <Upload className="h-3 w-3" />
-                    Importer un sketch .ino
+                    Ou importer un nouveau sketch .ino
                   </Button>
                 )}
               </div>

@@ -42,6 +42,23 @@ def _resolve_sketch_dir(name: str) -> str | None:
         if os.path.isdir(candidate):
             return candidate
     return None
+
+
+def _detect_sensor_type(name: str, content: str) -> str:
+    """Detect sensor type from firmware name or content."""
+    name_lower = name.lower()
+    content_lower = content.lower()
+    # Known sensor patterns
+    if "ld2450" in name_lower or "ld2450" in content_lower:
+        return "ld2450"
+    if "c4001" in name_lower or "sen0609" in content_lower or "c4001" in content_lower:
+        return "c4001"
+    if "gravity" in name_lower or "sen0192" in content_lower or "microwave" in name_lower:
+        return "gravity_mw"
+    if "_rx" in name_lower or "RX" in name:
+        return "rx"
+    # Fallback: derive from name
+    return name_lower.replace("custom_", "").replace("tx_", "").replace(" ", "_")
 # Heltec WiFi LoRa 32 V3 FQBN from standard ESP32 core
 # Uses RadioLib for LoRa -- no Heltec SDK dependency
 DEFAULT_FQBN = "esp32:esp32:heltec_wifi_lora_32_V3"
@@ -288,7 +305,7 @@ async def list_sketches():
                         "path": sketch_dir,
                         "is_template": is_template,
                         "is_custom": is_custom,
-                        "sensor_type": "ld2450" if "LD2450" in entry else ("c4001" if "C4001" in entry else ("rx" if "RX" in entry.upper() else "unknown")),
+                        "sensor_type": _detect_sensor_type(entry, content),
                     })
                     seen_names.add(entry)
     return sketches
