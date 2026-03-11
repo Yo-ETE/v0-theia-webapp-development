@@ -500,16 +500,12 @@ class PortReader:
             "tx_id": tx_id,
             "sensor_type": sensor_type,
             "floor": device_floor,
-        }
-            
+        }            
         # --- SINGLE phantom gate ---
         phantom_key = tx_id or self.port
         PHANTOM_CONSEC = 2
         PHANTOM_WINDOW = 6
         PHANTOM_RATIO_THRESH = 3
-        # gravity_mw : valider dès la 1ère trame, le hold firmware suffit comme anti-fantôme
-        if sensor_type == "gravity_mw":
-            self._tx_validated[phantom_key] = True
 
         window = self._presence_window.get(phantom_key, [])
         window.append(presence)
