@@ -966,9 +966,9 @@ export default function MapInner({
     const gridCounts: Record<string, number> = {}
 
     // PHASE 1: Build temporal index of distance-based detections for triangulation
-    // Group events by timestamp (within 2 second window) to find simultaneous detections
-    const distanceEventsByTime: Record<string, Array<{ ptM: [number, number]; zoneId: string; deviceId: string }>> = {}
-    const TIME_WINDOW_MS = 2000 // 2 second correlation window
+    // Group events by timestamp (within 1 second window) to find simultaneous detections
+    const distanceEventsByTime: Record<string, Array<{ ptM: [number, number]; zoneId: string; deviceId: string; ts: number }>> = {}
+    const TIME_WINDOW_MS = 1000 // 1 second correlation window for precision
 
     for (const evt of events) {
       const p = evt.payload ?? {}
@@ -994,11 +994,11 @@ export default function MapInner({
         ptM = [sg.sensorM[0] + dm * sg.normalM[0], sg.sensorM[1] + dm * sg.normalM[1]]
       }
 
-      // Index by rounded timestamp (2s buckets)
+      // Index by rounded timestamp (1s buckets)
       const ts = new Date(evt.timestamp).getTime()
       const bucket = Math.floor(ts / TIME_WINDOW_MS) * TIME_WINDOW_MS
       if (!distanceEventsByTime[bucket]) distanceEventsByTime[bucket] = []
-      distanceEventsByTime[bucket].push({ ptM, zoneId: evt.zone_id ?? "", deviceId: evt.device_id ?? "" })
+      distanceEventsByTime[bucket].push({ ptM, zoneId: evt.zone_id ?? "", deviceId: evt.device_id ?? "", ts })
     }
 
     // PHASE 2: Process all events
@@ -1043,6 +1043,7 @@ export default function MapInner({
           ...(distanceEventsByTime[bucket + TIME_WINDOW_MS] ?? [])
         ].filter(de => de.deviceId !== evt.device_id) // Exclude same device
 
+        let triangulatedCount = 0
         if (nearbyDistanceEvents.length > 0) {
           // TRIANGULATION: Concentrate points around distance-based detections that are within FOV
           for (const de of nearbyDistanceEvents) {
@@ -1058,16 +1059,21 @@ export default function MapInner({
                 dx * sg.normalM[0] + dy * sg.normalM[1]  // forward component
               )
               if (Math.abs(angleToPoint) <= fovRad) {
-                // Point is within FOV - add weighted point at this location
+                // Point is within FOV - add heavily weighted point at this location
                 const ll = toLatLon(de.ptM)
-                pts.push({ lat: ll[0], lon: ll[1], weight: 1.5 }) // Higher weight for corroborated detection
+                // Weight based on temporal proximity (closer = higher weight)
+                const timeDiff = Math.abs(ts - de.ts)
+                const timeWeight = 1 - (timeDiff / (TIME_WINDOW_MS * 2)) // 0.5 to 1.0
+                pts.push({ lat: ll[0], lon: ll[1], weight: 2.5 * timeWeight }) // Higher weight for corroborated detection
+                triangulatedCount++
               }
             }
           }
         }
         
-        // Also add scattered points across FOV (but with lower weight if triangulated)
-        const baseWeight = nearbyDistanceEvents.length > 0 ? 0.05 : 0.15
+        // Also add scattered points across FOV (but with much lower weight if triangulated)
+        // If triangulated, almost ignore scattered points to focus on precise location
+        const baseWeight = triangulatedCount > 0 ? 0.02 : 0.12
         const spreadAngles = [-0.4, -0.2, 0, 0.2, 0.4]
         const spreadDists = [0.3, 0.5, 0.7]
         for (const angleFrac of spreadAngles) {

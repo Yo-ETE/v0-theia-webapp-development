@@ -1907,7 +1907,15 @@ export default function MissionDetailPage() {
                   <CardContent ref={feedRef} className="flex flex-col gap-1 max-h-64 overflow-y-auto">
                     {displayDetections.length === 0 ? (
                       <p className="text-xs text-muted-foreground py-2 text-center">No detections yet</p>
-                    ) : displayDetections.map((det, i) => (
+                    ) : displayDetections.map((det, i) => {
+                      // Check if this presence-only detection is triangulated with a distance-based detection
+                      const isTriangulated = det.sensor_type === "gravity_mw" && det.presence && displayDetections.some((other, j) => {
+                        if (i === j || other.sensor_type === "gravity_mw" || !other.presence || other.distance <= 0) return false
+                        const detTs = new Date(det.timestamp).getTime()
+                        const otherTs = new Date(other.timestamp).getTime()
+                        return Math.abs(detTs - otherTs) <= 1000 // Within 1 second
+                      })
+                      return (
                       <div
                         key={`det-${det.timestamp}-${i}`}
                         className={cn(
@@ -1945,6 +1953,11 @@ export default function MissionDetailPage() {
                                 RAS
                               </Badge>
                             )}
+                            {isTriangulated && (
+                              <Badge variant="outline" className="text-[8px] px-1 py-0 border-primary/50 bg-primary/10 text-primary">
+                                TRIANGULE
+                              </Badge>
+                            )}
                             <span className="text-[9px] font-mono text-muted-foreground">
                               {det.sensor_type === "gravity_mw" 
                                 ? (det.distance === 1 ? "Presence" : "---")
@@ -1973,7 +1986,7 @@ export default function MissionDetailPage() {
                           <span className="text-[9px] text-muted-foreground/60">{det.device_name}</span>
                         </div>
                       </div>
-                    ))}
+                    )})}
                   </CardContent>
                 </Card>
               )}
