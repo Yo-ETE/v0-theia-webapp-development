@@ -1119,12 +1119,23 @@ export default function MapInner({
     const det = effectiveByDevice[sp.device_id] || null
     let detectionLatLon: [number, number] | null = null
     // Get sensor specs early (needed for presence-only check)
+    // Check both placement type and detection sensor_type (for replay where det has sensor_type)
     const specs = SENSOR_SPECS[sp.device_type ?? ""] ?? DEFAULT_SENSOR_SPECS
-    // Check if this is a presence-only sensor (no distance info)
-    const isPresenceOnly = specs.presenceOnly || false
-    const hasPresenceDetection = det?.presence && (det.distance > 0 || (det.distance === 0 && isPresenceOnly))
+    const detSensorType = det?.sensor_type ?? ""
+    const isPresenceOnly = specs.presenceOnly || detSensorType === "gravity_mw"
+    // For gravity_mw: distance=1 means presence, distance=0 means absence
+    // For other sensors: distance > 0 means valid detection
+    const hasPresenceDetection = det?.presence && (
+      isPresenceOnly 
+        ? (det.distance === 1 || det.distance > 0)  // gravity_mw: d=1 is presence
+        : det.distance > 0
+    )
     
-    if (det?.presence && det.distance > 0) {
+    if (isPresenceOnly && det?.presence) {
+      // Presence-only sensors: NO point projection, FOV illumination only
+      // Set detectionLatLon to null - the FOV will be highlighted instead
+      detectionLatLon = null
+    } else if (det?.presence && det.distance > 0) {
       // Distance-based sensors: project detection point
       const distM = det.distance / 100 // cm -> meters
       const sensorM = toMeters(sensorLatLon)
@@ -1143,15 +1154,6 @@ export default function MapInner({
       const detM: [number, number] = [
         sensorM[0] + normalM[0] * distM + leftM[0] * lateralM,
         sensorM[1] + normalM[1] * distM + leftM[1] * lateralM,
-      ]
-      detectionLatLon = toLatLon(detM)
-    } else if (isPresenceOnly && det?.presence) {
-      // Presence-only sensors: use center of FOV at half max range as fallback point
-      const distM = specs.maxRangeM / 2 // midpoint of detection range
-      const sensorM = toMeters(sensorLatLon)
-      const detM: [number, number] = [
-        sensorM[0] + normalM[0] * distM,
-        sensorM[1] + normalM[1] * distM,
       ]
       detectionLatLon = toLatLon(detM)
     }
@@ -1290,26 +1292,49 @@ export default function MapInner({
           )
         })}
 
-        {/* ── FOV detection cones (declarative JSX, no extra hooks) ── */}
-        {/* Presence-only sensors: illuminate FOV when detecting */}
-        {showFov && sensorMarkers.map((sm) => {
+        {/* ── FOV detection cones for regular sensors (only when showFov enabled) ── */}
+        {showFov && sensorMarkers.filter(sm => !sm.presenceOnly).map((sm) => {
           const arcPositions = buildFovArc(sm.sensorPos, sm.normalBearingDeg, sm.fovDeg, sm.maxRangeM)
-          // For presence-only sensors, illuminate the FOV when detecting
-          const isDetecting = sm.presenceOnly && sm.hasPresenceDetection
-          const detState = (sm.detection as LiveDetection & { _state?: string })?._state ?? "live"
-          const fovColor = isDetecting 
-            ? (detState === "live" ? vc.detection_dot_live : vc.detection_dot_hold)
-            : vc.fov_overlay_color
-          const fovFillOpacity = isDetecting ? 0.25 : vc.fov_fill_opacity
-          const fovStrokeOpacity = isDetecting ? 0.7 : vc.fov_fill_opacity + 0.25
           return (
             <Polygon
               key={`fov-${sm.id}`}
               positions={arcPositions}
               pathOptions={{
+                color: vc.fov_overlay_color,
+                fillColor: vc.fov_overlay_color,
+                weight: 1.5,
+                opacity: vc.fov_fill_opacity + 0.25,
+                fillOpacity: vc.fov_fill_opacity,
+                dashArray: "4 3",
+              }}
+            />
+          )
+        })}
+
+        {/* ── Presence-only sensors: ALWAYS show FOV when detecting (even if showFov is off) ── */}
+        {/* These sensors have no distance info, so FOV illumination is the only way to show detection */}
+        {sensorMarkers.filter(sm => sm.presenceOnly).map((sm) => {
+          const arcPositions = buildFovArc(sm.sensorPos, sm.normalBearingDeg, sm.fovDeg, sm.maxRangeM)
+          const isDetecting = sm.hasPresenceDetection
+          const detState = (sm.detection as LiveDetection & { _state?: string })?._state ?? "live"
+          
+          // If not detecting, only show FOV outline if showFov is enabled
+          if (!isDetecting && !showFov) return null
+          
+          const fovColor = isDetecting 
+            ? (detState === "live" ? vc.detection_dot_live : vc.detection_dot_hold)
+            : vc.fov_overlay_color
+          const fovFillOpacity = isDetecting ? 0.35 : vc.fov_fill_opacity
+          const fovStrokeOpacity = isDetecting ? 0.8 : vc.fov_fill_opacity + 0.25
+          
+          return (
+            <Polygon
+              key={`fov-presence-${sm.id}`}
+              positions={arcPositions}
+              pathOptions={{
                 color: fovColor,
                 fillColor: fovColor,
-                weight: isDetecting ? 2.5 : 1.5,
+                weight: isDetecting ? 3 : 1.5,
                 opacity: fovStrokeOpacity,
                 fillOpacity: fovFillOpacity,
                 dashArray: isDetecting ? undefined : "4 3",

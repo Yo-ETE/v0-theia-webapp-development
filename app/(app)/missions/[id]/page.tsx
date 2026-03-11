@@ -1285,6 +1285,7 @@ export default function MissionDetailPage() {
                               speed: Number(d.speed ?? 0),
                               floor: d.floor != null ? Number(d.floor) : null,
                               zone_label: String(d.zone_label ?? ""),
+                              sensor_type: String(d.sensor_type ?? "ld2450"),
                             }))
                           : liveDetections
                         }
