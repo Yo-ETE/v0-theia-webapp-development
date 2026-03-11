@@ -133,7 +133,17 @@ export default function MissionDetailPage() {
   const [editZoneType, setEditZoneType] = useState<string>("facade")
   const [editSideLabels, setEditSideLabels] = useState<Record<string, string>>({})
   const [assignDialog, setAssignDialog] = useState<string | null>(null)
-  const [assignStep, setAssignStep] = useState<{ deviceId: string; deviceName: string; side?: string } | null>(null)
+  const [assignStep, setAssignStep] = useState<{ 
+    deviceId: string; 
+    deviceName: string; 
+    side?: string;
+    deviceType?: string;
+    // Gravity MW specific config
+    gravityConfig?: {
+      effectiveRange: number; // meters
+      effectiveFov: number; // degrees
+    };
+  } | null>(null)
   const [sensorPlaceMode, setSensorPlaceMode] = useState<{
     zoneId: string
     side: string
@@ -497,7 +507,13 @@ export default function MissionDetailPage() {
   }, [mission, id, allDevices, mutate, mutateDevices])
 
   // ── Device assignment ──
-  const assignDevice = useCallback(async (deviceId: string, zoneId: string, side?: string, sensorPos?: number) => {
+  const assignDevice = useCallback(async (
+    deviceId: string, 
+    zoneId: string, 
+    side?: string, 
+    sensorPos?: number,
+    gravityConfig?: { effectiveRange: number; effectiveFov: number }
+  ) => {
     if (!mission) return
     const zone = (mission.zones ?? []).find((z) => z.id === zoneId)
     try {
@@ -531,6 +547,12 @@ export default function MissionDetailPage() {
         sensor_position: sensorPos ?? 0.5,
         orientation: deviceObj?.orientation ?? "inward",
         device_name: deviceObj?.name ?? deviceId,
+        device_type: deviceObj?.device_type ?? "",
+        // Gravity MW specific config (only set if provided)
+        ...(gravityConfig && {
+          effective_range: gravityConfig.effectiveRange,
+          effective_fov: gravityConfig.effectiveFov,
+        }),
       },
     }
     try {
@@ -2511,12 +2533,23 @@ export default function MissionDetailPage() {
                   const assignZone = zones.find((z) => z.id === assignDialog)
                   const hasSides = assignZone?.sides && Object.values(assignZone.sides).some(Boolean)
                   const isElsewhere = device.mission_id && device.mission_id !== id
+                  const isGravityMW = device.device_type === "gravity_mw"
                   return (
                     <button
                       key={device.id}
                       onClick={() => {
-                        if (hasSides) setAssignStep({ deviceId: device.id, deviceName: device.name })
-                        else if (assignDialog) assignDevice(device.id, assignDialog)
+                        // For gravity_mw, always go to config step (even without sides)
+                        if (hasSides || isGravityMW) {
+                          setAssignStep({ 
+                            deviceId: device.id, 
+                            deviceName: device.name,
+                            deviceType: device.device_type,
+                            // Default gravity config
+                            gravityConfig: isGravityMW ? { effectiveRange: 12, effectiveFov: 72 } : undefined,
+                          })
+                        } else if (assignDialog) {
+                          assignDevice(device.id, assignDialog)
+                        }
                       }}
                       className="flex items-center gap-3 rounded border border-border/50 p-3 text-left hover:bg-muted/30 transition-colors"
                     >
@@ -2563,16 +2596,16 @@ export default function MissionDetailPage() {
                     <button
                       key={key}
                       onClick={() => {
-                        // Close dialog and activate click-to-place mode on map
+                        // Store side and go to sensor placement mode
+                        setAssignStep({ ...assignStep!, side: key })
                         const zoneId = assignDialog!
                         setSensorPlaceMode({
                           zoneId,
                           side: key,
-                          deviceId: assignStep.deviceId,
-                          deviceName: assignStep.deviceName,
+                          deviceId: assignStep!.deviceId,
+                          deviceName: assignStep!.deviceName,
                         })
                         setAssignDialog(null)
-                        setAssignStep(null)
                       }}
                       className="flex items-center gap-3 rounded border border-border/50 p-3 text-left hover:bg-muted/30 transition-colors"
                     >
@@ -2582,7 +2615,14 @@ export default function MissionDetailPage() {
                   ))
                 })()}
                 <button
-                  onClick={() => assignDialog && assignDevice(assignStep.deviceId, assignDialog)}
+                  onClick={() => {
+                    if (assignStep?.deviceType === "gravity_mw") {
+                      // For gravity_mw without side, go to config step
+                      setAssignStep({ ...assignStep!, side: "" })
+                    } else if (assignDialog) {
+                      assignDevice(assignStep!.deviceId, assignDialog)
+                    }
+                  }}
                   className="flex items-center gap-3 rounded border border-dashed border-border/30 p-3 text-left hover:bg-muted/20 transition-colors"
                 >
                   <span className="text-sm font-mono text-muted-foreground w-6 text-center">-</span>
@@ -2591,6 +2631,117 @@ export default function MissionDetailPage() {
               </div>
               <DialogFooter>
                 <Button variant="ghost" size="sm" onClick={() => setAssignStep(null)}>Back</Button>
+              </DialogFooter>
+            </>
+          ) : assignStep?.deviceType === "gravity_mw" && assignStep.side !== undefined ? (
+            /* Step 3: Gravity MW config */
+            <>
+              <DialogHeader>
+                <DialogTitle className="text-sm">Configure Gravity MW: {assignStep.deviceName}</DialogTitle>
+                <DialogDescription className="text-xs text-muted-foreground">
+                  Adjust detection range and FOV based on environment (walls, materials).
+                </DialogDescription>
+              </DialogHeader>
+              <div className="flex flex-col gap-4 py-4">
+                {/* Effective Range */}
+                <div className="space-y-2">
+                  <div className="flex items-center justify-between">
+                    <label className="text-xs font-medium">Portee effective</label>
+                    <span className="text-xs font-mono text-muted-foreground">{assignStep.gravityConfig?.effectiveRange ?? 12}m</span>
+                  </div>
+                  <input
+                    type="range"
+                    min="2"
+                    max="12"
+                    step="0.5"
+                    value={assignStep.gravityConfig?.effectiveRange ?? 12}
+                    onChange={(e) => setAssignStep({
+                      ...assignStep,
+                      gravityConfig: {
+                        ...assignStep.gravityConfig!,
+                        effectiveRange: parseFloat(e.target.value),
+                      },
+                    })}
+                    className="w-full h-2 bg-muted rounded-lg appearance-none cursor-pointer accent-primary"
+                  />
+                  <div className="flex justify-between text-[9px] text-muted-foreground">
+                    <span>2m (parpaing)</span>
+                    <span>6m (PVC)</span>
+                    <span>12m (libre)</span>
+                  </div>
+                </div>
+                {/* Effective FOV */}
+                <div className="space-y-2">
+                  <div className="flex items-center justify-between">
+                    <label className="text-xs font-medium">FOV effectif</label>
+                    <span className="text-xs font-mono text-muted-foreground">{assignStep.gravityConfig?.effectiveFov ?? 72}°</span>
+                  </div>
+                  <input
+                    type="range"
+                    min="20"
+                    max="72"
+                    step="2"
+                    value={assignStep.gravityConfig?.effectiveFov ?? 72}
+                    onChange={(e) => setAssignStep({
+                      ...assignStep,
+                      gravityConfig: {
+                        ...assignStep.gravityConfig!,
+                        effectiveFov: parseFloat(e.target.value),
+                      },
+                    })}
+                    className="w-full h-2 bg-muted rounded-lg appearance-none cursor-pointer accent-primary"
+                  />
+                  <div className="flex justify-between text-[9px] text-muted-foreground">
+                    <span>20° (bois epais)</span>
+                    <span>50° (porte)</span>
+                    <span>72° (libre)</span>
+                  </div>
+                </div>
+                {/* Presets */}
+                <div className="space-y-1">
+                  <label className="text-xs font-medium text-muted-foreground">Presets</label>
+                  <div className="flex flex-wrap gap-1">
+                    {[
+                      { label: "Libre", range: 12, fov: 72 },
+                      { label: "PVC", range: 6, fov: 50 },
+                      { label: "Porte bois", range: 8, fov: 45 },
+                      { label: "Bois 5cm", range: 7, fov: 30 },
+                      { label: "Parpaing", range: 3, fov: 72 },
+                    ].map((preset) => (
+                      <button
+                        key={preset.label}
+                        onClick={() => setAssignStep({
+                          ...assignStep,
+                          gravityConfig: { effectiveRange: preset.range, effectiveFov: preset.fov },
+                        })}
+                        className="text-[10px] px-2 py-1 rounded border border-border/50 hover:bg-muted/50 transition-colors"
+                      >
+                        {preset.label}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              </div>
+              <DialogFooter className="gap-2">
+                <Button variant="ghost" size="sm" onClick={() => setAssignStep({ ...assignStep, side: undefined })}>
+                  Back
+                </Button>
+                <Button 
+                  size="sm" 
+                  onClick={() => {
+                    if (assignDialog) {
+                      assignDevice(
+                        assignStep.deviceId, 
+                        assignDialog, 
+                        assignStep.side || undefined, 
+                        undefined,
+                        assignStep.gravityConfig
+                      )
+                    }
+                  }}
+                >
+                  Assigner
+                </Button>
               </DialogFooter>
             </>
           ) : null}

@@ -940,6 +940,9 @@ export default function MapInner({
       sensorLL: [number, number]
       normalM: [number, number]
       leftM: [number, number]
+      // Gravity MW custom config (from placement)
+      effective_range?: number
+      effective_fov?: number
     }
     const sensorByDevice: Record<string, SensorGeo> = {}
     const sensorByZone: Record<string, SensorGeo[]> = {}
@@ -956,7 +959,15 @@ export default function MapInner({
       const nM: [number, number] = sp.orientation === "outward" ? [-rawNM[0], -rawNM[1]] : rawNM
       const lM: [number, number] = [-nM[1], nM[0]]
       const sM = toMeters(sLL)
-      const geo: SensorGeo = { sensorM: sM, sensorLL: sLL, normalM: nM, leftM: lM }
+      const geo: SensorGeo = { 
+        sensorM: sM, 
+        sensorLL: sLL, 
+        normalM: nM, 
+        leftM: lM,
+        // Include gravity_mw custom config if present
+        effective_range: (sp as { effective_range?: number }).effective_range,
+        effective_fov: (sp as { effective_fov?: number }).effective_fov,
+      }
       sensorByDevice[sp.device_id] = geo
       if (!sensorByZone[sp.zone_id]) sensorByZone[sp.zone_id] = []
       sensorByZone[sp.zone_id].push(geo)
@@ -1031,8 +1042,11 @@ export default function MapInner({
       // For presence-only sensors, use triangulation if distance-based detection exists nearby in time
       if (isPresenceOnly) {
         const specs = SENSOR_SPECS[sensorType] ?? DEFAULT_SENSOR_SPECS
-        const fovRad = (specs.fovDeg / 2) * Math.PI / 180
-        const maxR = specs.maxRangeM
+        // Use custom effective_range/effective_fov from placement if available
+        const effectiveRange = (sg as { effective_range?: number }).effective_range ?? specs.maxRangeM
+        const effectiveFov = (sg as { effective_fov?: number }).effective_fov ?? specs.fovDeg
+        const fovRad = (effectiveFov / 2) * Math.PI / 180
+        const maxR = effectiveRange
         
         // Check for simultaneous distance-based detections (triangulation)
         const ts = new Date(evt.timestamp).getTime()
@@ -1237,6 +1251,10 @@ export default function MapInner({
     // normalM is [east, north] unit vector -> bearing = atan2(east, north)
     const normalBearingDeg = ((Math.atan2(normalM[0], normalM[1]) * 180 / Math.PI) + 360) % 360
 
+    // Use custom effective_range/effective_fov from placement if available (for gravity_mw)
+    const effectiveFov = (sp as { effective_fov?: number }).effective_fov ?? specs.fovDeg
+    const effectiveRange = (sp as { effective_range?: number }).effective_range ?? specs.maxRangeM
+    
     return {
       id: sp.device_id,
       sensorPos: sensorLatLon,
@@ -1246,8 +1264,8 @@ export default function MapInner({
       detection: det ?? null,
       zoneColor: zone.color,
       normalBearingDeg,
-      fovDeg: specs.fovDeg,
-      maxRangeM: specs.maxRangeM,
+      fovDeg: effectiveFov,
+      maxRangeM: effectiveRange,
       sensorLabel: specs.label,
       presenceOnly: isPresenceOnly,
       hasPresenceDetection,
