@@ -965,6 +965,43 @@ export default function MapInner({
     const pts: HeatPoint[] = []
     const gridCounts: Record<string, number> = {}
 
+    // PHASE 1: Build temporal index of distance-based detections for triangulation
+    // Group events by timestamp (within 2 second window) to find simultaneous detections
+    const distanceEventsByTime: Record<string, Array<{ ptM: [number, number]; zoneId: string; deviceId: string }>> = {}
+    const TIME_WINDOW_MS = 2000 // 2 second correlation window
+
+    for (const evt of events) {
+      const p = evt.payload ?? {}
+      const dist = Number(p.distance ?? 0)
+      const sensorType = String(p.sensor_type ?? "ld2450")
+      if (sensorType === "gravity_mw" || dist <= 0) continue // Skip presence-only for index
+
+      const sg = (evt.device_id ? sensorByDevice[evt.device_id] : null)
+        ?? sensorByZone[evt.zone_id ?? ""]?.[0]
+      if (!sg) continue
+
+      const rM: [number, number] = [-sg.leftM[0], -sg.leftM[1]]
+      const x_cm = Number(p.x ?? 0)
+      const y_cm = Number(p.y ?? 0)
+      const dm = dist / 100
+      
+      let ptM: [number, number]
+      if (x_cm !== 0 || y_cm !== 0) {
+        const xm = x_cm / 100
+        const ym = y_cm / 100
+        ptM = [sg.sensorM[0] + ym * sg.normalM[0] + xm * rM[0], sg.sensorM[1] + ym * sg.normalM[1] + xm * rM[1]]
+      } else {
+        ptM = [sg.sensorM[0] + dm * sg.normalM[0], sg.sensorM[1] + dm * sg.normalM[1]]
+      }
+
+      // Index by rounded timestamp (2s buckets)
+      const ts = new Date(evt.timestamp).getTime()
+      const bucket = Math.floor(ts / TIME_WINDOW_MS) * TIME_WINDOW_MS
+      if (!distanceEventsByTime[bucket]) distanceEventsByTime[bucket] = []
+      distanceEventsByTime[bucket].push({ ptM, zoneId: evt.zone_id ?? "", deviceId: evt.device_id ?? "" })
+    }
+
+    // PHASE 2: Process all events
     for (const evt of events) {
       const p = evt.payload ?? {}
       const dist = Number(p.distance ?? 0)
@@ -991,14 +1028,48 @@ export default function MapInner({
       // rightM = -leftM: points right when facing the inward normal direction
       const rM: [number, number] = [-sg.leftM[0], -sg.leftM[1]]
 
-      // For presence-only sensors, scatter points across the FOV instead of a single point
+      // For presence-only sensors, use triangulation if distance-based detection exists nearby in time
       if (isPresenceOnly) {
         const specs = SENSOR_SPECS[sensorType] ?? DEFAULT_SENSOR_SPECS
         const fovRad = (specs.fovDeg / 2) * Math.PI / 180
         const maxR = specs.maxRangeM
-        // Generate 5 points spread across the FOV (low weight each)
-        const spreadAngles = [-0.4, -0.2, 0, 0.2, 0.4] // fraction of half-FOV
-        const spreadDists = [0.3, 0.5, 0.7] // fraction of max range
+        
+        // Check for simultaneous distance-based detections (triangulation)
+        const ts = new Date(evt.timestamp).getTime()
+        const bucket = Math.floor(ts / TIME_WINDOW_MS) * TIME_WINDOW_MS
+        const nearbyDistanceEvents = [
+          ...(distanceEventsByTime[bucket] ?? []),
+          ...(distanceEventsByTime[bucket - TIME_WINDOW_MS] ?? []),
+          ...(distanceEventsByTime[bucket + TIME_WINDOW_MS] ?? [])
+        ].filter(de => de.deviceId !== evt.device_id) // Exclude same device
+
+        if (nearbyDistanceEvents.length > 0) {
+          // TRIANGULATION: Concentrate points around distance-based detections that are within FOV
+          for (const de of nearbyDistanceEvents) {
+            // Check if distance event point is within this sensor's FOV
+            const dx = de.ptM[0] - sg.sensorM[0]
+            const dy = de.ptM[1] - sg.sensorM[1]
+            const distToPoint = Math.sqrt(dx * dx + dy * dy)
+            
+            if (distToPoint <= maxR) {
+              // Check angle is within FOV
+              const angleToPoint = Math.atan2(
+                dx * rM[0] + dy * rM[1],  // lateral component
+                dx * sg.normalM[0] + dy * sg.normalM[1]  // forward component
+              )
+              if (Math.abs(angleToPoint) <= fovRad) {
+                // Point is within FOV - add weighted point at this location
+                const ll = toLatLon(de.ptM)
+                pts.push({ lat: ll[0], lon: ll[1], weight: 1.5 }) // Higher weight for corroborated detection
+              }
+            }
+          }
+        }
+        
+        // Also add scattered points across FOV (but with lower weight if triangulated)
+        const baseWeight = nearbyDistanceEvents.length > 0 ? 0.05 : 0.15
+        const spreadAngles = [-0.4, -0.2, 0, 0.2, 0.4]
+        const spreadDists = [0.3, 0.5, 0.7]
         for (const angleFrac of spreadAngles) {
           for (const distFrac of spreadDists) {
             const angle = angleFrac * fovRad
@@ -1012,11 +1083,10 @@ export default function MapInner({
               sg.sensorM[1] + distM * dirY,
             ]
             const ll = toLatLon(ptM)
-            // Lower weight for presence-only (spread across area)
-            pts.push({ lat: ll[0], lon: ll[1], weight: 0.15 })
+            pts.push({ lat: ll[0], lon: ll[1], weight: baseWeight })
           }
         }
-        continue // Skip normal point processing
+        continue
       }
 
       const dm = dist / 100 // cm to meters

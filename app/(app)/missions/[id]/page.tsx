@@ -1218,7 +1218,10 @@ export default function MissionDetailPage() {
                         <div className="flex items-center gap-2 mt-0.5">
                           {hasPresence ? (
                             <span className="text-[10px] font-mono text-warning font-semibold">
-                              {det!.distance}cm {det!.direction}
+                              {det!.sensor_type === "gravity_mw" 
+                                ? "PRESENCE"
+                                : `${det!.distance}cm ${det!.direction}`
+                              }
                             </span>
                           ) : det ? (
                             <span className="text-[9px] font-mono text-success">RAS</span>
@@ -1644,7 +1647,10 @@ export default function MissionDetailPage() {
                                 {zoneDetection.presence ? (
                                   <span className="text-[9px] font-mono text-warning font-semibold flex items-center gap-0.5">
                                     <Eye className="h-2.5 w-2.5" />
-                                    {zoneDetection.distance}cm {zoneDetection.direction}
+                                    {zoneDetection.sensor_type === "gravity_mw" 
+                                      ? "PRESENCE"
+                                      : `${zoneDetection.distance}cm ${zoneDetection.direction}`
+                                    }
                                   </span>
                                 ) : (
                                   <span className="text-[9px] font-mono text-success flex items-center gap-0.5">
@@ -1722,7 +1728,10 @@ export default function MissionDetailPage() {
                               </span>
                               {det && (
                                 <span className={cn("text-[9px] font-mono font-semibold", det.presence ? "text-warning" : "text-success")}>
-                                  {det.presence ? `${det.distance}cm` : "RAS"}
+                                  {det.presence 
+                                    ? (det.sensor_type === "gravity_mw" ? "PRESENCE" : `${det.distance}cm`)
+                                    : "RAS"
+                                  }
                                 </span>
                               )}
                             </div>
@@ -1937,7 +1946,10 @@ export default function MissionDetailPage() {
                               </Badge>
                             )}
                             <span className="text-[9px] font-mono text-muted-foreground">
-                              {det.distance}cm
+                              {det.sensor_type === "gravity_mw" 
+                                ? (det.distance === 1 ? "Presence" : "---")
+                                : `${det.distance}cm`
+                              }
                             </span>
                             {det.speed > 0 && (
                               <span className="text-[9px] font-mono text-muted-foreground">
@@ -2139,7 +2151,12 @@ export default function MissionDetailPage() {
                               <TableCell className="font-mono text-[10px] text-muted-foreground">{evt.type ?? "detection"}</TableCell>
                               <TableCell className="font-mono text-xs text-foreground">{evt.device_name}</TableCell>
                               <TableCell className="text-xs text-muted-foreground">{evt.zone_label ?? "---"}</TableCell>
-                              <TableCell className="font-mono text-[11px] text-foreground">{p.distance ? `${p.distance}cm` : "---"}</TableCell>
+                              <TableCell className="font-mono text-[11px] text-foreground">
+                                {p.sensor_type === "gravity_mw" 
+                                  ? (p.distance === 1 ? "Presence" : "---")
+                                  : (p.distance ? `${p.distance}cm` : "---")
+                                }
+                              </TableCell>
                               <TableCell className="font-mono text-[11px] text-foreground">
                                 {dir === "G" ? "Gauche" : dir === "D" ? "Droite" : "Centre"}
                               </TableCell>
