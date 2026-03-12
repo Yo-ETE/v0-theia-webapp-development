@@ -351,7 +351,7 @@ export default function MissionDetailPage() {
     })
   }, [events])
 
-  // ── Bearing grouping: segments facing the same direction share the same face label ──
+  // ��─ Bearing grouping: segments facing the same direction share the same face label ──
   // Uses FULL 0-360 bearing so north-facing (0) and south-facing (180) are DIFFERENT faces.
   // Returns e.g. { A: [0,3], B: [1,4], C: [2,5] } meaning polygon edges 0&3 are "A", etc.
   const groupSidesByBearing = useCallback((polygon: [number, number][]) => {
@@ -885,20 +885,27 @@ export default function MissionDetailPage() {
 
   // Build sensor placements for map (exclude muted)
   // If devices are currently assigned, use live data; otherwise reconstruct from events
+  const savedPlacements = mission?.device_placements ?? {}
   const livePlacements = missionDevices
     .filter((d) => d.zone_id && d.side && !mutedIds.has(d.id))
-    .map((d) => ({
-      device_id: d.id,
-      device_name: d.name,
-      zone_id: d.zone_id!,
-      side: d.side!,
-      sensor_position: Number(d.sensor_position) || 0.5,
-      device_type: d.type ?? "",
-      orientation: (d.orientation as "inward" | "outward") ?? "inward",
-    }))
+    .map((d) => {
+      // Get gravity_mw custom config from saved placements
+      const saved = savedPlacements[d.id]
+      return {
+        device_id: d.id,
+        device_name: d.name,
+        zone_id: d.zone_id!,
+        side: d.side!,
+        sensor_position: Number(d.sensor_position) || 0.5,
+        device_type: d.type ?? "",
+        orientation: (d.orientation as "inward" | "outward") ?? "inward",
+        // Include gravity_mw effective range/fov from saved placements
+        effective_range: saved?.effective_range as number | undefined,
+        effective_fov: saved?.effective_fov as number | undefined,
+      }
+    })
   // Reconstruct placements from historical events (preserves positions at time of recording)
   // Falls back to mission.device_placements (persisted at assignment time) for old events
-  const savedPlacements = mission?.device_placements ?? {}
   const historicalPlacements = (() => {
     if (!events || events.length === 0) return []
     const seen = new Map<string, (typeof livePlacements)[0]>()
@@ -916,8 +923,11 @@ export default function MissionDetailPage() {
         zone_id: zoneId,
         side: side,
         sensor_position: e.sensor_position ?? saved?.sensor_position ?? 0.5,
-        device_type: "",
+        device_type: saved?.device_type ?? "",
         orientation: (e.orientation ?? saved?.orientation ?? "inward") as "inward" | "outward",
+        // Include gravity_mw effective range/fov from saved placements
+        effective_range: saved?.effective_range as number | undefined,
+        effective_fov: saved?.effective_fov as number | undefined,
       })
     }
     // Also add devices from saved placements that have no events (assigned but no detection yet)
@@ -929,8 +939,11 @@ export default function MissionDetailPage() {
           zone_id: p.zone_id,
           side: p.side,
           sensor_position: p.sensor_position ?? 0.5,
-          device_type: "",
+          device_type: p.device_type ?? "",
           orientation: (p.orientation as "inward" | "outward") ?? "inward",
+          // Include gravity_mw effective range/fov
+          effective_range: p.effective_range as number | undefined,
+          effective_fov: p.effective_fov as number | undefined,
         })
       }
     }
