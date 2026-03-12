@@ -2533,7 +2533,7 @@ export default function MissionDetailPage() {
                   const assignZone = zones.find((z) => z.id === assignDialog)
                   const hasSides = assignZone?.sides && Object.values(assignZone.sides).some(Boolean)
                   const isElsewhere = device.mission_id && device.mission_id !== id
-                  const isGravityMW = device.device_type === "gravity_mw"
+                  const isGravityMW = device.type === "gravity_mw"
                   return (
                     <button
                       key={device.id}
@@ -2543,7 +2543,7 @@ export default function MissionDetailPage() {
                           setAssignStep({ 
                             deviceId: device.id, 
                             deviceName: device.name,
-                            deviceType: device.device_type,
+                            deviceType: device.type,
                             side: "", // Set side to empty string to skip side selection
                             gravityConfig: { effectiveRange: 12, effectiveFov: 72 },
                           })
@@ -2552,7 +2552,7 @@ export default function MissionDetailPage() {
                           setAssignStep({ 
                             deviceId: device.id, 
                             deviceName: device.name,
-                            deviceType: device.device_type,
+                            deviceType: device.type,
                             gravityConfig: isGravityMW ? { effectiveRange: 12, effectiveFov: 72 } : undefined,
                           })
                         } else if (assignDialog) {
