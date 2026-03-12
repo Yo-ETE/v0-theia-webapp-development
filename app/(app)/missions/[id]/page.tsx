@@ -2383,7 +2383,7 @@ export default function MissionDetailPage() {
               <Label className="text-xs text-muted-foreground">Zone Type</Label>
               <Select value={zoneType} onValueChange={setZoneType}>
                 <SelectTrigger className="bg-input/50 border-border text-sm"><SelectValue /></SelectTrigger>
-                <SelectContent>
+                <SelectContent className="z-[9999]">
                   {ZONE_TYPES.map((t) => (<SelectItem key={t.value} value={t.value}>{t.label}</SelectItem>))}
                 </SelectContent>
               </Select>
@@ -2464,7 +2464,7 @@ export default function MissionDetailPage() {
               <Label className="text-xs text-muted-foreground">Zone Type</Label>
               <Select value={editZoneType} onValueChange={setEditZoneType}>
                 <SelectTrigger className="bg-input/50 border-border text-sm"><SelectValue /></SelectTrigger>
-                <SelectContent>
+                <SelectContent className="z-[9999]">
                   {ZONE_TYPES.map((t) => (<SelectItem key={t.value} value={t.value}>{t.label}</SelectItem>))}
                 </SelectContent>
               </Select>
@@ -2596,16 +2596,22 @@ export default function MissionDetailPage() {
                     <button
                       key={key}
                       onClick={() => {
-                        // Store side and go to sensor placement mode
-                        setAssignStep({ ...assignStep!, side: key })
-                        const zoneId = assignDialog!
-                        setSensorPlaceMode({
-                          zoneId,
-                          side: key,
-                          deviceId: assignStep!.deviceId,
-                          deviceName: assignStep!.deviceName,
-                        })
-                        setAssignDialog(null)
+                        // For gravity_mw, go to config step instead of sensor place mode
+                        if (assignStep?.deviceType === "gravity_mw") {
+                          setAssignStep({ ...assignStep!, side: key })
+                          // Stay in dialog for config step
+                        } else {
+                          // Store side and go to sensor placement mode
+                          setAssignStep({ ...assignStep!, side: key })
+                          const zoneId = assignDialog!
+                          setSensorPlaceMode({
+                            zoneId,
+                            side: key,
+                            deviceId: assignStep!.deviceId,
+                            deviceName: assignStep!.deviceName,
+                          })
+                          setAssignDialog(null)
+                        }
                       }}
                       className="flex items-center gap-3 rounded border border-border/50 p-3 text-left hover:bg-muted/30 transition-colors"
                     >
