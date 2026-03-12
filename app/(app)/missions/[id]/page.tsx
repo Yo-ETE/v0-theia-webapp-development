@@ -2383,7 +2383,7 @@ export default function MissionDetailPage() {
               <Label className="text-xs text-muted-foreground">Zone Type</Label>
               <Select value={zoneType} onValueChange={setZoneType}>
                 <SelectTrigger className="bg-input/50 border-border text-sm"><SelectValue /></SelectTrigger>
-                <SelectContent className="z-[9999]">
+                <SelectContent className="z-[10001]" position="popper" sideOffset={4}>
                   {ZONE_TYPES.map((t) => (<SelectItem key={t.value} value={t.value}>{t.label}</SelectItem>))}
                 </SelectContent>
               </Select>
@@ -2462,12 +2462,12 @@ export default function MissionDetailPage() {
             </div>
             <div className="flex flex-col gap-2">
               <Label className="text-xs text-muted-foreground">Zone Type</Label>
-              <Select value={editZoneType} onValueChange={setEditZoneType}>
-                <SelectTrigger className="bg-input/50 border-border text-sm"><SelectValue /></SelectTrigger>
-                <SelectContent className="z-[9999]">
-                  {ZONE_TYPES.map((t) => (<SelectItem key={t.value} value={t.value}>{t.label}</SelectItem>))}
-                </SelectContent>
-              </Select>
+<Select value={editZoneType} onValueChange={setEditZoneType}>
+  <SelectTrigger className="bg-input/50 border-border text-sm"><SelectValue /></SelectTrigger>
+  <SelectContent className="z-[10001]" position="popper" sideOffset={4}>
+  {ZONE_TYPES.map((t) => (<SelectItem key={t.value} value={t.value}>{t.label}</SelectItem>))}
+  </SelectContent>
+  </Select>
             </div>
             {Object.keys(editSideLabels).length > 0 && (
               <div className="flex flex-col gap-3">
@@ -2538,13 +2538,21 @@ export default function MissionDetailPage() {
                     <button
                       key={device.id}
                       onClick={() => {
-                        // For gravity_mw, always go to config step (even without sides)
-                        if (hasSides || isGravityMW) {
+                        // For gravity_mw without sides, go directly to config step
+                        if (isGravityMW && !hasSides) {
                           setAssignStep({ 
                             deviceId: device.id, 
                             deviceName: device.name,
                             deviceType: device.device_type,
-                            // Default gravity config
+                            side: "", // Set side to empty string to skip side selection
+                            gravityConfig: { effectiveRange: 12, effectiveFov: 72 },
+                          })
+                        } else if (hasSides || isGravityMW) {
+                          // Has sides to choose, or is gravity_mw with sides
+                          setAssignStep({ 
+                            deviceId: device.id, 
+                            deviceName: device.name,
+                            deviceType: device.device_type,
                             gravityConfig: isGravityMW ? { effectiveRange: 12, effectiveFov: 72 } : undefined,
                           })
                         } else if (assignDialog) {
