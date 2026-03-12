@@ -2587,8 +2587,8 @@ export default function MissionDetailPage() {
                 })}
               </div>
             </>
-          ) : !assignStep.side ? (
-            /* Step 2a: Pick which side */
+          ) : assignStep.side === undefined ? (
+            /* Step 2a: Pick which side (only if side is undefined, not empty string) */
             <>
               <DialogHeader>
                 <DialogTitle className="text-sm">Side: {assignStep.deviceName}</DialogTitle>
