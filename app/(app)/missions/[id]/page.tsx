@@ -2606,11 +2606,14 @@ export default function MissionDetailPage() {
                       onClick={() => {
                         // For gravity_mw, go to config step instead of sensor place mode
                         if (assignStep?.deviceType === "gravity_mw") {
-                          setAssignStep({ ...assignStep!, side: key })
-                          // Stay in dialog for config step
+                          // Update side and stay in dialog - this triggers the config step condition
+                          setAssignStep({ 
+                            ...assignStep, 
+                            side: key,
+                            gravityConfig: assignStep.gravityConfig ?? { effectiveRange: 12, effectiveFov: 72 }
+                          })
                         } else {
                           // Store side and go to sensor placement mode
-                          setAssignStep({ ...assignStep!, side: key })
                           const zoneId = assignDialog!
                           setSensorPlaceMode({
                             zoneId,
@@ -2619,6 +2622,7 @@ export default function MissionDetailPage() {
                             deviceName: assignStep!.deviceName,
                           })
                           setAssignDialog(null)
+                          setAssignStep(null)
                         }
                       }}
                       className="flex items-center gap-3 rounded border border-border/50 p-3 text-left hover:bg-muted/30 transition-colors"
