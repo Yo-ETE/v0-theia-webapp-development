@@ -149,6 +149,16 @@ export default function MissionDetailPage() {
     side: string
     deviceId: string
     deviceName: string
+    deviceType?: string
+  } | null>(null)
+  // Gravity MW config dialog (shown after sensor placement)
+  const [gravityConfigDialog, setGravityConfigDialog] = useState<{
+    deviceId: string
+    deviceName: string
+    zoneId: string
+    side: string
+    sensorPosition: number
+    config: { effectiveRange: number; effectiveFov: number }
   } | null>(null)
   const [statusUpdating, setStatusUpdating] = useState(false)
   // ── Save map center/zoom on pan (debounced) ──
@@ -570,7 +580,21 @@ export default function MissionDetailPage() {
   // ── Handle click-to-place sensor on the map side ──
   const handleSensorPlace = useCallback((zoneId: string, side: string, position: number) => {
     if (!sensorPlaceMode) return
-    assignDevice(sensorPlaceMode.deviceId, zoneId, side, position)
+    
+    // For gravity_mw, show config dialog after placement instead of assigning directly
+    if (sensorPlaceMode.deviceType === "gravity_mw") {
+      setGravityConfigDialog({
+        deviceId: sensorPlaceMode.deviceId,
+        deviceName: sensorPlaceMode.deviceName,
+        zoneId,
+        side,
+        sensorPosition: position,
+        config: { effectiveRange: 12, effectiveFov: 72 }, // Default values
+      })
+      setSensorPlaceMode(null)
+    } else {
+      assignDevice(sensorPlaceMode.deviceId, zoneId, side, position)
+    }
   }, [sensorPlaceMode, assignDevice])
 
   // ── Remove device from mission ──
@@ -2604,26 +2628,17 @@ export default function MissionDetailPage() {
                     <button
                       key={key}
                       onClick={() => {
-                        // For gravity_mw, go to config step instead of sensor place mode
-                        if (assignStep?.deviceType === "gravity_mw") {
-                          // Update side and stay in dialog - this triggers the config step condition
-                          setAssignStep({ 
-                            ...assignStep, 
-                            side: key,
-                            gravityConfig: assignStep.gravityConfig ?? { effectiveRange: 12, effectiveFov: 72 }
-                          })
-                        } else {
-                          // Store side and go to sensor placement mode
-                          const zoneId = assignDialog!
-                          setSensorPlaceMode({
-                            zoneId,
-                            side: key,
-                            deviceId: assignStep!.deviceId,
-                            deviceName: assignStep!.deviceName,
-                          })
-                          setAssignDialog(null)
-                          setAssignStep(null)
-                        }
+                        // Go to sensor placement mode (config will show after placement for gravity_mw)
+                        const zoneId = assignDialog!
+                        setSensorPlaceMode({
+                          zoneId,
+                          side: key,
+                          deviceId: assignStep!.deviceId,
+                          deviceName: assignStep!.deviceName,
+                          deviceType: assignStep!.deviceType,
+                        })
+                        setAssignDialog(null)
+                        setAssignStep(null)
                       }}
                       className="flex items-center gap-3 rounded border border-border/50 p-3 text-left hover:bg-muted/30 transition-colors"
                     >
@@ -2651,34 +2666,36 @@ export default function MissionDetailPage() {
                 <Button variant="ghost" size="sm" onClick={() => setAssignStep(null)}>Back</Button>
               </DialogFooter>
             </>
-          ) : assignStep?.deviceType === "gravity_mw" && assignStep.side !== undefined ? (
-            /* Step 3: Gravity MW config */
-            <>
-              <DialogHeader>
-                <DialogTitle className="text-sm">Configure Gravity MW: {assignStep.deviceName}</DialogTitle>
-                <DialogDescription className="text-xs text-muted-foreground">
-                  Adjust detection range and FOV based on environment (walls, materials).
-                </DialogDescription>
-              </DialogHeader>
+          ) : null}
+          </DialogContent>
+        </Dialog>
+
+        {/* Gravity MW config dialog (after sensor placement) */}
+        <Dialog open={!!gravityConfigDialog} onOpenChange={() => setGravityConfigDialog(null)}>
+          <DialogContent className="sm:max-w-md z-[10000]">
+            <DialogHeader>
+              <DialogTitle className="text-sm">Configurer {gravityConfigDialog?.deviceName}</DialogTitle>
+              <DialogDescription className="text-xs text-muted-foreground">
+                Ajustez la portee et le FOV selon l&apos;environnement (murs, materiaux).
+              </DialogDescription>
+            </DialogHeader>
+            {gravityConfigDialog && (
               <div className="flex flex-col gap-4 py-4">
                 {/* Effective Range */}
                 <div className="space-y-2">
                   <div className="flex items-center justify-between">
                     <label className="text-xs font-medium">Portee effective</label>
-                    <span className="text-xs font-mono text-muted-foreground">{assignStep.gravityConfig?.effectiveRange ?? 12}m</span>
+                    <span className="text-xs font-mono text-muted-foreground">{gravityConfigDialog.config.effectiveRange}m</span>
                   </div>
                   <input
                     type="range"
                     min="2"
                     max="12"
                     step="0.5"
-                    value={assignStep.gravityConfig?.effectiveRange ?? 12}
-                    onChange={(e) => setAssignStep({
-                      ...assignStep,
-                      gravityConfig: {
-                        ...assignStep.gravityConfig!,
-                        effectiveRange: parseFloat(e.target.value),
-                      },
+                    value={gravityConfigDialog.config.effectiveRange}
+                    onChange={(e) => setGravityConfigDialog({
+                      ...gravityConfigDialog,
+                      config: { ...gravityConfigDialog.config, effectiveRange: parseFloat(e.target.value) },
                     })}
                     className="w-full h-2 bg-muted rounded-lg appearance-none cursor-pointer accent-primary"
                   />
@@ -2692,20 +2709,17 @@ export default function MissionDetailPage() {
                 <div className="space-y-2">
                   <div className="flex items-center justify-between">
                     <label className="text-xs font-medium">FOV effectif</label>
-                    <span className="text-xs font-mono text-muted-foreground">{assignStep.gravityConfig?.effectiveFov ?? 72}°</span>
+                    <span className="text-xs font-mono text-muted-foreground">{gravityConfigDialog.config.effectiveFov}°</span>
                   </div>
                   <input
                     type="range"
                     min="20"
                     max="72"
                     step="2"
-                    value={assignStep.gravityConfig?.effectiveFov ?? 72}
-                    onChange={(e) => setAssignStep({
-                      ...assignStep,
-                      gravityConfig: {
-                        ...assignStep.gravityConfig!,
-                        effectiveFov: parseFloat(e.target.value),
-                      },
+                    value={gravityConfigDialog.config.effectiveFov}
+                    onChange={(e) => setGravityConfigDialog({
+                      ...gravityConfigDialog,
+                      config: { ...gravityConfigDialog.config, effectiveFov: parseFloat(e.target.value) },
                     })}
                     className="w-full h-2 bg-muted rounded-lg appearance-none cursor-pointer accent-primary"
                   />
@@ -2728,9 +2742,9 @@ export default function MissionDetailPage() {
                     ].map((preset) => (
                       <button
                         key={preset.label}
-                        onClick={() => setAssignStep({
-                          ...assignStep,
-                          gravityConfig: { effectiveRange: preset.range, effectiveFov: preset.fov },
+                        onClick={() => setGravityConfigDialog({
+                          ...gravityConfigDialog,
+                          config: { effectiveRange: preset.range, effectiveFov: preset.fov },
                         })}
                         className="text-[10px] px-2 py-1 rounded border border-border/50 hover:bg-muted/50 transition-colors"
                       >
@@ -2740,32 +2754,32 @@ export default function MissionDetailPage() {
                   </div>
                 </div>
               </div>
-              <DialogFooter className="gap-2">
-                <Button variant="ghost" size="sm" onClick={() => setAssignStep({ ...assignStep, side: undefined })}>
-                  Back
-                </Button>
-                <Button 
-                  size="sm" 
-                  onClick={() => {
-                    if (assignDialog) {
-                      assignDevice(
-                        assignStep.deviceId, 
-                        assignDialog, 
-                        assignStep.side || undefined, 
-                        undefined,
-                        assignStep.gravityConfig
-                      )
-                    }
-                  }}
-                >
-                  Assigner
-                </Button>
-              </DialogFooter>
-            </>
-          ) : null}
-        </DialogContent>
-      </Dialog>
-    </>
+            )}
+            <DialogFooter className="gap-2">
+              <Button variant="ghost" size="sm" onClick={() => setGravityConfigDialog(null)}>
+                Annuler
+              </Button>
+              <Button 
+                size="sm" 
+                onClick={() => {
+                  if (gravityConfigDialog) {
+                    assignDevice(
+                      gravityConfigDialog.deviceId, 
+                      gravityConfigDialog.zoneId, 
+                      gravityConfigDialog.side, 
+                      gravityConfigDialog.sensorPosition,
+                      gravityConfigDialog.config
+                    )
+                    setGravityConfigDialog(null)
+                  }
+                }}
+              >
+                Valider
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
+        </>
   )
 }
 
