@@ -10,7 +10,7 @@
 // LoRa
 // =========================
 #define RF_FREQUENCY              868000000
-#define TX_OUTPUT_POWER           14
+#define TX_OUTPUT_POWER           8
 #define LORA_BANDWIDTH            0
 #define LORA_SPREADING_FACTOR     7
 #define LORA_CODINGRATE           1
@@ -25,13 +25,19 @@
 // Pins
 // =========================
 #define MICROWAVE_PIN             26
+#define ADC_BATT_PIN              4
 
 // =========================
 // Detection
 // =========================
 #define DETECT_ACTIVE_LOW         1
 #define PRESENCE_LATCH_MS         500UL
-#define FIXED_BATTERY_V           4.10f
+
+// =========================
+// Batterie
+// =========================
+#define VOLT_SAMPLES              8
+#define VOLT_DIV_RATIO            5.0f
 
 static RadioEvents_t RadioEvents;
 char txpacket[64];
@@ -76,7 +82,20 @@ bool presentNow() {
 }
 
 float readBatteryVoltage() {
-  return FIXED_BATTERY_V;
+  analogReadResolution(12);
+  analogSetPinAttenuation(ADC_BATT_PIN, ADC_11db);
+
+  uint32_t acc = 0;
+  for (int i = 0; i < VOLT_SAMPLES; ++i) {
+    delayMicroseconds(150);
+    acc += analogReadMilliVolts(ADC_BATT_PIN);
+  }
+
+  float v_pin = (acc / (float)VOLT_SAMPLES) / 1000.0f;
+  float v_batt = v_pin * VOLT_DIV_RATIO;
+
+  Serial.printf("[BATT] vpin=%.3fV vbatt=%.3fV\n", v_pin, v_batt);
+  return v_batt;
 }
 
 void buildPacket(bool present, float batt) {
@@ -94,6 +113,9 @@ void setup() {
   delay(500);
 
   pinMode(MICROWAVE_PIN, INPUT_PULLUP);
+
+  analogReadResolution(12);
+  analogSetPinAttenuation(ADC_BATT_PIN, ADC_11db);
 
   Mcu.begin(HELTEC_BOARD, SLOW_CLK_TPYE);
 
@@ -126,7 +148,6 @@ void setup() {
 void loop() {
   Radio.IrqProcess();
 
-  // On memorise toute detection vue
   updateDetection();
 
   if ((millis() - lastSend >= SEND_PERIOD_MS) && txDone) {
