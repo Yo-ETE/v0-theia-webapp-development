@@ -865,8 +865,13 @@ Symlinks : {systemPorts.map(s => `${s.symlink} -> ${s.real} (${s.role})`).join("
                               : "border-border/50 hover:border-border"
                           )}
                         >
-                          <div className="flex items-center gap-1.5">
+                          <div className="flex items-center gap-1.5 flex-wrap">
                             <span className="text-xs font-medium text-foreground">{fw.name}</span>
+                            {fw.sensor_type && !["custom", "rx"].includes(fw.sensor_type.toLowerCase()) && (
+                              <Badge className="text-[8px] px-1 py-0 bg-primary/20 text-primary border-primary/30">
+                                {fw.sensor_type === "gravity_mw" ? "MW V2" : fw.sensor_type.toUpperCase()}
+                              </Badge>
+                            )}
                             {fw.is_template && <Badge variant="outline" className="text-[8px] px-1 py-0">Template</Badge>}
                             {fw.is_custom && <Badge variant="secondary" className="text-[8px] px-1 py-0">Custom</Badge>}
                           </div>
