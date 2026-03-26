@@ -4,7 +4,7 @@
 #include "LoRaWan_APP.h"
 #include "Arduino.h"
 
-#define TX_ID "__TX_ID__"
+static const char* TX_ID = "__TX_ID__";
 
 // =========================
 // LoRa
@@ -99,7 +99,6 @@ float readBatteryVoltage() {
 }
 
 void buildPacket(bool present, float batt) {
-  // 0 = repos / 1 = detection
   snprintf(txpacket, sizeof(txpacket),
            "LD45;%s;0;0;%d;0;%.2f",
            TX_ID, present ? 1 : 0, batt);
@@ -119,7 +118,7 @@ void setup() {
 
   Mcu.begin(HELTEC_BOARD, SLOW_CLK_TPYE);
 
-  RadioEvents.TxDone = onTxDone;
+  RadioEvents.TxDone    = onTxDone;
   RadioEvents.TxTimeout = onTxTimeout;
 
   Radio.Init(&RadioEvents);
@@ -154,9 +153,9 @@ void loop() {
     lastSend = millis();
     txDone = false;
 
-    bool raw = rawMotionDetected();
+    bool raw     = rawMotionDetected();
     bool present = presentNow();
-    float batt = readBatteryVoltage();
+    float batt   = readBatteryVoltage();
 
     buildPacket(present, batt);
 
