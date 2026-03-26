@@ -25,7 +25,7 @@
  */
 
 #include <Arduino.h>
-#include <LD2450.h>
+#include <HLK-LD2450.h>
 #include "LoRaWan_APP.h"
 #include <math.h>
 
