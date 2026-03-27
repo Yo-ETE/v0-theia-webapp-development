@@ -452,6 +452,7 @@ export default function DevicesPage() {
                                 <SelectItem value="microwave_tx" className="text-[10px]">LD2450</SelectItem>
                                 <SelectItem value="c4001" className="text-[10px]">C4001</SelectItem>
                                 <SelectItem value="gravity_mw" className="text-[10px]">Gravity MW V2</SelectItem>
+                                <SelectItem value="xaver" className="text-[10px]">XAVER 400</SelectItem>
                               </SelectContent>
                             </Select>
                           </TableCell>
@@ -644,6 +645,8 @@ export default function DevicesPage() {
                 <SelectContent>
                   <SelectItem value="microwave_tx">Microwave TX (LD2450/LD2410)</SelectItem>
                   <SelectItem value="c4001">Gravity C4001 (depth-only)</SelectItem>
+                  <SelectItem value="gravity_mw">Gravity MW V2 (presence)</SelectItem>
+                  <SelectItem value="xaver">XAVER 400 (through-wall)</SelectItem>
                   <SelectItem value="pir_tx">PIR TX</SelectItem>
                   <SelectItem value="vibration_tx">Vibration TX</SelectItem>
                   <SelectItem value="magnetic_tx">Magnetic Contact TX</SelectItem>
@@ -869,7 +872,7 @@ Symlinks : {systemPorts.map(s => `${s.symlink} -> ${s.real} (${s.role})`).join("
                             <span className="text-xs font-medium text-foreground">{fw.name}</span>
                             {fw.sensor_type && !["custom", "rx"].includes(fw.sensor_type.toLowerCase()) && (
                               <Badge className="text-[8px] px-1 py-0 bg-primary/20 text-primary border-primary/30">
-                                {fw.sensor_type === "gravity_mw" ? "MW V2" : fw.sensor_type.toUpperCase()}
+                                {fw.sensor_type === "gravity_mw" ? "MW V2" : fw.sensor_type === "xaver" ? "XAVER" : fw.sensor_type.toUpperCase()}
                               </Badge>
                             )}
                             {fw.is_template && <Badge variant="outline" className="text-[8px] px-1 py-0">Template</Badge>}
