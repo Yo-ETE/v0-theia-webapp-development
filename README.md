@@ -3,7 +3,7 @@
 > **"La ou l'oeil est aveugle, l'onde revele"**
 
 THEIA est une webapp full-stack de surveillance terrain deployee sur Raspberry Pi 5.
-Elle recoit en temps reel les detections LoRa de capteurs microwave (LD2450 / C4001),
+Elle recoit en temps reel les detections LoRa de capteurs radar (LD2450, C4001, Gravity MW V2, XAVER 400),
 les affiche sur une carte interactive, et fournit un tableau de bord operationnel complet.
 
 **THEIA Hub Control v1.0** - (c) 2026 Yoann ETE
@@ -13,15 +13,15 @@ les affiche sur une carte interactive, et fournit un tableau de bord operationne
 ## Architecture
 
 ```
-Capteurs MW (TX LoRa)  --868MHz-->  Heltec RX (USB)  -->  Raspberry Pi 5
-                                                            |
-                                                    +-------+-------+
-                                                    |               |
-                                              FastAPI :8000    Next.js :3000
-                                              (backend)        (frontend)
-                                                    |               |
-                                              SQLite DB        Dashboard
-                                              GPS / LoRa       Carte / Logs
+Capteurs Radar (TX LoRa)  --868MHz-->  Heltec RX (USB)  -->  Raspberry Pi 5
+                                                               |
+                                                       +-------+-------+
+                                                       |               |
+                                                 FastAPI :8000    Next.js :3000
+                                                 (backend)        (frontend)
+                                                       |               |
+                                                 SQLite DB        Dashboard
+                                                 GPS / LoRa       Carte / Logs
 ```
 
 | Composant | Stack | Port |
@@ -29,6 +29,16 @@ Capteurs MW (TX LoRa)  --868MHz-->  Heltec RX (USB)  -->  Raspberry Pi 5
 | Frontend | Next.js 16 + shadcn/ui + Tailwind CSS 4 | 3000 |
 | Backend | FastAPI + SQLite + pyserial + gpsd | 8000 |
 | Firmware | Arduino (ESP32 Heltec WiFi LoRa V3) | - |
+
+## Capteurs Supportes
+
+| Type | Modele | Caracteristiques | FOV | Portee |
+|------|--------|------------------|-----|--------|
+| **LD2450** | HLK-LD2450 | Radar mmWave, position X/Y, vitesse, multi-cibles (3) | 120° | 6m |
+| **C4001** | DFRobot C4001 | Radar mmWave, distance uniquement (depth) | 60° | 8m |
+| **Gravity MW V2** | SEN0192 | Radar micro-ondes, presence uniquement (on/off) | 72° (configurable) | 2-16m (configurable) |
+| **XAVER 400** | Camero XAVER | Radar through-wall, capture BNC via Python/OpenCV | 120° | 8m |
+| **RX** | Heltec V3 | Recepteur LoRa multi-TX avec ecran OLED | - | - |
 
 ## Fonctionnalites
 
@@ -38,29 +48,41 @@ Capteurs MW (TX LoRa)  --868MHz-->  Heltec RX (USB)  -->  Raspberry Pi 5
 - RSSI lisse par moyenne glissante exponentielle (EMA) pour stabiliser l'affichage
 - Alertes actives (batterie faible, signal RSSI faible, device offline)
 - Notifications systeme en temps reel via SSE
+- Graphique consommation batterie (1h, 6h, 24h, 7j)
 
 ### Missions
 - Creation et gestion de missions de surveillance
+- Types de site : Habitation, Batiment industriel, Terrain, Vehicule, Autre
 - Carte interactive Leaflet avec zones de detection personnalisables
+- Dessin de zones polygonales avec faces/facades nommables
+- Ajout de plans de batiment (floor plans) georeferencies
 - Mode visualisateur plein ecran (carte grand ecran + barre TX compacte)
 - Detection en temps reel avec direction, distance, vitesse
-- Mode FOV (champ de vision des capteurs) et estimation de position
-- Mode timelapse pour replay des detections
-- Heatmap des evenements
+- Mode FOV (champ de vision des capteurs) avec orientation ajustable
+- Estimation de position sur la facade avec zone de detection
+- Mode timelapse pour replay des detections historiques
+- Heatmap des evenements avec intensite par zone
 - Sourdine par capteur (masquer un TX du feed de detection)
-- Son de detection en temps reel (ping radar synthetique, toggle on/off par mission)
+- Son de detection en temps reel (ping radar synthetique, toggle on/off)
 - Export CSV des evenements
 
+### Configuration Gravity MW V2
+- Selection du type de surface/mur lors de l'assignation
+- Presets : Libre, PVC, Porte bois, Parpaing, Brique, Metal, Beton
+- Ajustement manuel de la portee effective (2-16m) et du FOV (30-120°)
+- Visualisation en temps reel du cone de detection sur la carte
+
 ### Devices (Capteurs)
-- Provisioning automatique : flash firmware Arduino via la webapp
+- **Provisioning automatique** : flash firmware Arduino via la webapp
   - Detection automatique des ports USB avec identification (VID/PID, fabricant)
-  - Selection du type de capteur (LD2450 ou C4001)
+  - Selection du type de capteur (LD2450, C4001, Gravity MW V2, XAVER)
   - Compilation et upload du sketch avec TX_ID configure
   - Console de flash en temps reel (SSE streaming)
   - Enregistrement automatique du device en base
-- Enrollment manuel pour devices pre-configures
+- **Enrollment manuel** pour devices pre-configures
 - Monitoring batterie (voltage) et signal RSSI en temps reel
 - Attribution a une mission et zone de surveillance
+- Gestion des firmwares (import, templates, custom)
 
 ### Logs
 - Logs applicatifs filtres par source et niveau
@@ -84,21 +106,18 @@ Capteurs MW (TX LoRa)  --868MHz-->  Heltec RX (USB)  -->  Raspberry Pi 5
 - Device offline (pas de signal > 120s), reconnexion
 - Anti-spam : 1 notification par type/device par heure
 - Dismiss individuel ou global
-- Les alertes de detection n'apparaissent PAS dans la cloche (voir missions)
 
 **Son de detection (missions)** :
 - Bouton Volume2/VolumeX dans chaque mission
-- Ping radar synthetique via Web Audio API (pas de fichier MP3)
+- Ping radar synthetique via Web Audio API
 - Throttle 1x / 2s pour eviter le spam sonore
 - Etat on/off persiste en localStorage
 
 **Notifications Push par mission** :
-- Configuration par mission (bouton cloche) : canaux, cooldown, zones filtrees
+- Configuration par mission : canaux, cooldown, zones filtrees
 - Web Push via VAPID (service worker) : notifications systeme en arriere-plan
 - SMS/ntfy : 3 providers supportes (Free Mobile, Twilio, ntfy.sh)
 - Configuration globale SMS dans l'admin avec bouton de test
-- Bouton "Test push" dans la config de notification de chaque mission
-- Statut de souscription push affiche dans le panneau de notification
 - Sur iPhone : necessite d'ajouter THEIA a l'ecran d'accueil (PWA)
 
 ### Administration
@@ -108,15 +127,15 @@ Capteurs MW (TX LoRa)  --868MHz-->  Heltec RX (USB)  -->  Raspberry Pi 5
 - Configuration Ethernet
 - Tailscale VPN (up/down, exit node, peers)
 - Gestion Git (branches, commits, pull, mise a jour)
-- Mise a jour SSE streaming (stash + pull + install.sh + restart) avec progression temps reel
+- Mise a jour SSE streaming avec progression temps reel
 - Sauvegardes (creation, restauration, suppression)
 - Redemarrage / arret du Raspberry Pi
-- Retention automatique des donnees (purge periodique configurable par env vars)
+- Retention automatique des donnees (purge periodique configurable)
 - Guide d'utilisation integre
 - Licence
 
 ### A propos
-- Page `/about` accessible a tous les utilisateurs (admins et viewers)
+- Page `/about` accessible a tous les utilisateurs
 - Logo radar anime, tagline et description mythologique de THEIA
 - Contact : theiahub.contact@gmail.com
 
@@ -130,12 +149,13 @@ theia/
       missions/           # CRUD missions + carte + visualisateur
       devices/            # Capteurs TX (provisioning, flash, monitoring)
       logs/               # Viewer logs (applicatifs + systeme Pi)
-      admin/              # Configuration reseau, Git, sauvegardes
-      about/              # Page A propos (visible de tous)
+      administration/     # Configuration reseau, Git, sauvegardes
+      about/              # Page A propos
     api/                  # API Routes (proxy vers FastAPI backend)
   components/             # Composants UI (shadcn + custom)
     dashboard/            # Cards status, alertes
     mission/              # Carte Leaflet, overlays, floor plans
+    admin/                # Firmware manager, config panels
     ui/                   # shadcn/ui
     notification-bell.tsx # Cloche de notifications globale
     theia-footer.tsx      # Footer copyright global
@@ -143,17 +163,20 @@ theia/
                           # use-notification-sound, use-push-subscription
   lib/                    # Types, api-client, format, utilitaires
   firmware/               # Sketches Arduino ESP32
-    TX_LD2450/            # Template capteur HLK-LD2450
-    TX_C4001/             # Template capteur DFRobot C4001
+    templates/
+      TX_LD2450/          # Template capteur HLK-LD2450
+      TX_C4001/           # Template capteur DFRobot C4001
+      TX_Gravity_MW_V2/   # Template capteur SEN0192 (presence)
+      TX_XAVER/           # Template XAVER 400 (Python + placeholder .ino)
+      RX/                 # Recepteur multi-TX avec OLED
   backend/                # FastAPI Python
     routers/              # health, missions, devices, events, logs, stream,
                           # tiles, admin, config, notifications, firmware,
                           # auth, push
-    middleware/            # auth.py (JWT verification middleware)
+    middleware/           # auth.py (JWT verification middleware)
     services/             # system_monitor, gps_reader, lora_bridge,
                           # push_service, sms_service
     database.py           # SQLite init + schema + retention job
-                          #   (events, logs, battery_history, notifications)
     main.py               # App FastAPI + startup + CORS + auth middleware
     sse.py                # SSE broadcast manager
     requirements.txt
@@ -165,6 +188,39 @@ theia/
   install.sh              # Script d'installation automatique (idempotent)
   .env.example            # Template variables d'environnement
 ```
+
+## Firmwares
+
+### TX_LD2450
+Capteur radar mmWave HLK-LD2450 avec tracking multi-cibles (jusqu'a 3 cibles).
+- Envoie position X/Y, distance, vitesse
+- Ecran OLED avec affichage status
+- Lecture batterie via ADC
+
+### TX_C4001
+Capteur radar DFRobot C4001 (distance uniquement).
+- Seuils adaptatifs pour detection de passage
+- Distinction entree/sortie basee sur la trajectoire
+- Cooldown anti-rebond
+
+### TX_Gravity_MW_V2
+Capteur micro-ondes SEN0192 (presence uniquement).
+- Detection ON/OFF simple
+- Lecture batterie via ADC avec diviseur de tension
+- Puissance TX reduite (8dBm) pour economie d'energie
+
+### TX_XAVER
+Script Python pour capturer la sortie BNC du XAVER 400.
+- Capture video via OpenCV
+- Detection des cibles par analyse colorimetrique HSV
+- Envoi des coordonnees via LoRa serie
+- Le fichier .ino est un placeholder pour l'affichage dans la webapp
+
+### RX
+Recepteur LoRa multi-TX avec ecran OLED.
+- Defilement automatique des TX actifs
+- Affichage RSSI, distance, batterie
+- Support Gravity MW (detection presence `d=1`)
 
 ## Installation sur Raspberry Pi
 
@@ -196,7 +252,7 @@ Le script est **idempotent** : relancez-le autant de fois que necessaire.
 | Etape | Action |
 |-------|--------|
 | 1 | `apt update/upgrade` + installation des dependances systeme |
-| 1b | Installation `arduino-cli` + core ESP32 (pour flash firmware) |
+| 1b | Installation `arduino-cli` + core ESP32 + bibliotheque LD2450 |
 | 2 | Installation Node.js 20.x via NodeSource |
 | 3 | Creation `/opt/theia/{app,data,tiles,logs}` |
 | 4 | Copie des fichiers (rsync) |
@@ -232,52 +288,28 @@ Le script est **idempotent** : relancez-le autant de fois que necessaire.
   [  OK ] All checks passed. THEIA is ready.
 ```
 
-## Mise a jour
+## Format des trames LoRa
 
-### Depuis la webapp (recommande)
+Les capteurs TX envoient via LoRa 868MHz au format :
 
-1. Aller dans **Administration** > section **Gestion Git**
-2. Selectionner la branche
-3. Cliquer sur **Mettre a jour**
-
-La webapp execute automatiquement avec progression en temps reel (SSE streaming) :
 ```
-git stash -> git fetch -> git pull -> chmod +x install.sh -> sudo bash install.sh
--> restart services (via nohup, decouple du processus API)
-```
-Chaque etape s'affiche en temps reel dans l'interface. Apres le redemarrage,
-la page redirige automatiquement vers le login.
-
-### Depuis le terminal
-
-```bash
-cd ~/theia
-git stash
-git pull
-chmod +x install.sh
-sudo bash install.sh
+LD45;TX01;x;y;d;v;battV
 ```
 
-## Provisioning d'un capteur TX
+| Champ | Description | Exemple |
+|-------|------------|---------|
+| `LD45` | Header protocole | `LD45` |
+| `TX01` | Identifiant du capteur | `TX01`, `XAVER01` |
+| `x` | Coordonnee X en cm | `-40` |
+| `y` | Coordonnee Y en cm | `63` |
+| `d` | Distance en cm (ou 1 pour presence) | `75`, `1` |
+| `v` | Vitesse en cm/s | `-8` |
+| `battV` | Tension batterie en V | `4.07` |
 
-### Depuis la webapp (recommande)
-
-1. Brancher l'ESP32 en USB sur le Pi
-2. Aller dans **Devices** > **Nouveau capteur**
-3. Entrer le TX_ID (ex: TX03) -- la webapp verifie l'unicite
-4. Selectionner le type (LD2450 ou C4001)
-5. Selectionner le port USB -- la webapp affiche le fabricant et le VID/PID
-6. Cliquer **Compiler & Flash**
-7. Suivre la console en temps reel
-8. Le device est enregistre automatiquement en base
-
-### Manuellement
-
-1. Ouvrir le sketch dans Arduino IDE (`firmware/TX_LD2450/` ou `firmware/TX_C4001/`)
-2. Remplacer `__TX_ID__` par l'identifiant souhaite (ex: `TX03`)
-3. Selectionner la board `esp32:esp32:heltec_wifi_lora_32_V3`
-4. Compiler et upload
-5. Enregistrer le device dans la page Devices
+**Cas particuliers :**
+- **C4001** (profondeur uniquement) : `x=0`, `y=d`
+- **Gravity MW V2** (presence) : `d=1` (detecte) ou `d=0` (rien), `x=y=v=0`
+- **XAVER** : Coordonnees extraites de l'analyse video
 
 ## Variables d'environnement
 
@@ -316,25 +348,45 @@ RETENTION_BATTERY_DAYS=60
 RETENTION_NOTIFS_DAYS=30
 ```
 
-## Format des trames LoRa
+## Mise a jour
 
-Les capteurs TX envoient via LoRa 433MHz au format :
+### Depuis la webapp (recommande)
 
+1. Aller dans **Administration** > section **Gestion Git**
+2. Selectionner la branche
+3. Cliquer sur **Mettre a jour**
+
+### Depuis le terminal
+
+```bash
+cd ~/theia
+git stash
+git pull
+chmod +x install.sh
+sudo bash install.sh
 ```
-LD45;TX01;x;y;d;v;battV
-```
 
-| Champ | Description | Exemple |
-|-------|------------|---------|
-| `LD45` | Header protocole | `LD45` |
-| `TX01` | Identifiant du capteur | `TX01` |
-| `x` | Coordonnee X en cm | `-40` |
-| `y` | Coordonnee Y en cm | `63` |
-| `d` | Distance en cm | `75` |
-| `v` | Vitesse en cm/s | `-8` |
-| `battV` | Tension batterie en V | `4.07` |
+## Provisioning d'un capteur TX
 
-Pour le C4001 (profondeur uniquement) : `x=0`, `y=d`.
+### Depuis la webapp (recommande)
+
+1. Brancher l'ESP32 en USB sur le Pi
+2. Aller dans **Devices** > **Nouveau capteur**
+3. Entrer le TX_ID (ex: TX03)
+4. Selectionner le type (LD2450, C4001, Gravity MW V2, XAVER)
+5. Selectionner le firmware template
+6. Selectionner le port USB
+7. Cliquer **Compiler & Flash**
+8. Suivre la console en temps reel
+9. Le device est enregistre automatiquement en base
+
+### Manuellement
+
+1. Ouvrir le sketch dans Arduino IDE
+2. Remplacer `__TX_ID__` par l'identifiant souhaite
+3. Selectionner la board `esp32:esp32:heltec_wifi_lora_32_V3`
+4. Compiler et upload
+5. Enregistrer le device dans la page Devices
 
 ## Commandes utiles (Pi)
 
@@ -351,28 +403,52 @@ sudo systemctl restart theia-api theia-web
 
 # Sante de l'API
 curl http://localhost:8000/api/health
-
-# Documentation Swagger
-# http://<IP_DU_PI>:8000/docs
 ```
 
-## Carte offline
+## Troubleshooting
 
-Pour un deploiement terrain sans internet :
-
-1. Modifier `.env` : `MAP_MODE=offline`
-2. Telecharger les tuiles OSM dans `/opt/theia/tiles/{z}/{x}/{y}.png`
-3. Le backend sert les tuiles via `/tiles/{z}/{x}/{y}.png`
-
-## Tailscale VPN
-
-THEIA est accessible via Tailscale sans configuration supplementaire :
+### Bibliotheque LD2450 manquante
 
 ```bash
-sudo tailscale up --accept-dns=false
+arduino-cli lib install "LD2450"
 ```
 
-L'app sera accessible sur le reseau local ET via l'adresse Tailscale (100.x.x.x).
+### Un service ne demarre pas
+
+```bash
+sudo journalctl -u theia-api -n 50 --no-pager
+sudo journalctl -u theia-web -n 50 --no-pager
+```
+
+### Le GPS n'est pas detecte
+
+```bash
+ls -la /dev/theia-gps
+gpsmon
+sudo dpkg-reconfigure gpsd
+```
+
+### Mot de passe admin oublie
+
+```bash
+sudo /opt/theia/.venv/bin/python3 -c "
+import sqlite3, hashlib, os
+db = sqlite3.connect('/opt/theia/data/theia.db')
+salt = os.urandom(32).hex()
+pw = hashlib.pbkdf2_hmac('sha256', b'admin', bytes.fromhex(salt), 100000).hex()
+db.execute('UPDATE users SET password_hash=?, salt=? WHERE username=?', (pw, salt, 'admin'))
+db.commit(); print('Password reset to: admin')
+"
+sudo systemctl restart theia-api
+```
+
+### Flash ESP32-S3 echoue
+
+Mettre la carte en mode bootloader :
+1. Maintenir le bouton **USER/BOOT** enfonce
+2. Brancher le cable USB tout en gardant le bouton enfonce
+3. Attendre 2 secondes puis relacher
+4. Lancer l'upload immediatement
 
 ## Stack technique
 
@@ -392,73 +468,6 @@ L'app sera accessible sur le reseau local ET via l'adresse Tailscale (100.x.x.x)
 | Push | pywebpush, VAPID, Service Worker |
 | SMS | httpx (Free Mobile, Twilio, ntfy.sh) |
 | Deploiement | systemd (2 services) |
-
-## Troubleshooting
-
-### `npm ERESOLVE` (react-leaflet)
-
-Le `.npmrc` contient `legacy-peer-deps=true`. Verifier sa presence :
-```bash
-cat ~/theia/.npmrc
-```
-
-### `git pull` echoue
-
-```bash
-cd ~/theia && git stash && git pull && chmod +x install.sh && sudo bash install.sh
-```
-
-### Un service ne demarre pas
-
-```bash
-sudo journalctl -u theia-api -n 50 --no-pager
-sudo journalctl -u theia-web -n 50 --no-pager
-```
-
-### Le GPS n'est pas detecte
-
-```bash
-ls -la /dev/theia-gps
-gpsmon
-sudo dpkg-reconfigure gpsd
-```
-
-### L'API ne repond pas
-
-```bash
-curl -v http://localhost:8000/api/health
-ss -tlnp | grep 8000
-```
-
-### Mot de passe admin oublie
-
-```bash
-# Reset le mot de passe admin depuis le Pi
-sudo /opt/theia/.venv/bin/python3 -c "
-import sqlite3, hashlib, os
-db = sqlite3.connect('/opt/theia/data/theia.db')
-salt = os.urandom(32).hex()
-pw = hashlib.pbkdf2_hmac('sha256', b'admin', bytes.fromhex(salt), 100000).hex()
-db.execute('UPDATE users SET password_hash=?, salt=? WHERE username=?', (pw, salt, 'admin'))
-db.commit(); print('Password reset to: admin')
-"
-sudo systemctl restart theia-api
-```
-
-### Notifications Push ne fonctionnent pas
-
-1. Verifier que le navigateur a autorise les notifications (icone cadenas dans la barre d'adresse)
-2. Cliquer "Activer Push" dans la sidebar (bouton cloche)
-3. Verifier que la mission a les notifications activees (bouton cloche dans la mission)
-4. Verifier les logs : `sudo journalctl -u theia-api -f | grep PUSH`
-5. Si `pywebpush not installed` : `sudo /opt/theia/.venv/bin/pip install pywebpush cryptography`
-
-### Erreur `python-multipart` ou import Python
-
-```bash
-sudo /opt/theia/.venv/bin/pip install -r /opt/theia/app/backend/requirements.txt
-sudo systemctl restart theia-api
-```
 
 ## Licence
 
