@@ -60,6 +60,8 @@ def _detect_sensor_type(name: str, content: str) -> str:
         return "c4001"
     if "gravity" in name_lower or "sen0192" in content_lower or "microwave" in name_lower:
         return "gravity_mw"
+    if "xaver" in name_lower or "xaver" in content_lower:
+        return "xaver"
     # Fallback: derive from name
     return name_lower.replace("custom_", "").replace("tx_", "").replace(" ", "_")
 # Heltec WiFi LoRa 32 V3 FQBN from standard ESP32 core

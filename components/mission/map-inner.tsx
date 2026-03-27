@@ -114,7 +114,8 @@ const SENSOR_SPECS: Record<string, { fovDeg: number; maxRangeM: number; label: s
   ld2450:        { fovDeg: 120, maxRangeM: 6,  label: "LD2450" },
   c4001:         { fovDeg: 100, maxRangeM: 8,  label: "C4001" },
   gravity_mw:    { fovDeg: 72,  maxRangeM: 12, label: "Gravity MW V2", presenceOnly: true },  // 72deg H, 2-16m adjustable
-}
+  xaver:         { fovDeg: 120, maxRangeM: 8,  label: "XAVER 400" },  // Through-wall radar, 120deg FOV, 8m range
+  }
 const DEFAULT_SENSOR_SPECS = { fovDeg: 90, maxRangeM: 6, label: "Unknown", presenceOnly: false }
 
 interface SensorPlaceMode {

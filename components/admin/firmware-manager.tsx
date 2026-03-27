@@ -142,6 +142,7 @@ export function FirmwareManager() {
     if (type === "ld2450") return <Badge variant="outline" className="text-[9px] border-blue-500/30 text-blue-400">LD2450</Badge>
     if (type === "c4001") return <Badge variant="outline" className="text-[9px] border-amber-500/30 text-amber-400">C4001</Badge>
     if (type === "gravity_mw") return <Badge variant="outline" className="text-[9px] border-purple-500/30 text-purple-400">MW V2</Badge>
+    if (type === "xaver") return <Badge variant="outline" className="text-[9px] border-red-500/30 text-red-400">XAVER</Badge>
     if (type === "rx") return <Badge variant="outline" className="text-[9px] border-green-500/30 text-green-400">RX</Badge>
     return <Badge variant="outline" className="text-[9px]">Custom</Badge>
   }
