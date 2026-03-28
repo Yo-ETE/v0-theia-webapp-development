@@ -806,13 +806,22 @@ class LoRaBridge:
         return found
 
     async def _device_watchdog(self):
-        """Background task: check all devices for offline status every 30s."""
+        """Background task: check all devices for offline status every 30s.
+        Only alerts for devices assigned to an active mission."""
         await asyncio.sleep(60)
+        # Record startup time - don't alert for devices not seen since before startup
+        startup_ts = time.time()
         while self._running:
             try:
                 db = await get_db()
+                # Only check devices assigned to active/running missions
                 cursor = await db.execute(
-                    "SELECT id, name, last_seen, battery, rssi FROM devices WHERE enabled=1 AND last_seen IS NOT NULL"
+                    """SELECT d.id, d.name, d.last_seen, d.battery, d.rssi 
+                       FROM devices d
+                       INNER JOIN missions m ON d.mission_id = m.id
+                       WHERE d.enabled=1 
+                         AND d.last_seen IS NOT NULL
+                         AND m.status IN ('active', 'running')"""
                 )
                 rows = await cursor.fetchall()
                 now_ts = time.time()
@@ -832,6 +841,11 @@ class LoRaBridge:
 
                     device_id = d["id"]
                     device_name = d["name"]
+
+                    # Skip if device was last seen before backend startup (grace period)
+                    # This prevents flood of notifications after Pi reboot
+                    if ls_dt.timestamp() < startup_ts - 60:
+                        continue
 
                     if delta_s > 120:
                         cooldown_key = ("device_offline", device_id)
