@@ -1582,16 +1582,31 @@ CONTACT : theiahub.contact@gmail.com`}
                     {
                       id: "sensors", icon: Signal, title: "Capteurs (Devices)",
                       content: `Gestion et provisioning des capteurs LoRa TX :
-- Nouveau capteur (flash firmware) :
+
+Types de capteurs supportes :
+- LD2450 : radar mmWave HLK, 3 cibles, x/y/vitesse, FOV 120deg, portee 6m
+- C4001 : radar Gravity, profondeur uniquement, FOV 60deg, portee 8m
+- Gravity MW V2 : radar micro-ondes presence, FOV configurable 15-120deg, portee 2-16m
+- XAVER 400 : radar through-wall via BNC (script Python), FOV 120deg, portee 8m
+- RX : recepteur multi-TX avec ecran OLED
+
+Nouveau capteur (flash firmware) :
   1. Brancher l'ESP32 en USB sur le Pi
-  2. Cliquer "Nouveau capteur" et configurer TX_ID + type (LD2450/C4001)
+  2. Cliquer "Nouveau capteur" et configurer TX_ID + type
   3. Selectionner le port USB (identifie par fabricant, VID/PID)
   4. Les ports deja utilises par un device sont indiques
   5. Compiler & Flash : console temps reel du processus
   6. Le device est automatiquement enregistre en base
-- Monitoring en temps reel : statut en ligne/hors ligne, RSSI, batterie (voltage)
-- Attribution a une mission et zone de surveillance
-- Suppression de devices obsoletes`
+
+Configuration Gravity MW V2 :
+- Apres placement sur la carte, un dialog permet de configurer :
+- Presets de surface : Libre, PVC, Porte bois, Mur platre, Beton leger, Beton arme
+- Ajustement manuel : portee effective (2-16m) et FOV (15-120deg)
+- Le cone de detection s'adapte visuellement aux parametres
+
+Monitoring en temps reel : statut en ligne/hors ligne, RSSI, batterie (voltage)
+Attribution a une mission et zone de surveillance
+Suppression de devices obsoletes`
                     },
                     {
                       id: "logs", icon: Terminal, title: "Logs",
