@@ -270,6 +270,9 @@ async def update_mission(mission_id: str, body: MissionUpdate):
 @router.delete("/{mission_id}")
 async def delete_mission(mission_id: str):
     db = await get_db()
+    # First, deassign all devices from this mission
+    await db.execute("UPDATE devices SET mission_id=NULL WHERE mission_id=?", (mission_id,))
+    # Then delete the mission
     await db.execute("DELETE FROM missions WHERE id=?", (mission_id,))
     await db.commit()
     return {"ok": True}
