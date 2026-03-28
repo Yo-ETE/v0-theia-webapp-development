@@ -210,6 +210,15 @@ async def init_tables(db: aiosqlite.Connection):
             created_at TEXT DEFAULT (datetime('now','localtime')),
             FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
         );
+
+        CREATE TABLE IF NOT EXISTS firmware_versions (
+            id TEXT PRIMARY KEY,
+            firmware_name TEXT NOT NULL,
+            version TEXT NOT NULL,
+            file_path TEXT NOT NULL,
+            created_at TEXT DEFAULT (datetime('now','localtime')),
+            UNIQUE(firmware_name, version)
+        );
     """)
     await db.commit()
 

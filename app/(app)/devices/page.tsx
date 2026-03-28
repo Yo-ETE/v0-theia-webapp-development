@@ -503,9 +503,12 @@ export default function DevicesPage() {
                             {device.last_seen ? formatRelative(device.last_seen) : "Never"}
                           </TableCell>
                           <TableCell>
-                            {device.needs_update ? (
-                              <Badge variant="destructive" className="text-[9px] px-2 py-0.5">À mettre à jour</Badge>
-                            ) : null}
+                            <div className="flex items-center gap-2">
+                              <span className="text-[9px] text-muted-foreground font-mono">v{device.firmware_version || '1.0.0'}</span>
+                              {device.needs_update ? (
+                                <Badge variant="destructive" className="text-[9px] px-2 py-0.5">À mettre à jour</Badge>
+                              ) : null}
+                            </div>
                           </TableCell>
                           <TableCell>
                             <Switch
@@ -876,6 +879,9 @@ Symlinks : {systemPorts.map(s => `${s.symlink} -> ${s.real} (${s.role})`).join("
                         >
                           <div className="flex items-center gap-1.5 flex-wrap">
                             <span className="text-xs font-medium text-foreground">{fw.name}</span>
+                            {fw.current_version && (
+                              <span className="text-[7px] text-muted-foreground font-mono">v{fw.current_version}</span>
+                            )}
                             {fw.sensor_type && !["custom", "rx"].includes(fw.sensor_type.toLowerCase()) && (
                               <Badge className="text-[8px] px-1 py-0 bg-primary/20 text-primary border-primary/30">
                                 {fw.sensor_type === "gravity_mw" ? "MW V2" : fw.sensor_type === "xaver" ? "XAVER" : fw.sensor_type.toUpperCase()}

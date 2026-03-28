@@ -287,16 +287,18 @@ async def list_ports():
 
 @router.get("/sketches")
 async def list_sketches():
-    """List available firmware sketches from templates and custom uploads."""
+    """List available firmware sketches from templates and custom uploads with versions."""
     sketches = []
     seen_names: set[str] = set()
+    db = await get_db()
+    
     # Scan both directories: custom (persistent) first, then built-in templates
     for base_dir, is_custom in [(CUSTOM_FIRMWARE_DIR, True), (FIRMWARE_DIR, False)]:
         if not os.path.isdir(base_dir):
             continue
         for entry in sorted(os.listdir(base_dir)):
-            if entry in seen_names:
-                continue  # custom overrides template with same name
+            if entry in seen_names or entry.endswith("_v"):
+                continue  # Skip versioned backups and duplicates
             sketch_dir = os.path.join(base_dir, entry)
             if os.path.isdir(sketch_dir):
                 ino_files = [f for f in os.listdir(sketch_dir) if f.endswith(".ino")]
@@ -304,6 +306,15 @@ async def list_sketches():
                     with open(os.path.join(sketch_dir, ino_files[0]), "r") as f:
                         content = f.read()
                     is_template = "__TX_ID__" in content
+                    
+                    # Get latest version from DB
+                    cursor = await db.execute(
+                        "SELECT MAX(version) FROM firmware_versions WHERE firmware_name=?",
+                        (entry,)
+                    )
+                    row = await cursor.fetchone()
+                    current_version = row[0] if row and row[0] else "1.0.0"
+                    
                     sketches.append({
                         "name": entry,
                         "file": ino_files[0],
@@ -311,6 +322,7 @@ async def list_sketches():
                         "is_template": is_template,
                         "is_custom": is_custom,
                         "sensor_type": _detect_sensor_type(entry, content),
+                        "current_version": current_version,
                     })
                     seen_names.add(entry)
     return sketches
@@ -333,7 +345,7 @@ async def get_sketch_content(name: str):
 
 @router.put("/sketches/{name}")
 async def update_sketch_content(name: str, body: dict):
-    """Update the source code of a firmware sketch."""
+    """Update the source code of a firmware sketch with automatic versioning."""
     content = body.get("content", "")
     if not content.strip():
         raise HTTPException(status_code=400, detail="Contenu vide")
@@ -343,10 +355,50 @@ async def update_sketch_content(name: str, body: dict):
     ino_files = [f for f in os.listdir(sketch_dir) if f.endswith(".ino")]
     if not ino_files:
         raise HTTPException(status_code=404, detail="Aucun fichier .ino")
+    
+    db = await get_db()
+    
+    # Get current max version
+    cursor = await db.execute(
+        "SELECT MAX(version) FROM firmware_versions WHERE firmware_name=?",
+        (name,)
+    )
+    row = await cursor.fetchone()
+    max_version_str = row[0] if row and row[0] else "0.0.0"
+    
+    # Parse version and increment minor version
+    try:
+        parts = max_version_str.split(".")
+        major, minor = int(parts[0]), int(parts[1]) if len(parts) > 1 else 0
+        new_version = f"{major}.{minor + 1}"
+    except:
+        new_version = "1.1"
+    
+    # Backup old file to versioned directory
+    if max_version_str != "0.0.0":
+        versioned_dir = os.path.join(sketch_dir.replace(name, f"{name}_v{max_version_str}"))
+        os.makedirs(versioned_dir, exist_ok=True)
+        old_filepath = os.path.join(sketch_dir, ino_files[0])
+        shutil.copy2(old_filepath, os.path.join(versioned_dir, ino_files[0]))
+        # Record version in DB
+        await db.execute(
+            "INSERT OR IGNORE INTO firmware_versions (firmware_name, version, file_path) VALUES (?, ?, ?)",
+            (name, max_version_str, versioned_dir)
+        )
+    
+    # Write new version
     filepath = os.path.join(sketch_dir, ino_files[0])
     with open(filepath, "w") as f:
         f.write(content)
-    return {"ok": True, "name": name}
+    
+    # Record new version in DB
+    await db.execute(
+        "INSERT OR IGNORE INTO firmware_versions (firmware_name, version, file_path) VALUES (?, ?, ?)",
+        (name, new_version, sketch_dir)
+    )
+    await db.commit()
+    
+    return {"ok": True, "name": name, "version": new_version}
 
 
 @router.delete("/sketches/{name}")
