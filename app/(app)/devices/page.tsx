@@ -414,6 +414,7 @@ export default function DevicesPage() {
                       <TableHead className="text-[10px]">RSSI</TableHead>
                       <TableHead className="text-[10px]">Battery</TableHead>
                       <TableHead className="text-[10px]">Last Seen</TableHead>
+                      <TableHead className="text-[10px]">Firmware</TableHead>
                       <TableHead className="text-[10px]">Enabled</TableHead>
                       <TableHead className="text-[10px]"></TableHead>
                     </TableRow>
@@ -500,6 +501,11 @@ export default function DevicesPage() {
                           </TableCell>
                           <TableCell className="text-[11px] text-muted-foreground">
                             {device.last_seen ? formatRelative(device.last_seen) : "Never"}
+                          </TableCell>
+                          <TableCell>
+                            {device.needs_update ? (
+                              <Badge variant="destructive" className="text-[9px] px-2 py-0.5">À mettre à jour</Badge>
+                            ) : null}
                           </TableCell>
                           <TableCell>
                             <Switch

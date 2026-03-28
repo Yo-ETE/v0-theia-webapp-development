@@ -127,6 +127,8 @@ async def init_tables(db: aiosqlite.Connection):
             snr REAL DEFAULT 0,
             battery REAL DEFAULT 100,
             last_seen TEXT,
+            firmware_version TEXT DEFAULT '1.0.0',
+            needs_update INTEGER DEFAULT 0,
             created_at TEXT DEFAULT (datetime('now', 'localtime')),
             FOREIGN KEY (mission_id) REFERENCES missions(id) ON DELETE SET NULL
         );
@@ -257,6 +259,18 @@ async def init_tables(db: aiosqlite.Connection):
         await db.execute("ALTER TABLE missions ADD COLUMN ended_at TEXT")
     except Exception:
         pass
+    
+    # Migrations for devices table
+    try:
+        await db.execute("ALTER TABLE devices ADD COLUMN firmware_version TEXT DEFAULT '1.0.0'")
+    except Exception:
+        pass
+    try:
+        await db.execute("ALTER TABLE devices ADD COLUMN needs_update INTEGER DEFAULT 0")
+    except Exception:
+        pass
+    
+    await db.commit()
     try:
         await db.execute("ALTER TABLE missions ADD COLUMN location TEXT DEFAULT ''")
     except Exception:
