@@ -263,8 +263,8 @@ async def init_tables(db: aiosqlite.Connection):
         pass
     # Device TEXT columns
     for col, dflt in [
-        ("serial_port", "''"), ("zone_id", "''"), ("zone_label", "''"),
-        ("side", "''"), ("floor", "NULL"),
+        ("serial_port", "''"), ("zone_id", "NULL"), ("zone_label", "''"),
+        ("side", "NULL"), ("floor", "NULL"),
     ]:
         try:
             await db.execute(f"ALTER TABLE devices ADD COLUMN {col} TEXT DEFAULT {dflt}")

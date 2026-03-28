@@ -351,10 +351,19 @@ async def update_sketch_content(name: str, body: dict):
 
 @router.delete("/sketches/{name}")
 async def delete_sketch(name: str):
-    """Delete a firmware sketch directory."""
+    """Delete a firmware sketch directory and disable associated devices."""
     sketch_dir = _resolve_sketch_dir(name)
     if not sketch_dir:
         raise HTTPException(status_code=404, detail="Firmware introuvable")
+    
+    # Disable all devices using this firmware before deletion
+    db = await get_db()
+    await db.execute(
+        "UPDATE devices SET enabled=0 WHERE type=?",
+        (name,)
+    )
+    await db.commit()
+    
     shutil.rmtree(sketch_dir)
     return {"ok": True, "name": name}
 
