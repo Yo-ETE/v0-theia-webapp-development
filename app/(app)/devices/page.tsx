@@ -428,6 +428,22 @@ export default function DevicesPage() {
                             <div className="flex items-center gap-2">
                               <Signal className={cn("h-3 w-3", sCfg.className.includes("success") ? "text-success" : sCfg.className.includes("destructive") ? "text-destructive" : "text-muted-foreground")} />
                               {device.name}
+                              {/* XAVER status indicator */}
+                              {device.type === "xaver" && device.sensor_status && (
+                                <span 
+                                  className={cn(
+                                    "h-2.5 w-2.5 rounded-full border",
+                                    device.sensor_status === "ready" && "bg-success border-success",
+                                    device.sensor_status === "calibrating" && "bg-warning border-warning animate-pulse",
+                                    device.sensor_status === "error" && "bg-destructive border-destructive"
+                                  )}
+                                  title={
+                                    device.sensor_status === "ready" ? "XAVER Focus OK" :
+                                    device.sensor_status === "calibrating" ? "XAVER en calibration..." :
+                                    "XAVER Erreur"
+                                  }
+                                />
+                              )}
                             </div>
                           </TableCell>
                           <TableCell className="font-mono text-[10px] text-muted-foreground">

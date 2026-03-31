@@ -355,6 +355,7 @@ class PortReader:
         self, *, tx_id: str | None, sensor_type: str,
         x: int, y: int, d: int, v: int,
         angle: float, presence: bool, vbatt: float | None,
+        sensor_status: str | None = None,
     ):
         """Common logic: lookup device, phantom gate, store event, broadcast SSE."""
         db = await get_db()
@@ -472,10 +473,17 @@ class PortReader:
 
         now_iso = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
         if device_id:
-            await db.execute(
-                "UPDATE devices SET battery=?, last_seen=?, rssi=?, serial_port=? WHERE id=?",
-                (vbatt, now_iso, self.last_rssi, self.port, device_id),
-            )
+            # Update device with battery, last_seen, rssi, and sensor_status (for XAVER)
+            if sensor_status:
+                await db.execute(
+                    "UPDATE devices SET battery=?, last_seen=?, rssi=?, serial_port=?, sensor_status=? WHERE id=?",
+                    (vbatt, now_iso, self.last_rssi, self.port, sensor_status, device_id),
+                )
+            else:
+                await db.execute(
+                    "UPDATE devices SET battery=?, last_seen=?, rssi=?, serial_port=? WHERE id=?",
+                    (vbatt, now_iso, self.last_rssi, self.port, device_id),
+                )
             if vbatt is not None and vbatt > 0:
                 cache_key = f"batt_{device_id}"
                 last_batt_ts = self._last_insert_ts.get(cache_key, 0)
@@ -619,7 +627,7 @@ class PortReader:
 
     # ------------------------------------------------------------------ LD45 raw
     async def _parse_ld45(self, line: str):
-        """Parse LD2450 frames: LD45;TX01;x;y;d;v;vbatt or LD45;x;y;d;v;vbatt"""
+        """Parse LD2450 frames: LD45;TX01;x;y;d;v;vbatt;status or LD45;x;y;d;v;vbatt"""
         parts = line.split(";")
         if len(parts) < 5:
             self.packets_err += 1
@@ -639,6 +647,8 @@ class PortReader:
             d = int(parts[idx_start + 2])
             v = int(parts[idx_start + 3])
             vbatt = float(parts[idx_start + 4]) if len(parts) > idx_start + 4 else None
+            # XAVER status (ready/calibrating/error) - 8th field
+            sensor_status = parts[idx_start + 5].strip() if len(parts) > idx_start + 5 else None
         except (ValueError, IndexError):
             self.packets_err += 1
             return
@@ -647,30 +657,39 @@ class PortReader:
         angle = math.degrees(math.atan2(x, y)) if (x != 0 or y != 0) else 0.0
 
         # Détection type capteur
-        if x == 0 and y == 0 and d == 1:
+        if sensor_status in ("ready", "calibrating", "error"):
+            # XAVER 400 through-wall radar with status
+            sensor_type = "xaver"
+            presence = (x != 0 or y != 0) and d > 0
+        elif x == 0 and y == 0 and d == 1:
             # Marqueur gravity_mw (SEN0192) : présence (d=1)
             sensor_type = "gravity_mw"
             presence = True
+            sensor_status = None
             # Keep d=1 for heatmap
         elif x == 0 and y == 0 and d == 0:
             # Absence gravity_mw (d=0)
             sensor_type = "gravity_mw"
             presence = False
+            sensor_status = None
         elif x == 0 and y == d and d > 0:
             # C4001 depth-only
             sensor_type = "c4001"
             presence = True
+            sensor_status = None
         else:
             # LD2450 full 2D
             sensor_type = "ld2450"
             presence = (x != 0 or y != 0) and 15 < d < 600
             if not presence and d > 15:
                 presence = True
+            sensor_status = None
 
         await self._handle_detection(
             tx_id=tx_id, sensor_type=sensor_type,
             x=x, y=y, d=d, v=v,
             angle=angle, presence=presence, vbatt=vbatt,
+            sensor_status=sensor_status,
         )
 
     # ------------------------------------------------------------------ RX log lines

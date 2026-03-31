@@ -35,6 +35,36 @@ RADAR_WIDTH_PX     = RADAR_X2 - RADAR_X1
 RADAR_HEIGHT_CM    = 800
 RADAR_WIDTH_CM     = 800
 
+# -- Zone statut Xaver (rond vert/rouge bas centre image) ----------------------
+STATUS_X1, STATUS_X2 = 475, 512
+STATUS_Y1, STATUS_Y2 = 438, 468
+
+def get_xaver_status(frame):
+    """
+    Detecte l'etat du focus Xaver via le rond en bas centre de l'image.
+    - Vert fixe = ready (focus OK)
+    - Rouge fixe = error
+    - Absent/autre = calibrating (en cours de focus)
+    Retourne: "ready", "error", ou "calibrating"
+    """
+    roi = frame[STATUS_Y1:STATUS_Y2, STATUS_X1:STATUS_X2]
+    if roi.size == 0:
+        return "calibrating"
+    hsv = cv2.cvtColor(roi, cv2.COLOR_BGR2HSV)
+    
+    # Detection vert (H=56-61, S>150, V>150)
+    green = cv2.inRange(hsv, np.array([56, 150, 150]), np.array([61, 255, 255]))
+    if cv2.countNonZero(green) > 20:
+        return "ready"
+    
+    # Detection rouge (H=0-10 ou 170-180, S>150, V>150)
+    red_low = cv2.inRange(hsv, np.array([0, 150, 150]), np.array([10, 255, 255]))
+    red_high = cv2.inRange(hsv, np.array([170, 150, 150]), np.array([180, 255, 255]))
+    if cv2.countNonZero(red_low) + cv2.countNonZero(red_high) > 20:
+        return "error"
+    
+    return "calibrating"
+
 # -- Zone batterie Xaver (bas gauche image) ------------------------------------
 BATT_X1, BATT_X2 = 5,  50
 BATT_Y1, BATT_Y2 = 435, 468
@@ -238,6 +268,9 @@ def main():
                 if batt_v >= 0:
                     print(f"[XAVER] Batterie Xaver: {batt_v:.2f}V ({int(batt_v/10.8*100)}%)")
 
+            # Detection statut focus Xaver
+            xaver_status = get_xaver_status(frame)
+
             # Detection cibles
             targets = detect_targets(frame)
 
@@ -251,13 +284,13 @@ def main():
             else:
                 presence = False
 
-            # Envoi LoRa
+            # Envoi LoRa - format: LD45;TX_ID;x;y;d;speed;battery;status
             if now - last_send >= SEND_INTERVAL:
                 last_send = now
                 batt_str = f"{batt_v:.2f}" if batt_v >= 0 else "0.00"
 
                 if presence:
-                    payload = f"LD45;{TX_ID};{last_x};{last_y};{last_d};{last_v};{batt_str}\n"
+                    payload = f"LD45;{TX_ID};{last_x};{last_y};{last_d};{last_v};{batt_str};{xaver_status}\n"
                     print(f"[XAVER] {payload.strip()}")
                     if ser:
                         try:
@@ -265,7 +298,7 @@ def main():
                         except Exception as e:
                             print(f"[XAVER] Erreur serie: {e}")
                 else:
-                    payload = f"LD45;{TX_ID};0;0;0;0;{batt_str}\n"
+                    payload = f"LD45;{TX_ID};0;0;0;0;{batt_str};{xaver_status}\n"
                     print(f"[XAVER] {payload.strip()}")
                     if ser:
                         try:

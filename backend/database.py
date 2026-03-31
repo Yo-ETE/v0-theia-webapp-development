@@ -278,6 +278,10 @@ async def init_tables(db: aiosqlite.Connection):
         await db.execute("ALTER TABLE devices ADD COLUMN needs_update INTEGER DEFAULT 0")
     except Exception:
         pass
+    try:
+        await db.execute("ALTER TABLE devices ADD COLUMN sensor_status TEXT DEFAULT NULL")
+    except Exception:
+        pass
     
     await db.commit()
     try:
