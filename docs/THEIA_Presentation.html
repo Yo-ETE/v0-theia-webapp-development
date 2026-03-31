@@ -1,0 +1,747 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>THEIA Hub Control - Presentation</title>
+  <style>
+    @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap');
+    
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+    
+    body {
+      font-family: 'Inter', sans-serif;
+      background: #0a0a0a;
+      color: #fff;
+      overflow: hidden;
+    }
+    
+    .presentation {
+      width: 100vw;
+      height: 100vh;
+      display: flex;
+      overflow-x: hidden;
+      scroll-snap-type: x mandatory;
+      scroll-behavior: smooth;
+    }
+    
+    .slide {
+      min-width: 100vw;
+      height: 100vh;
+      scroll-snap-align: start;
+      display: flex;
+      flex-direction: column;
+      justify-content: center;
+      align-items: center;
+      padding: 60px;
+      position: relative;
+    }
+    
+    /* Slide backgrounds */
+    .slide-1 { background: linear-gradient(135deg, #0a0a0a 0%, #1a1a2e 100%); }
+    .slide-2 { background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%); }
+    .slide-3 { background: linear-gradient(135deg, #0f3460 0%, #1a1a2e 100%); }
+    .slide-4 { background: linear-gradient(135deg, #1a1a2e 0%, #0f3460 100%); }
+    .slide-5 { background: linear-gradient(135deg, #16213e 0%, #1a1a2e 100%); }
+    .slide-6 { background: linear-gradient(135deg, #1a1a2e 0%, #0a0a0a 100%); }
+    .slide-7 { background: linear-gradient(135deg, #0f3460 0%, #16213e 100%); }
+    .slide-8 { background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%); }
+    .slide-9 { background: linear-gradient(135deg, #16213e 0%, #0f3460 100%); }
+    .slide-10 { background: linear-gradient(135deg, #0a0a0a 0%, #1a1a2e 100%); }
+    
+    .slide-number {
+      position: absolute;
+      bottom: 20px;
+      right: 30px;
+      font-size: 14px;
+      color: rgba(255,255,255,0.3);
+    }
+    
+    h1 {
+      font-size: 3.5rem;
+      font-weight: 700;
+      margin-bottom: 20px;
+      text-align: center;
+    }
+    
+    h2 {
+      font-size: 2.5rem;
+      font-weight: 600;
+      margin-bottom: 40px;
+      color: #10b981;
+    }
+    
+    h3 {
+      font-size: 1.5rem;
+      font-weight: 500;
+      margin-bottom: 20px;
+      color: #6ee7b7;
+    }
+    
+    p {
+      font-size: 1.3rem;
+      line-height: 1.8;
+      max-width: 900px;
+      text-align: center;
+      color: rgba(255,255,255,0.8);
+    }
+    
+    .tagline {
+      font-size: 1.5rem;
+      font-style: italic;
+      color: #10b981;
+      margin-bottom: 40px;
+    }
+    
+    .logo {
+      width: 120px;
+      height: 120px;
+      background: linear-gradient(135deg, #10b981 0%, #059669 100%);
+      border-radius: 24px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      margin-bottom: 30px;
+      box-shadow: 0 20px 60px rgba(16, 185, 129, 0.3);
+    }
+    
+    .logo svg {
+      width: 70px;
+      height: 70px;
+      fill: white;
+    }
+    
+    .features-grid {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 30px;
+      max-width: 1200px;
+    }
+    
+    .feature-card {
+      background: rgba(255,255,255,0.05);
+      border: 1px solid rgba(255,255,255,0.1);
+      border-radius: 16px;
+      padding: 30px;
+      text-align: center;
+      transition: transform 0.3s, box-shadow 0.3s;
+    }
+    
+    .feature-card:hover {
+      transform: translateY(-5px);
+      box-shadow: 0 10px 40px rgba(16, 185, 129, 0.2);
+    }
+    
+    .feature-icon {
+      font-size: 3rem;
+      margin-bottom: 15px;
+    }
+    
+    .feature-card h4 {
+      font-size: 1.2rem;
+      margin-bottom: 10px;
+      color: #10b981;
+    }
+    
+    .feature-card p {
+      font-size: 0.95rem;
+      color: rgba(255,255,255,0.6);
+    }
+    
+    .sensors-table {
+      width: 100%;
+      max-width: 1100px;
+      border-collapse: collapse;
+      margin-top: 20px;
+    }
+    
+    .sensors-table th,
+    .sensors-table td {
+      padding: 15px 20px;
+      text-align: left;
+      border-bottom: 1px solid rgba(255,255,255,0.1);
+    }
+    
+    .sensors-table th {
+      background: rgba(16, 185, 129, 0.2);
+      color: #10b981;
+      font-weight: 600;
+    }
+    
+    .sensors-table tr:hover {
+      background: rgba(255,255,255,0.05);
+    }
+    
+    .architecture-box {
+      background: rgba(0,0,0,0.3);
+      border: 1px solid rgba(255,255,255,0.1);
+      border-radius: 16px;
+      padding: 40px;
+      font-family: monospace;
+      font-size: 1rem;
+      line-height: 1.6;
+      white-space: pre;
+      color: #6ee7b7;
+    }
+    
+    .use-cases {
+      display: grid;
+      grid-template-columns: repeat(2, 1fr);
+      gap: 25px;
+      max-width: 900px;
+    }
+    
+    .use-case {
+      display: flex;
+      align-items: center;
+      gap: 15px;
+      background: rgba(255,255,255,0.05);
+      border-radius: 12px;
+      padding: 20px;
+    }
+    
+    .use-case-icon {
+      font-size: 2rem;
+    }
+    
+    .use-case h4 {
+      font-size: 1.1rem;
+      color: #10b981;
+    }
+    
+    .use-case p {
+      font-size: 0.9rem;
+      text-align: left;
+      margin-top: 5px;
+    }
+    
+    .screenshot-placeholder {
+      width: 100%;
+      max-width: 1000px;
+      height: 500px;
+      background: linear-gradient(135deg, rgba(16, 185, 129, 0.1) 0%, rgba(6, 95, 70, 0.1) 100%);
+      border: 2px dashed rgba(16, 185, 129, 0.3);
+      border-radius: 16px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      color: rgba(255,255,255,0.5);
+      font-size: 1.2rem;
+    }
+    
+    .stats-row {
+      display: flex;
+      gap: 60px;
+      margin-top: 40px;
+    }
+    
+    .stat {
+      text-align: center;
+    }
+    
+    .stat-value {
+      font-size: 3.5rem;
+      font-weight: 700;
+      color: #10b981;
+    }
+    
+    .stat-label {
+      font-size: 1rem;
+      color: rgba(255,255,255,0.6);
+      margin-top: 5px;
+    }
+    
+    .roadmap-timeline {
+      display: flex;
+      gap: 30px;
+      max-width: 1100px;
+    }
+    
+    .roadmap-item {
+      flex: 1;
+      background: rgba(255,255,255,0.05);
+      border-radius: 16px;
+      padding: 25px;
+      border-top: 3px solid #10b981;
+    }
+    
+    .roadmap-item h4 {
+      color: #10b981;
+      margin-bottom: 15px;
+    }
+    
+    .roadmap-item ul {
+      list-style: none;
+      font-size: 0.95rem;
+      color: rgba(255,255,255,0.7);
+    }
+    
+    .roadmap-item li {
+      padding: 5px 0;
+      padding-left: 20px;
+      position: relative;
+    }
+    
+    .roadmap-item li::before {
+      content: ">";
+      position: absolute;
+      left: 0;
+      color: #10b981;
+    }
+    
+    .contact-info {
+      margin-top: 40px;
+      text-align: center;
+    }
+    
+    .contact-info a {
+      color: #10b981;
+      text-decoration: none;
+      font-size: 1.3rem;
+    }
+    
+    .nav-dots {
+      position: fixed;
+      bottom: 30px;
+      left: 50%;
+      transform: translateX(-50%);
+      display: flex;
+      gap: 10px;
+      z-index: 100;
+    }
+    
+    .nav-dot {
+      width: 12px;
+      height: 12px;
+      border-radius: 50%;
+      background: rgba(255,255,255,0.3);
+      cursor: pointer;
+      transition: background 0.3s;
+    }
+    
+    .nav-dot.active {
+      background: #10b981;
+    }
+    
+    .nav-arrows {
+      position: fixed;
+      bottom: 30px;
+      right: 30px;
+      display: flex;
+      gap: 10px;
+      z-index: 100;
+    }
+    
+    .nav-arrow {
+      width: 40px;
+      height: 40px;
+      border-radius: 50%;
+      background: rgba(255,255,255,0.1);
+      border: 1px solid rgba(255,255,255,0.2);
+      color: white;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      transition: background 0.3s;
+    }
+    
+    .nav-arrow:hover {
+      background: rgba(16, 185, 129, 0.3);
+    }
+
+    @media print {
+      .presentation {
+        display: block;
+        overflow: visible;
+      }
+      .slide {
+        page-break-after: always;
+        height: 100vh;
+        min-width: auto;
+      }
+      .nav-dots, .nav-arrows {
+        display: none;
+      }
+    }
+  </style>
+</head>
+<body>
+  <div class="presentation" id="presentation">
+    
+    <!-- Slide 1: Title -->
+    <div class="slide slide-1">
+      <div class="logo">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <circle cx="12" cy="12" r="10"/>
+          <circle cx="12" cy="12" r="6"/>
+          <circle cx="12" cy="12" r="2"/>
+          <line x1="12" y1="2" x2="12" y2="4"/>
+          <line x1="12" y1="20" x2="12" y2="22"/>
+          <line x1="2" y1="12" x2="4" y2="12"/>
+          <line x1="20" y1="12" x2="22" y2="12"/>
+        </svg>
+      </div>
+      <h1>THEIA</h1>
+      <p class="tagline">"La ou l'oeil est aveugle, l'onde revele"</p>
+      <p>Systeme de surveillance terrain par capteurs radar LoRa</p>
+      <div class="stats-row">
+        <div class="stat">
+          <div class="stat-value">4</div>
+          <div class="stat-label">Types de capteurs</div>
+        </div>
+        <div class="stat">
+          <div class="stat-value">16m</div>
+          <div class="stat-label">Portee max</div>
+        </div>
+        <div class="stat">
+          <div class="stat-value">868</div>
+          <div class="stat-label">MHz LoRa</div>
+        </div>
+      </div>
+      <div class="slide-number">1 / 10</div>
+    </div>
+    
+    <!-- Slide 2: Problem -->
+    <div class="slide slide-2">
+      <h2>Le probleme</h2>
+      <div class="use-cases">
+        <div class="use-case">
+          <div class="use-case-icon">📷</div>
+          <div>
+            <h4>Cameras limitees</h4>
+            <p>Inefficaces dans l'obscurite, a travers les murs, ou dans des conditions difficiles</p>
+          </div>
+        </div>
+        <div class="use-case">
+          <div class="use-case-icon">🔒</div>
+          <div>
+            <h4>Vie privee</h4>
+            <p>Les cameras posent des problemes ethiques et reglementaires (RGPD)</p>
+          </div>
+        </div>
+        <div class="use-case">
+          <div class="use-case-icon">🏠</div>
+          <div>
+            <h4>Surveillance discrete</h4>
+            <p>Besoin de detecter sans etre vu, sans alerter</p>
+          </div>
+        </div>
+        <div class="use-case">
+          <div class="use-case-icon">🧱</div>
+          <div>
+            <h4>Through-wall</h4>
+            <p>Localiser des personnes derriere des murs opaques</p>
+          </div>
+        </div>
+      </div>
+      <div class="slide-number">2 / 10</div>
+    </div>
+    
+    <!-- Slide 3: Solution -->
+    <div class="slide slide-3">
+      <h2>La solution THEIA</h2>
+      <p>Un systeme complet de surveillance radar deployable en quelques minutes</p>
+      <div class="features-grid" style="margin-top: 40px;">
+        <div class="feature-card">
+          <div class="feature-icon">📡</div>
+          <h4>Capteurs Radar</h4>
+          <p>Detection a travers murs, portes, cloisons</p>
+        </div>
+        <div class="feature-card">
+          <div class="feature-icon">📶</div>
+          <h4>Communication LoRa</h4>
+          <p>Longue portee, faible consommation</p>
+        </div>
+        <div class="feature-card">
+          <div class="feature-icon">🗺️</div>
+          <h4>Carte interactive</h4>
+          <p>Visualisation temps reel sur plan</p>
+        </div>
+        <div class="feature-card">
+          <div class="feature-icon">🔥</div>
+          <h4>Heatmap</h4>
+          <p>Analyse des zones de passage</p>
+        </div>
+        <div class="feature-card">
+          <div class="feature-icon">🔔</div>
+          <h4>Alertes</h4>
+          <p>Push, SMS, sonore en temps reel</p>
+        </div>
+        <div class="feature-card">
+          <div class="feature-icon">🔋</div>
+          <h4>Autonome</h4>
+          <p>Capteurs sur batterie, hub sur Pi</p>
+        </div>
+      </div>
+      <div class="slide-number">3 / 10</div>
+    </div>
+    
+    <!-- Slide 4: Architecture -->
+    <div class="slide slide-4">
+      <h2>Architecture</h2>
+      <div class="architecture-box">
++------------------+     LoRa 868MHz      +------------------+
+|   Capteurs TX    | ------------------> |   Recepteur RX   |
+|  (LD2450/C4001/  |                      |  (Heltec ESP32)  |
+|   Gravity/XAVER) |                      +--------+---------+
++------------------+                               |
+                                                   | USB
+                                                   v
+                                          +------------------+
+                                          |  Raspberry Pi 5  |
+                                          |                  |
+                                          |   FastAPI :8000  |
+                                          |   Next.js :3000  |
+                                          |   SQLite DB      |
+                                          +--------+---------+
+                                                   |
+                                              Wi-Fi / VPN
+                                                   |
+                                                   v
+                                          +------------------+
+                                          |  Navigateur Web  |
+                                          +------------------+
+      </div>
+      <div class="slide-number">4 / 10</div>
+    </div>
+    
+    <!-- Slide 5: Sensors -->
+    <div class="slide slide-5">
+      <h2>Capteurs supportes</h2>
+      <table class="sensors-table">
+        <tr>
+          <th>Capteur</th>
+          <th>Type</th>
+          <th>FOV</th>
+          <th>Portee</th>
+          <th>Particularite</th>
+        </tr>
+        <tr>
+          <td><strong>LD2450</strong></td>
+          <td>mmWave</td>
+          <td>120°</td>
+          <td>6m</td>
+          <td>Position X/Y, multi-cibles (3)</td>
+        </tr>
+        <tr>
+          <td><strong>C4001</strong></td>
+          <td>mmWave</td>
+          <td>60°</td>
+          <td>8m</td>
+          <td>Profondeur, detection passage</td>
+        </tr>
+        <tr>
+          <td><strong>Gravity MW V2</strong></td>
+          <td>Micro-ondes</td>
+          <td>15-120°</td>
+          <td>2-16m</td>
+          <td>Presence ON/OFF, configurable</td>
+        </tr>
+        <tr>
+          <td><strong>XAVER 400</strong></td>
+          <td>Through-wall</td>
+          <td>120°</td>
+          <td>8m</td>
+          <td>Penetration murs epais</td>
+        </tr>
+      </table>
+      <div class="slide-number">5 / 10</div>
+    </div>
+    
+    <!-- Slide 6: Dashboard Screenshot -->
+    <div class="slide slide-6">
+      <h2>Dashboard</h2>
+      <p style="margin-bottom: 30px;">Monitoring systeme et alertes en temps reel</p>
+      <div class="screenshot-placeholder">
+        [ Capture ecran Dashboard ]<br><br>
+        - Status Raspberry Pi (CPU, RAM, Temp)<br>
+        - Connexions (Wi-Fi, GPS, LoRa)<br>
+        - Alertes actives<br>
+        - Graphique batterie des capteurs
+      </div>
+      <div class="slide-number">6 / 10</div>
+    </div>
+    
+    <!-- Slide 7: Map Screenshot -->
+    <div class="slide slide-7">
+      <h2>Carte interactive</h2>
+      <p style="margin-bottom: 30px;">Visualisation des detections sur plan de batiment</p>
+      <div class="screenshot-placeholder">
+        [ Capture ecran Carte Mission ]<br><br>
+        - Plan georeferencies<br>
+        - Zones de detection<br>
+        - Position des capteurs avec FOV<br>
+        - Detections temps reel<br>
+        - Heatmap d'activite
+      </div>
+      <div class="slide-number">7 / 10</div>
+    </div>
+    
+    <!-- Slide 8: Use Cases -->
+    <div class="slide slide-8">
+      <h2>Cas d'usage</h2>
+      <div class="features-grid">
+        <div class="feature-card">
+          <div class="feature-icon">🏢</div>
+          <h4>Surveillance de batiments</h4>
+          <p>Detection d'intrusion, comptage, flux</p>
+        </div>
+        <div class="feature-card">
+          <div class="feature-icon">🎯</div>
+          <h4>Operations tactiques</h4>
+          <p>Reconnaissance avant intervention</p>
+        </div>
+        <div class="feature-card">
+          <div class="feature-icon">🆘</div>
+          <h4>Recherche et sauvetage</h4>
+          <p>Localisation dans les decombres</p>
+        </div>
+        <div class="feature-card">
+          <div class="feature-icon">🏠</div>
+          <h4>Domotique avancee</h4>
+          <p>Presence intelligente, automatisation</p>
+        </div>
+        <div class="feature-card">
+          <div class="feature-icon">👴</div>
+          <h4>Maintien a domicile</h4>
+          <p>Detection chute, activite anormale</p>
+        </div>
+        <div class="feature-card">
+          <div class="feature-icon">📊</div>
+          <h4>Etudes comportementales</h4>
+          <p>Analyse des flux, heatmaps</p>
+        </div>
+      </div>
+      <div class="slide-number">8 / 10</div>
+    </div>
+    
+    <!-- Slide 9: Roadmap -->
+    <div class="slide slide-9">
+      <h2>Roadmap</h2>
+      <div class="roadmap-timeline">
+        <div class="roadmap-item">
+          <h4>v1.0 (Actuel)</h4>
+          <ul>
+            <li>4 types de capteurs</li>
+            <li>Carte interactive</li>
+            <li>Heatmap temps reel</li>
+            <li>Alertes push/SMS</li>
+            <li>Flash firmware webapp</li>
+          </ul>
+        </div>
+        <div class="roadmap-item">
+          <h4>v1.1 (Prevu)</h4>
+          <ul>
+            <li>Support multi-etages</li>
+            <li>Triangulation multi-TX</li>
+            <li>Auto-detection pieces</li>
+            <li>Timeline interactive</li>
+          </ul>
+        </div>
+        <div class="roadmap-item">
+          <h4>v2.0 (Futur)</h4>
+          <ul>
+            <li>Intelligence analytique</li>
+            <li>Detection anomalies ML</li>
+            <li>Vue 3D isometrique</li>
+            <li>Mode cloud multi-sites</li>
+          </ul>
+        </div>
+      </div>
+      <div class="slide-number">9 / 10</div>
+    </div>
+    
+    <!-- Slide 10: Contact -->
+    <div class="slide slide-10">
+      <div class="logo">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <circle cx="12" cy="12" r="10"/>
+          <circle cx="12" cy="12" r="6"/>
+          <circle cx="12" cy="12" r="2"/>
+          <line x1="12" y1="2" x2="12" y2="4"/>
+          <line x1="12" y1="20" x2="12" y2="22"/>
+          <line x1="2" y1="12" x2="4" y2="12"/>
+          <line x1="20" y1="12" x2="22" y2="12"/>
+        </svg>
+      </div>
+      <h1>THEIA Hub Control</h1>
+      <p class="tagline">"La ou l'oeil est aveugle, l'onde revele"</p>
+      <p>Systeme de surveillance terrain nouvelle generation</p>
+      <div class="contact-info">
+        <p style="margin-bottom: 20px;"><strong>Contact</strong></p>
+        <a href="mailto:theiahub.contact@gmail.com">theiahub.contact@gmail.com</a>
+        <p style="margin-top: 30px; font-size: 1rem; color: rgba(255,255,255,0.5);">
+          (c) 2026 Yoann ETE - Tous droits reserves
+        </p>
+      </div>
+      <div class="slide-number">10 / 10</div>
+    </div>
+    
+  </div>
+  
+  <!-- Navigation -->
+  <div class="nav-dots" id="navDots"></div>
+  <div class="nav-arrows">
+    <button class="nav-arrow" onclick="prevSlide()">&#8592;</button>
+    <button class="nav-arrow" onclick="nextSlide()">&#8594;</button>
+  </div>
+  
+  <script>
+    const presentation = document.getElementById('presentation');
+    const slides = document.querySelectorAll('.slide');
+    const navDots = document.getElementById('navDots');
+    let currentSlide = 0;
+    
+    // Create nav dots
+    slides.forEach((_, i) => {
+      const dot = document.createElement('div');
+      dot.className = 'nav-dot' + (i === 0 ? ' active' : '');
+      dot.onclick = () => goToSlide(i);
+      navDots.appendChild(dot);
+    });
+    
+    function updateDots() {
+      document.querySelectorAll('.nav-dot').forEach((dot, i) => {
+        dot.className = 'nav-dot' + (i === currentSlide ? ' active' : '');
+      });
+    }
+    
+    function goToSlide(n) {
+      currentSlide = n;
+      slides[n].scrollIntoView({ behavior: 'smooth' });
+      updateDots();
+    }
+    
+    function nextSlide() {
+      if (currentSlide < slides.length - 1) {
+        goToSlide(currentSlide + 1);
+      }
+    }
+    
+    function prevSlide() {
+      if (currentSlide > 0) {
+        goToSlide(currentSlide - 1);
+      }
+    }
+    
+    // Keyboard navigation
+    document.addEventListener('keydown', (e) => {
+      if (e.key === 'ArrowRight' || e.key === ' ') nextSlide();
+      if (e.key === 'ArrowLeft') prevSlide();
+    });
+    
+    // Update on scroll
+    presentation.addEventListener('scroll', () => {
+      const scrollLeft = presentation.scrollLeft;
+      const slideWidth = window.innerWidth;
+      currentSlide = Math.round(scrollLeft / slideWidth);
+      updateDots();
+    });
+  </script>
+</body>
+</html>
