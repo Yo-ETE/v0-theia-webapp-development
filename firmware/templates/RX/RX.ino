@@ -2,6 +2,7 @@
 // Affichage 3 TX par page, defilement auto toutes les 4s
 // Bouton PRG : page suivante manuelle
 // Fix presence : timeout strict par TX
+// Support XAVER status (ready/calibrating/error)
 
 #include <Arduino.h>
 #include "LoRaWan_APP.h"
@@ -31,6 +32,7 @@
 
 #define MAX_TX              8
 #define TX_ID_LEN           8
+#define STATUS_LEN          12
 #define TX_PER_PAGE         3
 #define PAGE_AUTO_MS        4000UL   // defilement auto toutes les 4s
 // =============================================
@@ -117,6 +119,7 @@ struct TxState {
   float txVoltFilt = NAN;
   int txPctShown = -1;
   int16_t rssi = -120;
+  char status[STATUS_LEN] = {0};  // XAVER status: ready/calibrating/error
 };
 
 static TxState txs[MAX_TX];
@@ -168,11 +171,12 @@ static int getPageTxIndices(int page, int* out, int maxOut) {
 }
 
 // ========= Parser LD45 =========
-static bool parseLD45(const char* s, char* outTxId, int& x, int& y, int& d, int& v, float& batt) {
+// Format: LD45;TX_ID;x;y;d;v;batt;status
+static bool parseLD45(const char* s, char* outTxId, int& x, int& y, int& d, int& v, float& batt, char* outStatus) {
   char buf[BUFFER_SIZE];
   strncpy(buf, s, BUFFER_SIZE-1);
   buf[BUFFER_SIZE-1] = '\0';
-  const int MAXP = 8;
+  const int MAXP = 9;
   char* parts[MAXP];
   int n = 0;
   char* tok = strtok(buf, ";");
@@ -181,6 +185,7 @@ static bool parseLD45(const char* s, char* outTxId, int& x, int& y, int& d, int&
 
   batt = NAN;
   outTxId[0] = '\0';
+  outStatus[0] = '\0';
 
   auto isInt = [](const char* p)->bool {
     if (!p || !*p) return false;
@@ -205,11 +210,21 @@ static bool parseLD45(const char* s, char* outTxId, int& x, int& y, int& d, int&
     }
     return true;
   }
-  if (n >= 7) {
+  if (n == 7) {
     strncpy(outTxId, parts[1], TX_ID_LEN-1);
     outTxId[TX_ID_LEN-1] = '\0';
     x=atoi(parts[2]); y=atoi(parts[3]); d=atoi(parts[4]); v=atoi(parts[5]);
     batt=atof(parts[6]);
+    return true;
+  }
+  if (n >= 8) {
+    // Full format with XAVER status: LD45;TX_ID;x;y;d;v;batt;status
+    strncpy(outTxId, parts[1], TX_ID_LEN-1);
+    outTxId[TX_ID_LEN-1] = '\0';
+    x=atoi(parts[2]); y=atoi(parts[3]); d=atoi(parts[4]); v=atoi(parts[5]);
+    batt=atof(parts[6]);
+    strncpy(outStatus, parts[7], STATUS_LEN-1);
+    outStatus[STATUS_LEN-1] = '\0';
     return true;
   }
   return false;
@@ -291,16 +306,23 @@ void loop() {
     everReceived = true;
 
     char txid[TX_ID_LEN] = {0};
+    char status[STATUS_LEN] = {0};
     int x=0, y=0, d=0, v=0;
     float vbattTX = NAN;
 
-    if (parseLD45(rxpacket, txid, x, y, d, v, vbattTX)) {
+    if (parseLD45(rxpacket, txid, x, y, d, v, vbattTX, status)) {
       if (txid[0] == '\0') strncpy(txid, "LEG", TX_ID_LEN-1);
 
       int idx = findOrAllocTx(txid);
       TxState &T = txs[idx];
       T.lastSeenMs = now;
       T.rssi = Rssi;
+
+      // Store XAVER status if present
+      if (status[0] != '\0') {
+        strncpy(T.status, status, STATUS_LEN-1);
+        T.status[STATUS_LEN-1] = '\0';
+      }
 
       bool isGravityMW = (x==0 && y==0 && d==1 && v==0);
       bool isAbsence   = (x==0 && y==0 && d==0 && v==0);
@@ -338,10 +360,17 @@ void loop() {
         T.batt = vbattTX;
       }
 
-      // d brut (pas T.d) pour que le Pi recoive d=1 sur gravity_mw
-      Serial.printf("[RX] %s | x=%d y=%d d=%d v=%d rssi=%d battTX=%s\n",
-                    T.id, x, y, d, v, T.rssi,
-                    isnan(vbattTX) ? "--" : String(vbattTX,2).c_str());
+      // Transmit to Pi with status field if present (for XAVER)
+      if (status[0] != '\0') {
+        Serial.printf("[RX] %s | x=%d y=%d d=%d v=%d rssi=%d battTX=%s status=%s\n",
+                      T.id, x, y, d, v, T.rssi,
+                      isnan(vbattTX) ? "--" : String(vbattTX,2).c_str(),
+                      status);
+      } else {
+        Serial.printf("[RX] %s | x=%d y=%d d=%d v=%d rssi=%d battTX=%s\n",
+                      T.id, x, y, d, v, T.rssi,
+                      isnan(vbattTX) ? "--" : String(vbattTX,2).c_str());
+      }
     }
     Radio.Rx(0);
   }
@@ -393,6 +422,12 @@ void loop() {
             line1 += String(T.d) + "cm " + String(T.dir);
           else
             line1 += "MW";
+        }
+        // Add XAVER status indicator
+        if (T.status[0] != '\0') {
+          if (strcmp(T.status, "ready") == 0) line1 += " [OK]";
+          else if (strcmp(T.status, "calibrating") == 0) line1 += " [..]";
+          else if (strcmp(T.status, "error") == 0) line1 += " [!!]";
         }
         screen.drawString(0, yBase, line1);
 

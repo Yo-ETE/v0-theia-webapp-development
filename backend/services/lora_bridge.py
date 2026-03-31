@@ -321,11 +321,18 @@ class PortReader:
             self.packets_err += 1
             return
 
+        # Extract XAVER sensor status if present
+        sensor_status = kv.get("status", None)
+
         self.packets_ok += 1
         angle = math.degrees(math.atan2(x, y)) if (x != 0 or y != 0) else 0.0
 
         # Détection type capteur — gravity_mw via marqueur d=1 ou presence= explicite
-        if has_presence_only:
+        if sensor_status in ("ready", "calibrating", "error"):
+            # XAVER 400 through-wall radar with status
+            sensor_type = "xaver"
+            presence = (x != 0 or y != 0) and d > 0
+        elif has_presence_only:
             presence = kv.get("presence", "0") == "1"
             sensor_type = "gravity_mw"
         elif x == 0 and y == 0 and d == 1:
@@ -348,6 +355,7 @@ class PortReader:
             tx_id=tx_id, sensor_type=sensor_type,
             x=x, y=y, d=d, v=v,
             angle=angle, presence=presence, vbatt=vbatt,
+            sensor_status=sensor_status,
         )
 
     # ------------------------------------------------------------------ common handler
