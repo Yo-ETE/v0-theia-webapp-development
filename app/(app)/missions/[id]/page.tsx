@@ -351,7 +351,7 @@ export default function MissionDetailPage() {
     })
   }, [events])
 
-  // ����─ Bearing grouping: segments facing the same direction share the same face label ──
+  // �����─ Bearing grouping: segments facing the same direction share the same face label ──
   // Uses FULL 0-360 bearing so north-facing (0) and south-facing (180) are DIFFERENT faces.
   // Returns e.g. { A: [0,3], B: [1,4], C: [2,5] } meaning polygon edges 0&3 are "A", etc.
   const groupSidesByBearing = useCallback((polygon: [number, number][]) => {
@@ -1785,8 +1785,8 @@ export default function MissionDetailPage() {
                               <span className="text-[8px] font-medium px-1.5 py-0.5 rounded bg-muted text-muted-foreground">
                                 {{ microwave_tx: "LD2450", tx_microwave: "LD2450", c4001: "C4001", gravity_mw: "MW V2", xaver: "XAVER" }[d.type ?? ""] ?? "TX"}
                               </span>
-                              {/* XAVER status indicator */}
-                              {d.type === "xaver" && d.sensor_status && (
+                              {/* XAVER status indicator - show if sensor_status exists */}
+                              {d.sensor_status && (
                                 <span 
                                   className={cn(
                                     "h-2 w-2 rounded-full",

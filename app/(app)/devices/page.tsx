@@ -428,8 +428,8 @@ export default function DevicesPage() {
                             <div className="flex items-center gap-2">
                               <Signal className={cn("h-3 w-3", sCfg.className.includes("success") ? "text-success" : sCfg.className.includes("destructive") ? "text-destructive" : "text-muted-foreground")} />
                               {device.name}
-                              {/* XAVER status indicator */}
-                              {device.type === "xaver" && device.sensor_status && (
+                              {/* XAVER status indicator - show if sensor_status exists */}
+                              {device.sensor_status && (
                                 <span 
                                   className={cn(
                                     "h-2.5 w-2.5 rounded-full border",
