@@ -4,6 +4,7 @@ import { useState, useEffect, useCallback, useRef, useMemo } from "react"
 import { Play, Pause, SkipBack, SkipForward, X } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { useEventsRange } from "@/hooks/use-api"
+import { formatTime } from "@/lib/format"
 import type { DetectionEvent } from "@/lib/types"
 
 interface LiveDetection {
@@ -260,13 +261,13 @@ export function DetectionTimelapse({ missionId, onDetection, onClose }: Detectio
             />
             <div className="flex items-center justify-between mt-1">
               <span className="text-[10px] font-mono text-muted-foreground">
-                {events[0]?.timestamp ? new Date(events[0].timestamp).toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit", second: "2-digit" }) : "--"}
+                {events[0]?.timestamp ? formatTime(events[0].timestamp) : "--"}
               </span>
               <span className="text-xs font-mono font-bold text-primary">
-                {currentTs ? currentTs.toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit", second: "2-digit" }) : "--"}
+                {currentTs ? currentTs.toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit", second: "2-digit", timeZone: "Europe/Paris" }) : "--"}
               </span>
               <span className="text-[10px] font-mono text-muted-foreground">
-                {events[events.length - 1]?.timestamp ? new Date(events[events.length - 1].timestamp).toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit", second: "2-digit" }) : "--"}
+                {events[events.length - 1]?.timestamp ? formatTime(events[events.length - 1].timestamp) : "--"}
               </span>
             </div>
           </div>
