@@ -99,19 +99,50 @@ export const eventTypeConfig: Record<
 
 // ─── Formatters ──────────────────────────────────────────────────
 
+// Parse timestamp assuming it's in local Paris time (no timezone suffix)
+function parseLocalTimestamp(ts: string): Date {
+  // If timestamp has no timezone info (e.g. "2025-04-02 10:07:20"), treat as Europe/Paris local time
+  // by appending the offset. Otherwise, parse as-is.
+  if (!ts.includes("Z") && !ts.includes("+") && !ts.includes("T")) {
+    // Format: "2025-04-02 10:07:20" - convert to ISO with explicit Paris interpretation
+    // We create a date assuming it's already in local time
+    const d = new Date(ts.replace(" ", "T"))
+    // The date was parsed as UTC, but it's actually local time
+    // So we need to NOT convert it - just use the values directly
+    return d
+  }
+  return new Date(ts)
+}
+
 export function formatDate(iso: string): string {
+  // For timestamps without timezone, display as-is (they're already in local time)
+  if (!iso.includes("Z") && !iso.includes("+")) {
+    const parts = iso.split(/[- :]/)
+    if (parts.length >= 3) {
+      return `${parts[2]}/${parts[1]}/${parts[0]}`
+    }
+  }
   return new Date(iso).toLocaleDateString("fr-FR", {
     day: "2-digit",
     month: "2-digit",
     year: "numeric",
+    timeZone: "Europe/Paris",
   })
 }
 
 export function formatTime(iso: string): string {
+  // For timestamps without timezone, display as-is (they're already in local time)
+  if (!iso.includes("Z") && !iso.includes("+")) {
+    const parts = iso.split(/[- :]/)
+    if (parts.length >= 6) {
+      return `${parts[3]}:${parts[4]}:${parts[5]}`
+    }
+  }
   return new Date(iso).toLocaleTimeString("fr-FR", {
     hour: "2-digit",
     minute: "2-digit",
     second: "2-digit",
+    timeZone: "Europe/Paris",
   })
 }
 
