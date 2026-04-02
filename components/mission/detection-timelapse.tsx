@@ -71,6 +71,39 @@ function parseEventToDetection(ev: DetectionEvent): LiveDetection | null {
   }
 }
 
+// Activity histogram: group events by time slots
+function buildActivityHistogram(events: DetectionEvent[], slots: number = 48): { slot: number; count: number; label: string; pct: number }[] {
+  if (!events.length) return []
+  
+  // Get time range
+  const timestamps = events.map(e => new Date(e.timestamp.replace(" ", "T")).getTime()).filter(t => !isNaN(t))
+  if (!timestamps.length) return []
+  
+  const minTs = Math.min(...timestamps)
+  const maxTs = Math.max(...timestamps)
+  const range = maxTs - minTs || 1
+  const slotDuration = range / slots
+  
+  // Count events per slot
+  const counts = new Array(slots).fill(0)
+  timestamps.forEach(ts => {
+    const idx = Math.min(slots - 1, Math.floor((ts - minTs) / slotDuration))
+    counts[idx]++
+  })
+  
+  const maxCount = Math.max(...counts, 1)
+  
+  return counts.map((count, i) => {
+    const slotTs = new Date(minTs + i * slotDuration)
+    return {
+      slot: i,
+      count,
+      label: slotTs.toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit", timeZone: "Europe/Paris" }),
+      pct: (count / maxCount) * 100,
+    }
+  })
+}
+
 export function DetectionTimelapse({ missionId, onDetection, onClose }: DetectionTimelapseProps) {
   // Time range: default to last 1 hour (local time for datetime-local inputs)
   const now = new Date()
@@ -249,6 +282,37 @@ export function DetectionTimelapse({ missionId, onDetection, onClose }: Detectio
       {/* Playback controls */}
       {loaded && events.length > 0 && (
         <div className="space-y-3">
+          {/* Activity histogram */}
+          {(() => {
+            const histogram = buildActivityHistogram(events, 48)
+            if (!histogram.length) return null
+            const currentSlot = Math.floor((currentIdx / events.length) * histogram.length)
+            return (
+              <div className="mb-3">
+                <div className="flex items-center justify-between mb-1">
+                  <span className="text-[10px] font-mono text-muted-foreground">ACTIVITY</span>
+                  <span className="text-[10px] font-mono text-muted-foreground">
+                    {events.length} detections
+                  </span>
+                </div>
+                <div className="flex items-end gap-[1px] h-8 bg-muted/20 rounded overflow-hidden">
+                  {histogram.map((h, i) => (
+                    <div
+                      key={i}
+                      className={`flex-1 transition-colors ${i === currentSlot ? "bg-primary" : h.count > 0 ? "bg-primary/40" : "bg-muted/30"}`}
+                      style={{ height: `${Math.max(h.count > 0 ? 10 : 0, h.pct)}%` }}
+                      title={`${h.label}: ${h.count} detections`}
+                    />
+                  ))}
+                </div>
+                <div className="flex justify-between mt-0.5">
+                  <span className="text-[8px] font-mono text-muted-foreground">{histogram[0]?.label}</span>
+                  <span className="text-[8px] font-mono text-muted-foreground">{histogram[histogram.length - 1]?.label}</span>
+                </div>
+              </div>
+            )
+          })()}
+
           {/* Timeline scrubber */}
           <div>
             <input

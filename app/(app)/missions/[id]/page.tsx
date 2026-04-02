@@ -351,7 +351,7 @@ export default function MissionDetailPage() {
     })
   }, [events])
 
-  // �����─ Bearing grouping: segments facing the same direction share the same face label ──
+  // ������─ Bearing grouping: segments facing the same direction share the same face label ──
   // Uses FULL 0-360 bearing so north-facing (0) and south-facing (180) are DIFFERENT faces.
   // Returns e.g. { A: [0,3], B: [1,4], C: [2,5] } meaning polygon edges 0&3 are "A", etc.
   const groupSidesByBearing = useCallback((polygon: [number, number][]) => {
@@ -2129,6 +2129,68 @@ export default function MissionDetailPage() {
                 </div>
               </CardHeader>
               <CardContent>
+                {/* Activity histogram - always visible when there are events */}
+                {eventList.length > 0 && (() => {
+                  // Build hourly activity histogram
+                  const hourlyBuckets: Record<string, number> = {}
+                  let minTs: Date | null = null
+                  let maxTs: Date | null = null
+                  
+                  for (const evt of eventList) {
+                    const ts = new Date(evt.timestamp?.replace(" ", "T") || "")
+                    if (isNaN(ts.getTime())) continue
+                    if (!minTs || ts < minTs) minTs = ts
+                    if (!maxTs || ts > maxTs) maxTs = ts
+                    const hourKey = ts.toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit", timeZone: "Europe/Paris" })
+                    hourlyBuckets[hourKey] = (hourlyBuckets[hourKey] || 0) + 1
+                  }
+                  
+                  if (!minTs || !maxTs) return null
+                  
+                  // Create 24 slots between min and max time
+                  const slots: { label: string; count: number; pct: number }[] = []
+                  const range = maxTs.getTime() - minTs.getTime()
+                  const slotDuration = Math.max(range / 24, 60000) // at least 1 minute per slot
+                  let maxCount = 1
+                  
+                  for (let i = 0; i < 24; i++) {
+                    const slotTs = new Date(minTs.getTime() + i * slotDuration)
+                    const label = slotTs.toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit", timeZone: "Europe/Paris" })
+                    const count = hourlyBuckets[label] || 0
+                    if (count > maxCount) maxCount = count
+                    slots.push({ label, count, pct: 0 })
+                  }
+                  
+                  // Calculate percentages
+                  slots.forEach(s => s.pct = (s.count / maxCount) * 100)
+                  
+                  return (
+                    <div className="mb-4 p-3 rounded-lg bg-muted/20 border border-border/30">
+                      <div className="flex items-center justify-between mb-2">
+                        <span className="text-[10px] font-mono text-muted-foreground uppercase tracking-wider">Activity Timeline</span>
+                        <span className="text-[10px] font-mono text-muted-foreground">
+                          {formatTime(minTs.toISOString())} - {formatTime(maxTs.toISOString())}
+                        </span>
+                      </div>
+                      <div className="flex items-end gap-[2px] h-10 bg-background/50 rounded overflow-hidden">
+                        {slots.map((s, i) => (
+                          <div
+                            key={i}
+                            className={`flex-1 transition-colors ${s.count > 0 ? "bg-primary/60 hover:bg-primary" : "bg-muted/20"}`}
+                            style={{ height: `${Math.max(s.count > 0 ? 15 : 2, s.pct)}%` }}
+                            title={`${s.label}: ${s.count} detections`}
+                          />
+                        ))}
+                      </div>
+                      <div className="flex justify-between mt-1">
+                        <span className="text-[8px] font-mono text-muted-foreground">{slots[0]?.label}</span>
+                        <span className="text-[8px] font-mono text-primary font-medium">{eventList.length} total</span>
+                        <span className="text-[8px] font-mono text-muted-foreground">{slots[slots.length - 1]?.label}</span>
+                      </div>
+                    </div>
+                  )
+                })()}
+
                 {/* Zone statistics + distance distribution when heatmap is active */}
                 {heatmapMode && eventList.length > 0 && (() => {
                   const BANDS = [20, 40, 60, 80, 100, 150, 250, 600]
