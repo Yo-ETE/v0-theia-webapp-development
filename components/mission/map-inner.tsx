@@ -990,13 +990,7 @@ export default function MapInner({
 
       const sg = (evt.device_id ? sensorByDevice[evt.device_id] : null)
         ?? sensorByZone[evt.zone_id ?? ""]?.[0]
-      if (!sg) {
-        // Debug: log why we skip events
-        if (sensorType === "xaver" && events.indexOf(evt) < 5) {
-          console.log("[v0] XAVER event skipped - device_id:", evt.device_id, "zone_id:", evt.zone_id, "sensorByDevice keys:", Object.keys(sensorByDevice))
-        }
-        continue
-      }
+      if (!sg) continue
 
       const rM: [number, number] = [-sg.leftM[0], -sg.leftM[1]]
       const x_cm = Number(p.x ?? 0)
@@ -1008,10 +1002,6 @@ export default function MapInner({
         const xm = x_cm / 100
         const ym = y_cm / 100
         ptM = [sg.sensorM[0] + ym * sg.normalM[0] + xm * rM[0], sg.sensorM[1] + ym * sg.normalM[1] + xm * rM[1]]
-        // Debug first XAVER event
-        if (sensorType === "xaver" && events.indexOf(evt) < 3) {
-          console.log("[v0] XAVER projection:", { x_cm, y_cm, dm, sensorM: sg.sensorM, normalM: sg.normalM, rM, ptM })
-        }
       } else {
         ptM = [sg.sensorM[0] + dm * sg.normalM[0], sg.sensorM[1] + dm * sg.normalM[1]]
       }
@@ -1129,6 +1119,15 @@ export default function MapInner({
       const evtAngle = Number(p.angle ?? 0)
       const hasAngle = !isDepthOnly && evtAngle !== 0
 
+      // Check for triangulation opportunity with simultaneous distance-based detections
+      const ts = new Date(evt.timestamp).getTime()
+      const bucket = Math.floor(ts / TIME_WINDOW_MS) * TIME_WINDOW_MS
+      const simultaneousEvents = [
+        ...(distanceEventsByTime[bucket] ?? []),
+        ...(distanceEventsByTime[bucket - TIME_WINDOW_MS] ?? []),
+        ...(distanceEventsByTime[bucket + TIME_WINDOW_MS] ?? [])
+      ].filter(de => de.deviceId !== evt.device_id)
+
       let ptM: [number, number]
 
       if (hasRealXY) {
@@ -1165,8 +1164,44 @@ export default function MapInner({
       const gk = `${gx},${gy}`
       gridCounts[gk] = (gridCounts[gk] ?? 0) + 1
 
+      // TRIANGULATION: If other sensors detected simultaneously, add weighted centroid point
+      let triangulationBoost = 1.0
+      if (simultaneousEvents.length > 0) {
+        // Calculate average position of all simultaneous detections (including this one)
+        let sumX = ptM[0], sumY = ptM[1], count = 1
+        for (const de of simultaneousEvents) {
+          // Check if detection is reasonably close (within 10m)
+          const dx = de.ptM[0] - ptM[0]
+          const dy = de.ptM[1] - ptM[1]
+          const dist = Math.sqrt(dx * dx + dy * dy)
+          if (dist < 10) { // 10 meters max distance for triangulation
+            sumX += de.ptM[0]
+            sumY += de.ptM[1]
+            count++
+          }
+        }
+        
+        if (count > 1) {
+          // Multiple sensors agree! Add heavily weighted centroid point
+          const centroidM: [number, number] = [sumX / count, sumY / count]
+          const centroidLL = toLatLon(centroidM)
+          // Weight based on number of corroborating sensors
+          const triangWeight = count * 2.0
+          pts.push({ lat: centroidLL[0], lon: centroidLL[1], weight: triangWeight })
+          
+          // Also boost the original point weight
+          triangulationBoost = 1.5
+          
+          // Snap centroid to grid too
+          const cgx = Math.round(centroidM[0] * 20) / 20
+          const cgy = Math.round(centroidM[1] * 20) / 20
+          const cgk = `${cgx},${cgy}`
+          gridCounts[cgk] = (gridCounts[cgk] ?? 0) + count
+        }
+      }
+
       const ll = toLatLon(ptM)
-      pts.push({ lat: ll[0], lon: ll[1], weight: 1 })
+      pts.push({ lat: ll[0], lon: ll[1], weight: triangulationBoost })
     }
 
     // Assign accumulated weight: points at the same grid cell get the cell count as weight
