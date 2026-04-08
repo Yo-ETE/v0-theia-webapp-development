@@ -990,7 +990,13 @@ export default function MapInner({
 
       const sg = (evt.device_id ? sensorByDevice[evt.device_id] : null)
         ?? sensorByZone[evt.zone_id ?? ""]?.[0]
-      if (!sg) continue
+      if (!sg) {
+        // Debug: log why we skip events
+        if (sensorType === "xaver" && events.indexOf(evt) < 5) {
+          console.log("[v0] XAVER event skipped - device_id:", evt.device_id, "zone_id:", evt.zone_id, "sensorByDevice keys:", Object.keys(sensorByDevice))
+        }
+        continue
+      }
 
       const rM: [number, number] = [-sg.leftM[0], -sg.leftM[1]]
       const x_cm = Number(p.x ?? 0)
@@ -1002,6 +1008,10 @@ export default function MapInner({
         const xm = x_cm / 100
         const ym = y_cm / 100
         ptM = [sg.sensorM[0] + ym * sg.normalM[0] + xm * rM[0], sg.sensorM[1] + ym * sg.normalM[1] + xm * rM[1]]
+        // Debug first XAVER event
+        if (sensorType === "xaver" && events.indexOf(evt) < 3) {
+          console.log("[v0] XAVER projection:", { x_cm, y_cm, dm, sensorM: sg.sensorM, normalM: sg.normalM, rM, ptM })
+        }
       } else {
         ptM = [sg.sensorM[0] + dm * sg.normalM[0], sg.sensorM[1] + dm * sg.normalM[1]]
       }
