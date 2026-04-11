@@ -397,22 +397,39 @@ export default function MapInner({
     const editSeg2group = groupSidesByBearing(localPoly)
     localPoly.forEach((pt, i) => {
       const next = localPoly[(i + 1) % localPoly.length]
-      const mLat = (pt[0] + next[0]) / 2
-      const mLon = (pt[1] + next[1]) / 2
+      // Side label at the START vertex of this edge (corner), not midpoint
+      const startLat = pt[0]
+      const startLon = pt[1]
       const dist = haversineM(pt[0], pt[1], next[0], next[1])
       const facadeLetter = editSeg2group[i] ?? String.fromCharCode(65 + i)
       const labelIcon = L.divIcon({
         className: "",
-        html: `<div style="font-size:9px;font-weight:700;background:rgba(0,0,0,0.7);padding:1px 5px;border-radius:3px;color:#fbbf24;white-space:nowrap;transform:translate(-50%,-50%);pointer-events:none">${facadeLetter} (${fmtDist(dist)})</div>`,
+        html: `<div style="font-size:18px;font-weight:700;color:#ef4444;text-shadow:1px 1px 2px rgba(0,0,0,0.3);transform:translate(-50%,-50%);pointer-events:none">${facadeLetter}</div>`,
         iconSize: [0, 0],
         iconAnchor: [0, 0],
       })
-      const labelMarker = L.marker([mLat, mLon], {
+      const labelMarker = L.marker([startLat, startLon], {
         icon: labelIcon,
         interactive: false,
         zIndexOffset: 800,
       }).addTo(map)
       editMarkersRef.current.push(labelMarker)
+      
+      // Also add side distance label at midpoint
+      const mLat = (pt[0] + next[0]) / 2
+      const mLon = (pt[1] + next[1]) / 2
+      const distLabelIcon = L.divIcon({
+        className: "",
+        html: `<div style="font-size:9px;font-weight:700;background:rgba(0,0,0,0.7);padding:1px 5px;border-radius:3px;color:#fbbf24;white-space:nowrap;transform:translate(-50%,-50%);pointer-events:none">${facadeLetter} (${fmtDist(dist)})</div>`,
+        iconSize: [0, 0],
+        iconAnchor: [0, 0],
+      })
+      const distMarker = L.marker([mLat, mLon], {
+        icon: distLabelIcon,
+        interactive: false,
+        zIndexOffset: 800,
+      }).addTo(map)
+      editMarkersRef.current.push(distMarker)
     })
 
     return cleanup
