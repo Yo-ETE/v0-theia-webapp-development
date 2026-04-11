@@ -8,7 +8,7 @@ import { VISUAL_DEFAULTS } from "@/hooks/use-visual-config"
 import HeatmapCanvas from "./heatmap-canvas"
 
 /** Group polygon edges by outward-normal bearing so colinear walls share the same facade letter */
-function groupSidesByBearing(polygon: [number, number][]): string[] {
+function groupSidesByBearing(polygon: [number, number][], startVertexIdx: number = 0): string[] {
   const n = polygon.length
   if (n < 3) return polygon.map((_, i) => String.fromCharCode(65 + i))
 
@@ -52,10 +52,18 @@ function groupSidesByBearing(polygon: [number, number][]): string[] {
     groups.push({ idx: i, bearing: bearings[i], indices: group })
   }
 
-  // Sort groups by bearing (start from North=0°, go clockwise)
-  groups.sort((a, b) => a.bearing - b.bearing)
+  // Sort groups by bearing starting from the edge at startVertexIdx
+  const startBearing = bearings[startVertexIdx]
+  groups.sort((a, b) => {
+    let diffA = a.bearing - startBearing
+    let diffB = b.bearing - startBearing
+    // Normalize to 0-360 range for proper circular sorting
+    if (diffA < 0) diffA += 360
+    if (diffB < 0) diffB += 360
+    return diffA - diffB
+  })
 
-  // Map each segment to its group letter (in bearing order)
+  // Map each segment to its group letter (in sorted order)
   const segToGroup = new Array<string>(n)
   groups.forEach((group, gi) => {
     const letter = String.fromCharCode(65 + gi)
@@ -148,7 +156,7 @@ interface MapInnerProps {
   onMapMove?: (lat: number, lon: number, zoom: number) => void
   editingZoneId?: string | null
   editingPolygon?: [number, number][] | null
-  onZonePolygonUpdate?: (zoneId: string, polygon: [number, number][]) => void
+  onZonePolygonUpdate?: (zoneId: string, polygon: [number, number][], facadeStartVertex?: number) => void
   showFov?: boolean
   replayMode?: boolean
   /** Visual configuration (colors, opacities) from per-mission settings */
@@ -252,6 +260,7 @@ export default function MapInner({
   const [RL, setRL] = useState<Record<string, any> | null>(null)
   const [leafletL, setLeafletL] = useState<any>(null)
   const [drawPoints, setDrawPoints] = useState<[number, number][]>([])
+  const [facadeStartVertex, setFacadeStartVertex] = useState<number>(0)
   const mapRef = useRef<unknown>(null)
   const dragSuppressRef = useRef(false)
   // Edit polygon mode: "move" = drag vertices, "add" = tap edge midpoints, "delete" = tap vertex to remove
@@ -267,9 +276,13 @@ export default function MapInner({
     setEditTool("move")
     if (editingZoneId) {
       const zone = (zones ?? []).find(z => z.id === editingZoneId)
-      if (zone) setLocalPoly([...zone.polygon])
+      if (zone) {
+        setLocalPoly([...zone.polygon])
+        setFacadeStartVertex(zone.facade_start_vertex ?? 0)
+      }
     } else {
       setLocalPoly(null)
+      setFacadeStartVertex(0)
     }
   }, [editingZoneId]) // eslint-disable-line react-hooks/exhaustive-deps
   // Also sync if editingPolygon changes from parent (initial load)
@@ -324,10 +337,11 @@ export default function MapInner({
       const isMove = editToolRef.current === "move"
       const bg = isDelete ? "#ef4444" : "#f59e0b"
       const cursor = isMove ? "grab" : "pointer"
+      const isStartVertex = i === facadeStartVertex
 
       const icon = L.divIcon({
         className: "",
-        html: `<div style="width:24px;height:24px;background:${bg};border:2px solid white;border-radius:50%;display:flex;align-items:center;justify-content:center;box-shadow:0 2px 6px rgba(0,0,0,0.4);cursor:${cursor};"><span style="color:white;font-size:10px;font-weight:800">${i + 1}</span></div>`,
+        html: `<div style="width:24px;height:24px;background:${bg};border:${isStartVertex ? '4px solid #22c55e' : '2px solid white'};border-radius:50%;display:flex;align-items:center;justify-content:center;box-shadow:0 2px 6px rgba(0,0,0,0.4);cursor:${cursor};"><span style="color:white;font-size:10px;font-weight:800">${i + 1}</span></div>`,
         iconSize: [24, 24],
         iconAnchor: [12, 12],
       })
@@ -344,7 +358,7 @@ export default function MapInner({
           if (!prev) return prev
           const np = [...prev] as [number, number][]
           np[i] = [pos.lat, pos.lng]
-          onZonePolygonUpdate?.(zone.id, np)
+          onZonePolygonUpdate?.(zone.id, np, facadeStartVertex)
           return np
         })
       })
@@ -354,9 +368,12 @@ export default function MapInner({
           setLocalPoly(prev => {
             if (!prev || prev.length <= 3) return prev
             const np = prev.filter((_, idx) => idx !== i)
-            onZonePolygonUpdate?.(zone.id, np)
+            onZonePolygonUpdate?.(zone.id, np, facadeStartVertex)
             return np
           })
+        } else if (editToolRef.current === "move") {
+          // In move mode, click on vertex to set it as facade A
+          setFacadeStartVertex(i)
         }
       })
 
@@ -387,7 +404,7 @@ export default function MapInner({
             if (!prev) return prev
             const np: [number, number][] = [...prev]
             np.splice(i + 1, 0, [midLat, midLon])
-            onZonePolygonUpdate?.(zone.id, np)
+            onZonePolygonUpdate?.(zone.id, np, facadeStartVertex)
             return np
           })
         })
@@ -397,7 +414,7 @@ export default function MapInner({
     }
 
     // Side distance labels with grouped facade letter
-    const editSeg2group = groupSidesByBearing(localPoly)
+    const editSeg2group = groupSidesByBearing(localPoly, facadeStartVertex)
     localPoly.forEach((pt, i) => {
       const next = localPoly[(i + 1) % localPoly.length]
       // Side label at the START vertex of this edge (corner), not midpoint
@@ -436,8 +453,8 @@ export default function MapInner({
     })
 
     return cleanup
-  // Re-run when polygon, tool, or editing zone changes
-  }, [localPoly, editTool, editingZoneId, leafletL]) // eslint-disable-line react-hooks/exhaustive-deps
+  // Re-run when polygon, tool, editing zone, or facade start vertex changes
+  }, [localPoly, editTool, editingZoneId, facadeStartVertex, leafletL]) // eslint-disable-line react-hooks/exhaustive-deps
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const [mapInstance, setMapInstance] = useState<any>(null)
   const mapInstanceSet = useRef(false)

@@ -312,6 +312,11 @@ async def init_tables(db: aiosqlite.Connection):
         await db.execute("ALTER TABLE devices ADD COLUMN muted INTEGER DEFAULT 0")
     except Exception:
         pass
+    # Zone facade_start_vertex column - index of the vertex that is facade A
+    try:
+        await db.execute("ALTER TABLE zones ADD COLUMN facade_start_vertex INTEGER DEFAULT 0")
+    except Exception:
+        pass
     # Mission plan_image columns
     for col, dflt in [("plan_image", "NULL"), ("plan_width", "NULL"), ("plan_height", "NULL")]:
         try:
