@@ -36,6 +36,8 @@ function groupSidesByBearing(polygon: [number, number][]): string[] {
   const normalOffset = signedArea < 0 ? 90 : -90
   const normals = edgeBearings.map(b => ((b + normalOffset) % 360 + 360) % 360)
 
+  console.log("[v0] Normals:", normals.map((n, i) => `edge${i}=${Math.round(n)}°`).join(", "))
+
   // Assign each edge to a group based on bearing similarity (30° tolerance)
   const TOLERANCE = 30
   const edgeToGroup = new Array<number>(n).fill(-1) // which group each edge belongs to
@@ -57,11 +59,16 @@ function groupSidesByBearing(polygon: [number, number][]): string[] {
     }
   }
 
+  console.log("[v0] edgeToGroup:", edgeToGroup.join(","))
+
   // Map group IDs to letters A, B, C, D...
   const segToGroup = new Array<string>(n)
   for (let i = 0; i < n; i++) {
     segToGroup[i] = String.fromCharCode(65 + edgeToGroup[i])
   }
+  
+  console.log("[v0] Result:", segToGroup.join(","))
+  
   return segToGroup
 }
 
