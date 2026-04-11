@@ -13,7 +13,7 @@ function groupSidesByBearing(polygon: [number, number][]): string[] {
   const n = polygon.length
   if (n < 3) return polygon.map((_, i) => String.fromCharCode(65 + i))
 
-  // Compute edge bearings
+  // Compute edge bearings (direction each edge points to)
   const edgeBearings: number[] = []
   for (let i = 0; i < n; i++) {
     const [lat1, lon1] = polygon[i]
@@ -27,7 +27,7 @@ function groupSidesByBearing(polygon: [number, number][]): string[] {
     edgeBearings.push(deg)
   }
 
-  // Polygon winding to compute outward normals
+  // Polygon winding to compute outward normals (perpendicular to edges, pointing outward)
   let signedArea = 0
   for (let i = 0; i < n; i++) {
     const j = (i + 1) % n
@@ -54,18 +54,17 @@ function groupSidesByBearing(polygon: [number, number][]): string[] {
     groups.push({ idx: i, bearing: normals[i], indices: group })
   }
 
-  // Sort groups by bearing order starting from edge 0, going clockwise
-  const bearing0 = normals[0]
-  groups.sort((a, b) => {
-    let diffA = a.bearing - bearing0
-    let diffB = b.bearing - bearing0
-    // Normalize to 0-360 for circular sorting (clockwise)
-    if (diffA < 0) diffA += 360
-    if (diffB < 0) diffB += 360
-    return diffA - diffB
-  })
+  // Find which group contains edge 0 - that gets letter A
+  const groupIdx0 = groups.findIndex(g => g.indices.includes(0))
+  
+  // Rotate groups array so group containing edge 0 is first
+  if (groupIdx0 > 0) {
+    const rotated = [...groups.slice(groupIdx0), ...groups.slice(0, groupIdx0)]
+    groups.length = 0
+    groups.push(...rotated)
+  }
 
-  // Assign letters A, B, C, D... in sorted order
+  // Assign letters A, B, C, D... in order
   const segToGroup = new Array<string>(n)
   groups.forEach((group, gi) => {
     const letter = String.fromCharCode(65 + gi)
