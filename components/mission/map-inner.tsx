@@ -8,7 +8,7 @@ import { VISUAL_DEFAULTS } from "@/hooks/use-visual-config"
 import HeatmapCanvas from "./heatmap-canvas"
 
 /** Group polygon edges by outward-normal bearing so colinear walls share the same facade letter
- *  Always starts from edge 0 and assigns letters clockwise: A, B, C, D... */
+ *  Assigns letters based on the order groups are FIRST ENCOUNTERED when iterating edges 0→n-1 */
 function groupSidesByBearing(polygon: [number, number][]): string[] {
   const n = polygon.length
   if (n < 3) return polygon.map((_, i) => String.fromCharCode(65 + i))
@@ -36,40 +36,32 @@ function groupSidesByBearing(polygon: [number, number][]): string[] {
   const normalOffset = signedArea < 0 ? 90 : -90
   const normals = edgeBearings.map(b => ((b + normalOffset) % 360 + 360) % 360)
 
-  // Group edges by similar normal bearing (30° tolerance) - parallel edges get same letter
+  // Assign each edge to a group based on bearing similarity (30° tolerance)
   const TOLERANCE = 30
-  const groups: { idx: number; bearing: number; indices: number[] }[] = []
-  const assigned = new Set<number>()
+  const edgeToGroup = new Array<number>(n).fill(-1) // which group each edge belongs to
+  let nextGroupId = 0
   
+  // Iterate edges 0→n-1, assigning groups as we encounter new ones
   for (let i = 0; i < n; i++) {
-    if (assigned.has(i)) continue
-    const group = [i]
-    assigned.add(i)
+    if (edgeToGroup[i] !== -1) continue // already assigned
+    
+    const groupId = nextGroupId++
+    edgeToGroup[i] = groupId
+    
+    // Find all other unassigned edges parallel to edge i
     for (let j = i + 1; j < n; j++) {
-      if (assigned.has(j)) continue
+      if (edgeToGroup[j] !== -1) continue
       let diff = Math.abs(normals[i] - normals[j])
       if (diff > 180) diff = 360 - diff
-      if (diff <= TOLERANCE) { group.push(j); assigned.add(j) }
+      if (diff <= TOLERANCE) edgeToGroup[j] = groupId
     }
-    groups.push({ idx: i, bearing: normals[i], indices: group })
   }
 
-  // Find which group contains edge 0 - that gets letter A
-  const groupIdx0 = groups.findIndex(g => g.indices.includes(0))
-  
-  // Rotate groups array so group containing edge 0 is first
-  if (groupIdx0 > 0) {
-    const rotated = [...groups.slice(groupIdx0), ...groups.slice(0, groupIdx0)]
-    groups.length = 0
-    groups.push(...rotated)
-  }
-
-  // Assign letters A, B, C, D... in order
+  // Map group IDs to letters A, B, C, D...
   const segToGroup = new Array<string>(n)
-  groups.forEach((group, gi) => {
-    const letter = String.fromCharCode(65 + gi)
-    for (const idx of group.indices) segToGroup[idx] = letter
-  })
+  for (let i = 0; i < n; i++) {
+    segToGroup[i] = String.fromCharCode(65 + edgeToGroup[i])
+  }
   return segToGroup
 }
 
