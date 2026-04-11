@@ -37,7 +37,7 @@ function groupSidesByBearing(polygon: [number, number][]): string[] {
 
   // Group by similar normal (30 deg tolerance)
   const TOLERANCE = 30
-  const groups: number[][] = []
+  const groups: { idx: number; bearing: number; indices: number[] }[] = []
   const assigned = new Set<number>()
   for (let i = 0; i < n; i++) {
     if (assigned.has(i)) continue
@@ -49,14 +49,17 @@ function groupSidesByBearing(polygon: [number, number][]): string[] {
       if (diff > 180) diff = 360 - diff
       if (diff <= TOLERANCE) { group.push(j); assigned.add(j) }
     }
-    groups.push(group)
+    groups.push({ idx: i, bearing: bearings[i], indices: group })
   }
 
-  // Map each segment to its group letter
+  // Sort groups by bearing (start from North=0°, go clockwise)
+  groups.sort((a, b) => a.bearing - b.bearing)
+
+  // Map each segment to its group letter (in bearing order)
   const segToGroup = new Array<string>(n)
   groups.forEach((group, gi) => {
     const letter = String.fromCharCode(65 + gi)
-    for (const idx of group) segToGroup[idx] = letter
+    for (const idx of group.indices) segToGroup[idx] = letter
   })
   return segToGroup
 }
