@@ -775,11 +775,12 @@ export default function MapInner({
 
       for (const zone of zones) {
         if (!zone.polygon?.length || zone.polygon.length < 3) continue
-        const sides = zone.sides ?? zone.polygon.map((_: unknown, i: number) => String.fromCharCode(65 + i))
+        // Get facade letters using the same groupSidesByBearing function
+        const facadeLetters = groupSidesByBearing(zone.polygon as [number, number][])
         for (let i = 0; i < zone.polygon.length; i++) {
           const pA = zone.polygon[i] as [number, number]
           const pB = zone.polygon[(i + 1) % zone.polygon.length] as [number, number]
-          const side = seg2group[i] ?? String.fromCharCode(65 + i)
+          const side = facadeLetters[i] ?? String.fromCharCode(65 + i)
 
           // Project click onto this edge
           const bx = (pB[1] - pA[1]) * 111320 * cosRef
