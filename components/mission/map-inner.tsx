@@ -759,8 +759,10 @@ export default function MapInner({
   // ── Sensor placement click handler ──
   // Allows placing the sensor on ANY facade of ANY zone by finding the closest edge
   useEffect(() => {
+    console.log("[v0] useEffect triggered - sensorPlaceMode:", sensorPlaceMode, "onSensorPlace:", !!onSensorPlace, "zones:", zones.length)
     if (!sensorPlaceMode || !onSensorPlace) return
     if (!zones.length) return
+    console.log("[v0] All conditions passed, setting up click handler")
 
     const handler = (e: { latlng: { lat: number; lng: number } }) => {
       console.log("[v0] MAP CLICK HANDLER TRIGGERED")
