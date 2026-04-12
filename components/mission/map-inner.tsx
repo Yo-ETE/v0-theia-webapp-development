@@ -14,48 +14,54 @@ function groupSidesByBearing(polygon: [number, number][]): string[] {
   const n = polygon.length
   if (n < 3) return polygon.map((_, i) => String.fromCharCode(65 + i))
 
-  // Compute edge bearings (direction each edge points to)
+  const isPixelCoords = polygon.some(([a, b]) => Math.abs(a) > 200 || Math.abs(b) > 200)
+
   const edgeBearings: number[] = []
   for (let i = 0; i < n; i++) {
-    const [lat1, lon1] = polygon[i]
-    const [lat2, lon2] = polygon[(i + 1) % n]
-    const dLon = (lon2 - lon1) * Math.PI / 180
-    const y = Math.sin(dLon) * Math.cos(lat2 * Math.PI / 180)
-    const x = Math.cos(lat1 * Math.PI / 180) * Math.sin(lat2 * Math.PI / 180) -
-              Math.sin(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) * Math.cos(dLon)
-    let deg = Math.atan2(y, x) * 180 / Math.PI
-    deg = ((deg % 360) + 360) % 360
-    edgeBearings.push(deg)
+    const [y1, x1] = polygon[i]
+    const [y2, x2] = polygon[(i + 1) % n]
+    let deg: number
+    if (isPixelCoords) {
+      deg = Math.atan2(x2 - x1, y2 - y1) * 180 / Math.PI
+    } else {
+      const dLon = (x2 - x1) * Math.PI / 180
+      const yy = Math.sin(dLon) * Math.cos(y2 * Math.PI / 180)
+      const xx = Math.cos(y1 * Math.PI / 180) * Math.sin(y2 * Math.PI / 180) -
+                 Math.sin(y1 * Math.PI / 180) * Math.cos(y2 * Math.PI / 180) * Math.cos(dLon)
+      deg = Math.atan2(yy, xx) * 180 / Math.PI
+    }
+    edgeBearings.push(((deg % 360) + 360) % 360)
   }
 
-  // Reference bearing is edge 0's bearing - this defines direction A
   const refBearing = edgeBearings[0]
-  
-  // Calculate relative rotation from edge 0 for each edge
-  // and assign letter based on quadrant:
-  // 0 deg +/- 45 = A, 90 deg +/- 45 = B, 180 deg +/- 45 = C, 270 deg +/- 45 = D
-  const segToGroup = new Array<string>(n)
-  for (let i = 0; i < n; i++) {
-    // Calculate rotation from edge 0's bearing
-    let rot = edgeBearings[i] - refBearing
-    // Normalize to 0-360
+
+  const relativeRot = (bearing: number) => {
+    let rot = bearing - refBearing
     while (rot < 0) rot += 360
     while (rot >= 360) rot -= 360
-    
-    // Assign letter based on quadrant
-    let letter: string
-    if (rot < 45 || rot >= 315) {
-      letter = 'A' // 0 deg quadrant (same direction as edge 0)
-    } else if (rot >= 45 && rot < 135) {
-      letter = 'B' // 90 deg clockwise from A
-    } else if (rot >= 135 && rot < 225) {
-      letter = 'C' // 180 deg from A (opposite direction)
-    } else {
-      letter = 'D' // 270 deg clockwise (or 90 deg counter-clockwise) from A
-    }
-    segToGroup[i] = letter
+    return rot
   }
-  
+
+  const TOLERANCE = 30
+  const getQuadrantLetter = (rot: number): string => {
+    if (rot <= TOLERANCE || rot >= 360 - TOLERANCE) return 'A'
+    if (rot >= 90 - TOLERANCE && rot <= 90 + TOLERANCE) return 'B'
+    if (rot >= 180 - TOLERANCE && rot <= 180 + TOLERANCE) return 'C'
+    if (rot >= 270 - TOLERANCE && rot <= 270 + TOLERANCE) return 'D'
+    const distances = [
+      { letter: 'A', dist: Math.min(rot, 360 - rot) },
+      { letter: 'B', dist: Math.abs(rot - 90) },
+      { letter: 'C', dist: Math.abs(rot - 180) },
+      { letter: 'D', dist: Math.abs(rot - 270) },
+    ]
+    return distances.sort((a, b) => a.dist - b.dist)[0].letter
+  }
+
+  const segToGroup = new Array<string>(n)
+  for (let i = 0; i < n; i++) {
+    segToGroup[i] = getQuadrantLetter(relativeRot(edgeBearings[i]))
+  }
+
   return segToGroup
 }
 
