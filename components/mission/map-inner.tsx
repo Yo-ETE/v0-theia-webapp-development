@@ -756,17 +756,12 @@ export default function MapInner({
     }
   }, [onMapMove])
 
-  // ── Sensor placement click handler ──
-  // Allows placing the sensor on ANY facade of ANY zone by finding the closest edge
+  // ── Sensor placement click handler (backup for clicking on map, not Polyline) ──
   useEffect(() => {
-    console.log("[v0] useEffect triggered - sensorPlaceMode:", sensorPlaceMode, "onSensorPlace:", !!onSensorPlace, "zones:", zones.length)
     if (!sensorPlaceMode || !onSensorPlace) return
     if (!zones.length) return
-    console.log("[v0] All conditions passed, setting up click handler")
 
     const handler = (e: { latlng: { lat: number; lng: number } }) => {
-      console.log("[v0] MAP CLICK HANDLER TRIGGERED")
-      console.log("[v0] sensorPlaceMode:", JSON.stringify(sensorPlaceMode))
       const cLat = e.latlng.lat
       const cLon = e.latlng.lng
       const cosRef = Math.cos(cLat * Math.PI / 180)
@@ -783,7 +778,6 @@ export default function MapInner({
         // zone.sides has structure { "A": "facadeLetter", "B": "facadeLetter", ... }
         // where key is segment index (A=0, B=1, etc.) and value is facade group letter
         const zoneSides = zone.sides as Record<string, string> | undefined
-        console.log("[v0] zone.sides:", JSON.stringify(zoneSides))
         for (let i = 0; i < zone.polygon.length; i++) {
           const pA = zone.polygon[i] as [number, number]
           const pB = zone.polygon[(i + 1) % zone.polygon.length] as [number, number]
@@ -818,10 +812,7 @@ export default function MapInner({
 
       // Only accept if click is within ~15m of an edge
       if (bestZoneId && bestDist < 15) {
-        console.log("[v0] Placing sensor - bestSide:", bestSide)
         onSensorPlace(bestZoneId, bestSide, bestT)
-      } else {
-        console.log("[v0] No edge found within 15m, bestDist:", bestDist)
       }
     }
 
@@ -1527,21 +1518,43 @@ export default function MapInner({
         {/* ── Canvas heatmap overlay (rendered outside React tree into Leaflet pane) ── */}
 
         {/* ── Highlighted edges for sensor placement mode (all facades clickable) ── */}
-        {sensorPlaceMode && zones.map((zone) => {
+        {sensorPlaceMode && onSensorPlace && zones.map((zone) => {
           if (!zone.polygon?.length || zone.polygon.length < 3) return null
+          // Get facade letters from zone.sides
+          const zoneSides = zone.sides as Record<string, string> | undefined
           return zone.polygon.map((pt: [number, number], idx: number) => {
             const nextPt = zone.polygon[(idx + 1) % zone.polygon.length]
+            const segmentKey = String.fromCharCode(65 + idx) // A, B, C...
+            const facadeLetter = zoneSides?.[segmentKey] ?? segmentKey
+            
+            // Only show edges matching the selected facade
+            const isSelected = !sensorPlaceMode.side || facadeLetter === sensorPlaceMode.side
+            
             return (
               <Polyline
                 key={`place-edge-${zone.id}-${idx}`}
                 positions={[pt, nextPt]}
                 pathOptions={{
-                  color: vc.fov_overlay_color,
-                  weight: 5,
-                  opacity: 0.7,
-                  dashArray: "8 4",
+                  color: isSelected ? "#22d3ee" : vc.fov_overlay_color,
+                  weight: isSelected ? 8 : 3,
+                  opacity: isSelected ? 0.9 : 0.3,
+                  dashArray: isSelected ? undefined : "8 4",
                   className: "sensor-place-side",
                 }}
+                eventHandlers={isSelected ? {
+                  click: (e: { latlng: { lat: number; lng: number } }) => {
+                    // Calculate position along edge (t parameter 0-1)
+                    const clickLat = e.latlng.lat
+                    const clickLng = e.latlng.lng
+                    const dx = nextPt[1] - pt[1]
+                    const dy = nextPt[0] - pt[0]
+                    const len2 = dx * dx + dy * dy
+                    if (len2 === 0) return
+                    let t = ((clickLng - pt[1]) * dx + (clickLat - pt[0]) * dy) / len2
+                    t = Math.max(0.02, Math.min(0.98, t))
+                    onSensorPlace(zone.id, facadeLetter, t)
+                  }
+                } : undefined}
               />
             )
           })
