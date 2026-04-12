@@ -779,7 +779,7 @@ export default function MapInner({
         for (let i = 0; i < zone.polygon.length; i++) {
           const pA = zone.polygon[i] as [number, number]
           const pB = zone.polygon[(i + 1) % zone.polygon.length] as [number, number]
-          const side = sides[i] ?? String.fromCharCode(65 + i)
+          const side = seg2group[i] ?? String.fromCharCode(65 + i)
 
           // Project click onto this edge
           const bx = (pB[1] - pA[1]) * 111320 * cosRef
