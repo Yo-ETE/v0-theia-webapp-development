@@ -354,84 +354,82 @@ export default function MissionDetailPage() {
   // ��������─ Bearing grouping: segments facing the same direction share the same face label ──
   // Uses FULL 0-360 bearing so north-facing (0) and south-facing (180) are DIFFERENT faces.
   // Returns e.g. { A: [0,3], B: [1,4], C: [2,5] } meaning polygon edges 0&3 are "A", etc.
-// Correct — attribue les lettres dans l'ordre de tracé (clic 1 = début façade A)
-  const groupSidesByBearing = (points: LatLng[]) => {
-    return points.map((p, i) => {
-      const next = points[(i + 1) % points.length]
-      return {
-        from: p,
-        to: next,
-        bearing: computeBearing(p, next),
-        label: String.fromCharCode(65 + i), // A, B, C, D... dans l'ordre des clics
-      }
-    })
+const groupSidesByBearing = useCallback((polygon: [number, number][]) => {
+  if (!polygon || polygon.length < 2) return { labels: {}, segmentToGroup: [] }
+
+  const isPixelCoords = polygon.some(([a, b]) => Math.abs(a) > 200 || Math.abs(b) > 200)
+
+  // Calcule le bearing de chaque segment
+  const edgeBearings: number[] = []
+  for (let i = 0; i < polygon.length; i++) {
+    const [y1, x1] = polygon[i]
+    const [y2, x2] = polygon[(i + 1) % polygon.length]
+    let deg: number
+    if (isPixelCoords) {
+      deg = Math.atan2(x2 - x1, y2 - y1) * 180 / Math.PI
+    } else {
+      const dLon = (x2 - x1) * Math.PI / 180
+      const yy = Math.sin(dLon) * Math.cos(y2 * Math.PI / 180)
+      const xx = Math.cos(y1 * Math.PI / 180) * Math.sin(y2 * Math.PI / 180) -
+                 Math.sin(y1 * Math.PI / 180) * Math.cos(y2 * Math.PI / 180) * Math.cos(dLon)
+      deg = Math.atan2(yy, xx) * 180 / Math.PI
+    }
+    edgeBearings.push(((deg % 360) + 360) % 360)
   }
-    // Edge 0 = A, then letters assigned based on clockwise rotation from edge 0:
-    // 0 deg = A, 90 deg = B, 180 deg = C, 270 deg = D
 
-    // Detect if coordinates are pixel-based (>200) or lat/lon (-90..90)
-    const isPixelCoords = polygon.some(([a, b]) => Math.abs(a) > 200 || Math.abs(b) > 200)
+  // Bearing de référence = segment 0 (premier clic = début façade A)
+  const refBearing = edgeBearings[0]
 
-    // First compute edge bearings (direction each edge points to)
-    const edgeBearings: number[] = []
-    for (let i = 0; i < polygon.length; i++) {
-      const [y1, x1] = polygon[i]
-      const [y2, x2] = polygon[(i + 1) % polygon.length]
-      let deg: number
-      if (isPixelCoords) {
-        // Simple atan2 for pixel coordinates
-        deg = Math.atan2(x2 - x1, y2 - y1) * 180 / Math.PI
-      } else {
-        // Haversine bearing for lat/lon
-        const dLon = (x2 - x1) * Math.PI / 180
-        const yy = Math.sin(dLon) * Math.cos(y2 * Math.PI / 180)
-        const xx = Math.cos(y1 * Math.PI / 180) * Math.sin(y2 * Math.PI / 180) -
-                  Math.sin(y1 * Math.PI / 180) * Math.cos(y2 * Math.PI / 180) * Math.cos(dLon)
-        deg = Math.atan2(yy, xx) * 180 / Math.PI
-      }
-      deg = ((deg % 360) + 360) % 360
-      edgeBearings.push(deg)
-    }
+  // Calcule la rotation relative à A, normalisée 0-360
+  const relativeRot = (bearing: number) => {
+    let rot = bearing - refBearing
+    while (rot < 0) rot += 360
+    while (rot >= 360) rot -= 360
+    return rot
+  }
 
-    // Reference bearing is edge 0's bearing - this defines direction A
-    const refBearing = edgeBearings[0]
-    
-    // Calculate relative rotation from edge 0 for each edge
-    // and assign letter based on quadrant:
-    // 0 deg +/- 45 = A, 90 deg +/- 45 = B, 180 deg +/- 45 = C, 270 deg +/- 45 = D
-    const segmentToGroup: string[] = new Array(polygon.length)
-    const usedLetters = new Set<string>()
-    
-    for (let i = 0; i < polygon.length; i++) {
-      // Calculate rotation from edge 0's bearing
-      let rot = edgeBearings[i] - refBearing
-      // Normalize to 0-360
-      while (rot < 0) rot += 360
-      while (rot >= 360) rot -= 360
-      
-      // Assign letter based on quadrant
-      let letter: string
-      if (rot < 45 || rot >= 315) {
-        letter = 'A' // 0 deg quadrant (same direction as edge 0)
-      } else if (rot >= 45 && rot < 135) {
-        letter = 'B' // 90 deg clockwise from A
-      } else if (rot >= 135 && rot < 225) {
-        letter = 'C' // 180 deg from A (opposite direction)
-      } else {
-        letter = 'D' // 270 deg clockwise (or 90 deg counter-clockwise) from A
-      }
-      segmentToGroup[i] = letter
-      usedLetters.add(letter)
-    }
-    
-    // Build labels object with only the used letters
-    const labels: Record<string, string> = {}
-    for (const letter of usedLetters) {
-      labels[letter] = ""
-    }
-    
-    return { labels, segmentToGroup }
-  }, [])
+  // Assign les lettres dans l'ordre de tracé (A, B, C, D)
+  // en tournant en sens horaire depuis A.
+  // Seuil de tolérance angulaire pour regrouper les parallèles : ±30°
+  const TOLERANCE = 30
+
+  // Les 4 quadrants horaires depuis A
+  // Quadrant A : rot dans [0, TOLERANCE] ou [360-TOLERANCE, 360]
+  // Quadrant B : rot dans [90-TOLERANCE, 90+TOLERANCE]
+  // Quadrant C : rot dans [180-TOLERANCE, 180+TOLERANCE]
+  // Quadrant D : rot dans [270-TOLERANCE, 270+TOLERANCE]
+  const getQuadrantLetter = (rot: number): string => {
+    if (rot <= TOLERANCE || rot >= 360 - TOLERANCE) return 'A'
+    if (rot >= 90 - TOLERANCE && rot <= 90 + TOLERANCE) return 'B'
+    if (rot >= 180 - TOLERANCE && rot <= 180 + TOLERANCE) return 'C'
+    if (rot >= 270 - TOLERANCE && rot <= 270 + TOLERANCE) return 'D'
+    // Segment diagonal ou avancée : trouver la face la plus proche
+    const distances = [
+      { letter: 'A', dist: Math.min(rot, 360 - rot) },
+      { letter: 'B', dist: Math.abs(rot - 90) },
+      { letter: 'C', dist: Math.abs(rot - 180) },
+      { letter: 'D', dist: Math.abs(rot - 270) },
+    ]
+    return distances.sort((a, b) => a.dist - b.dist)[0].letter
+  }
+
+  const segmentToGroup: string[] = []
+  const usedLetters = new Set<string>()
+
+  for (let i = 0; i < polygon.length; i++) {
+    const rot = relativeRot(edgeBearings[i])
+    const letter = getQuadrantLetter(rot)
+    segmentToGroup.push(letter)
+    usedLetters.add(letter)
+  }
+
+  const labels: Record<string, string> = {}
+  for (const letter of Array.from(usedLetters).sort()) {
+    labels[letter] = ""
+  }
+
+  return { labels, segmentToGroup }
+}, [])
 
   // ── Zone drawing ──
   const handlePolygonDrawn = useCallback((polygon: [number, number][]) => {
