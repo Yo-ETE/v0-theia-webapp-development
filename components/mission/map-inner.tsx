@@ -784,6 +784,9 @@ export default function MapInner({
           const pB = zone.polygon[(i + 1) % zone.polygon.length] as [number, number]
           const side = facadeLetters[i] ?? String.fromCharCode(65 + i)
 
+          // Only consider edges matching the selected facade
+          if (sensorPlaceMode.side && side !== sensorPlaceMode.side) continue
+
           // Project click onto this edge
           const bx = (pB[1] - pA[1]) * 111320 * cosRef
           const by = (pB[0] - pA[0]) * 111320
