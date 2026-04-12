@@ -762,6 +762,8 @@ export default function MapInner({
     if (!sensorPlaceMode || !onSensorPlace) return
     if (!zones.length) return
 
+    console.log("[v0] Setting up click handler, sensorPlaceMode:", JSON.stringify(sensorPlaceMode))
+
     const handler = (e: { latlng: { lat: number; lng: number } }) => {
       const cLat = e.latlng.lat
       const cLon = e.latlng.lng
