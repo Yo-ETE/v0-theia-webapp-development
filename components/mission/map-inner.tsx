@@ -775,12 +775,15 @@ export default function MapInner({
 
       for (const zone of zones) {
         if (!zone.polygon?.length || zone.polygon.length < 3) continue
-        // Get facade letters using the same groupSidesByBearing function
-        const facadeLetters = groupSidesByBearing(zone.polygon as [number, number][])
+        // Use zone.sides if available, otherwise calculate from bearing
+        // zone.sides has structure { "A": "facadeLetter", "B": "facadeLetter", ... }
+        // where key is segment index (A=0, B=1, etc.) and value is facade group letter
+        const zoneSides = zone.sides as Record<string, string> | undefined
         for (let i = 0; i < zone.polygon.length; i++) {
           const pA = zone.polygon[i] as [number, number]
           const pB = zone.polygon[(i + 1) % zone.polygon.length] as [number, number]
-          const side = facadeLetters[i] ?? String.fromCharCode(65 + i)
+          const segmentKey = String.fromCharCode(65 + i) // A, B, C, D, E, F...
+          const side = zoneSides?.[segmentKey] ?? segmentKey
 
           // Only consider edges matching the selected facade
           if (sensorPlaceMode.side && side !== sensorPlaceMode.side) continue
