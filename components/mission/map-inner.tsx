@@ -763,6 +763,8 @@ export default function MapInner({
     if (!zones.length) return
 
     const handler = (e: { latlng: { lat: number; lng: number } }) => {
+      console.log("[v0] MAP CLICK HANDLER TRIGGERED")
+      console.log("[v0] sensorPlaceMode:", JSON.stringify(sensorPlaceMode))
       const cLat = e.latlng.lat
       const cLon = e.latlng.lng
       const cosRef = Math.cos(cLat * Math.PI / 180)
@@ -779,6 +781,7 @@ export default function MapInner({
         // zone.sides has structure { "A": "facadeLetter", "B": "facadeLetter", ... }
         // where key is segment index (A=0, B=1, etc.) and value is facade group letter
         const zoneSides = zone.sides as Record<string, string> | undefined
+        console.log("[v0] zone.sides:", JSON.stringify(zoneSides))
         for (let i = 0; i < zone.polygon.length; i++) {
           const pA = zone.polygon[i] as [number, number]
           const pB = zone.polygon[(i + 1) % zone.polygon.length] as [number, number]
@@ -813,7 +816,10 @@ export default function MapInner({
 
       // Only accept if click is within ~15m of an edge
       if (bestZoneId && bestDist < 15) {
+        console.log("[v0] Placing sensor - bestSide:", bestSide)
         onSensorPlace(bestZoneId, bestSide, bestT)
+      } else {
+        console.log("[v0] No edge found within 15m, bestDist:", bestDist)
       }
     }
 
