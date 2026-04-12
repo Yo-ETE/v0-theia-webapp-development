@@ -31,38 +31,30 @@ function groupSidesByBearing(polygon: [number, number][]): string[] {
   // Reference bearing is edge 0's bearing - this defines direction A
   const refBearing = edgeBearings[0]
   
-  console.log("[v0] Edge bearings:", edgeBearings.map((b, i) => `${i}:${Math.round(b)}°`).join(", "))
-  console.log("[v0] Reference bearing (edge 0):", Math.round(refBearing))
-  
   // Calculate relative rotation from edge 0 for each edge
   // and assign letter based on quadrant:
-  // 0° ± 45° = A, 90° ± 45° = B, 180° ± 45° = C, 270° ± 45° = D
+  // 0 deg +/- 45 = A, 90 deg +/- 45 = B, 180 deg +/- 45 = C, 270 deg +/- 45 = D
   const segToGroup = new Array<string>(n)
-  const rotations: number[] = []
   for (let i = 0; i < n; i++) {
     // Calculate rotation from edge 0's bearing
     let rot = edgeBearings[i] - refBearing
     // Normalize to 0-360
     while (rot < 0) rot += 360
     while (rot >= 360) rot -= 360
-    rotations.push(rot)
     
     // Assign letter based on quadrant
     let letter: string
     if (rot < 45 || rot >= 315) {
-      letter = 'A' // 0° quadrant (same direction as edge 0)
+      letter = 'A' // 0 deg quadrant (same direction as edge 0)
     } else if (rot >= 45 && rot < 135) {
-      letter = 'B' // 90° clockwise from A
+      letter = 'B' // 90 deg clockwise from A
     } else if (rot >= 135 && rot < 225) {
-      letter = 'C' // 180° from A (opposite direction)
+      letter = 'C' // 180 deg from A (opposite direction)
     } else {
-      letter = 'D' // 270° clockwise (or 90° counter-clockwise) from A
+      letter = 'D' // 270 deg clockwise (or 90 deg counter-clockwise) from A
     }
     segToGroup[i] = letter
   }
-  
-  console.log("[v0] Rotations from edge 0:", rotations.map((r, i) => `${i}:${Math.round(r)}°`).join(", "))
-  console.log("[v0] Result letters:", segToGroup.join(", "))
   
   return segToGroup
 }
