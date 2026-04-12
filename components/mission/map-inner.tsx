@@ -31,16 +31,21 @@ function groupSidesByBearing(polygon: [number, number][]): string[] {
   // Reference bearing is edge 0's bearing - this defines direction A
   const refBearing = edgeBearings[0]
   
+  console.log("[v0] Edge bearings:", edgeBearings.map((b, i) => `${i}:${Math.round(b)}°`).join(", "))
+  console.log("[v0] Reference bearing (edge 0):", Math.round(refBearing))
+  
   // Calculate relative rotation from edge 0 for each edge
   // and assign letter based on quadrant:
   // 0° ± 45° = A, 90° ± 45° = B, 180° ± 45° = C, 270° ± 45° = D
   const segToGroup = new Array<string>(n)
+  const rotations: number[] = []
   for (let i = 0; i < n; i++) {
     // Calculate rotation from edge 0's bearing
     let rot = edgeBearings[i] - refBearing
     // Normalize to 0-360
     while (rot < 0) rot += 360
     while (rot >= 360) rot -= 360
+    rotations.push(rot)
     
     // Assign letter based on quadrant
     let letter: string
@@ -55,6 +60,9 @@ function groupSidesByBearing(polygon: [number, number][]): string[] {
     }
     segToGroup[i] = letter
   }
+  
+  console.log("[v0] Rotations from edge 0:", rotations.map((r, i) => `${i}:${Math.round(r)}°`).join(", "))
+  console.log("[v0] Result letters:", segToGroup.join(", "))
   
   return segToGroup
 }
