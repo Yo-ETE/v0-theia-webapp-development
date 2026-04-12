@@ -8,7 +8,8 @@ import { VISUAL_DEFAULTS } from "@/hooks/use-visual-config"
 import HeatmapCanvas from "./heatmap-canvas"
 
 /** Group polygon edges by outward-normal bearing so colinear walls share the same facade letter
- *  Assigns letters based on the order groups are FIRST ENCOUNTERED when iterating edges 0→n-1 */
+ *  Edge 0 = A, then letters assigned based on clockwise rotation from edge 0:
+ *  0° = A, 90° = B, 180° = C, 270° = D */
 function groupSidesByBearing(polygon: [number, number][]): string[] {
   const n = polygon.length
   if (n < 3) return polygon.map((_, i) => String.fromCharCode(65 + i))
@@ -36,38 +37,31 @@ function groupSidesByBearing(polygon: [number, number][]): string[] {
   const normalOffset = signedArea < 0 ? 90 : -90
   const normals = edgeBearings.map(b => ((b + normalOffset) % 360 + 360) % 360)
 
-  console.log("[v0] Normals:", normals.map((n, i) => `edge${i}=${Math.round(n)}°`).join(", "))
-
-  // Assign each edge to a group based on bearing similarity (30° tolerance)
-  const TOLERANCE = 30
-  const edgeToGroup = new Array<number>(n).fill(-1) // which group each edge belongs to
-  let nextGroupId = 0
+  // Reference bearing is edge 0's normal - this defines direction A
+  const refBearing = normals[0]
   
-  // Iterate edges 0→n-1, assigning groups as we encounter new ones
-  for (let i = 0; i < n; i++) {
-    if (edgeToGroup[i] !== -1) continue // already assigned
-    
-    const groupId = nextGroupId++
-    edgeToGroup[i] = groupId
-    
-    // Find all other unassigned edges parallel to edge i
-    for (let j = i + 1; j < n; j++) {
-      if (edgeToGroup[j] !== -1) continue
-      let diff = Math.abs(normals[i] - normals[j])
-      if (diff > 180) diff = 360 - diff
-      if (diff <= TOLERANCE) edgeToGroup[j] = groupId
-    }
-  }
-
-  console.log("[v0] edgeToGroup:", edgeToGroup.join(","))
-
-  // Map group IDs to letters A, B, C, D...
+  // Calculate relative rotation from edge 0 for each edge (clockwise)
+  // and assign letter based on quadrant:
+  // 0° ± 45° = A, 90° ± 45° = B, 180° ± 45° = C, 270° ± 45° = D
   const segToGroup = new Array<string>(n)
   for (let i = 0; i < n; i++) {
-    segToGroup[i] = String.fromCharCode(65 + edgeToGroup[i])
+    // Calculate clockwise rotation from edge 0
+    let rot = normals[i] - refBearing
+    if (rot < 0) rot += 360
+    
+    // Assign letter based on quadrant
+    let letter: string
+    if (rot < 45 || rot >= 315) {
+      letter = 'A' // 0° quadrant (same direction as edge 0)
+    } else if (rot >= 45 && rot < 135) {
+      letter = 'B' // 90° quadrant (clockwise from A)
+    } else if (rot >= 135 && rot < 225) {
+      letter = 'C' // 180° quadrant (opposite to A)
+    } else {
+      letter = 'D' // 270° quadrant (counter-clockwise from A)
+    }
+    segToGroup[i] = letter
   }
-  
-  console.log("[v0] Result:", segToGroup.join(","))
   
   return segToGroup
 }
