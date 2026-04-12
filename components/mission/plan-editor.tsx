@@ -281,10 +281,16 @@ export function PlanEditor({
 
     for (const zone of zones) {
       if (!zone.polygon?.length || zone.polygon.length < 3) continue
+      // Use zone.sides to get facade letters: { "A": "facadeLetter", "B": "facadeLetter", ... }
+      const zoneSides = zone.sides as Record<string, string> | undefined
       for (let i = 0; i < zone.polygon.length; i++) {
         const a = zone.polygon[i]
         const b = zone.polygon[(i + 1) % zone.polygon.length]
-        const side = String.fromCharCode(65 + i)
+        const segmentKey = String.fromCharCode(65 + i) // A, B, C, D, E, F...
+        const side = zoneSides?.[segmentKey] ?? segmentKey // Use facade letter from zone.sides
+
+        // Only consider edges matching the selected facade
+        if (sensorPlaceMode.side && side !== sensorPlaceMode.side) continue
 
         const ax = a[1], ay = a[0]
         const bx = b[1], by = b[0]
