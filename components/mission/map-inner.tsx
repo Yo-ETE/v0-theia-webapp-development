@@ -1517,31 +1517,49 @@ export default function MapInner({
 
         {/* ── Canvas heatmap overlay (rendered outside React tree into Leaflet pane) ── */}
 
-        {/* ── Highlighted edges for sensor placement mode (all facades clickable) ── */}
+        {/* ── Highlighted edges for sensor placement mode (only matching facade clickable) ── */}
         {sensorPlaceMode && onSensorPlace && zones.map((zone) => {
           if (!zone.polygon?.length || zone.polygon.length < 3) return null
           // Use groupSidesByBearing for consistency with the displayed labels
           const seg2group = groupSidesByBearing(zone.polygon as [number, number][])
+          const selectedSide = sensorPlaceMode.side // Capture in variable
           return zone.polygon.map((pt: [number, number], idx: number) => {
             const nextPt = zone.polygon[(idx + 1) % zone.polygon.length]
             const facadeLetter = seg2group[idx] ?? String.fromCharCode(65 + idx)
             
-            // Only show edges matching the selected facade
-            const isSelected = !sensorPlaceMode.side || facadeLetter === sensorPlaceMode.side
+            // Only render clickable edges matching the selected facade
+            const isMatchingFacade = !selectedSide || facadeLetter === selectedSide
             
+            // Non-matching facades: show dimmed, non-clickable
+            if (!isMatchingFacade) {
+              return (
+                <Polyline
+                  key={`place-edge-dim-${zone.id}-${idx}`}
+                  positions={[pt, nextPt]}
+                  pathOptions={{
+                    color: vc.fov_overlay_color,
+                    weight: 2,
+                    opacity: 0.2,
+                    dashArray: "4 4",
+                  }}
+                />
+              )
+            }
+            
+            // Matching facades: highlighted and clickable
             return (
               <Polyline
                 key={`place-edge-${zone.id}-${idx}`}
                 positions={[pt, nextPt]}
                 pathOptions={{
-                  color: isSelected ? "#22d3ee" : vc.fov_overlay_color,
-                  weight: isSelected ? 8 : 3,
-                  opacity: isSelected ? 0.9 : 0.3,
-                  dashArray: isSelected ? undefined : "8 4",
-                  className: "sensor-place-side",
+                  color: "#22d3ee",
+                  weight: 8,
+                  opacity: 0.9,
+                  className: "sensor-place-side cursor-pointer",
                 }}
-                eventHandlers={isSelected ? {
+                eventHandlers={{
                   click: (e: { latlng: { lat: number; lng: number } }) => {
+                    e.originalEvent?.stopPropagation?.()
                     // Calculate position along edge (t parameter 0-1)
                     const clickLat = e.latlng.lat
                     const clickLng = e.latlng.lng
@@ -1551,10 +1569,9 @@ export default function MapInner({
                     if (len2 === 0) return
                     let t = ((clickLng - pt[1]) * dx + (clickLat - pt[0]) * dy) / len2
                     t = Math.max(0.02, Math.min(0.98, t))
-                    console.log("[v0] Polyline clicked - idx:", idx, "facadeLetter:", facadeLetter, "sensorPlaceMode.side:", sensorPlaceMode.side)
                     onSensorPlace(zone.id, facadeLetter, t)
                   }
-                } : undefined}
+                }}
               />
             )
           })
