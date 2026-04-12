@@ -2718,15 +2718,15 @@ const groupSidesByBearing = useCallback((polygon: [number, number][]) => {
                 {(() => {
                   const assignZone = zones.find((z) => z.id === assignDialog)
                   const sides = assignZone?.sides ?? {}
-                  return Object.entries(sides).filter(([, label]) => Boolean(label)).map(([key, label]) => (
+                  // Déduplique : ne garder qu'une entrée par groupe unique
+                  const uniqueGroups = [...new Set(Object.values(sides).filter(Boolean))]
+                  return uniqueGroups.map((groupLabel) => (
                     <button
-                      key={key}
+                      key={groupLabel}
                       onClick={() => {
-                        // Go to sensor placement mode (config will show after placement for gravity_mw)
-                        const zoneId = assignDialog!
                         setSensorPlaceMode({
-                          zoneId,
-                          side: key,
+                          zoneId: assignDialog!,
+                          side: groupLabel,
                           deviceId: assignStep!.deviceId,
                           deviceName: assignStep!.deviceName,
                           deviceType: assignStep!.deviceType,
@@ -2736,8 +2736,8 @@ const groupSidesByBearing = useCallback((polygon: [number, number][]) => {
                       }}
                       className="flex items-center gap-3 rounded border border-border/50 p-3 text-left hover:bg-muted/30 transition-colors"
                     >
-                      <span className="text-sm font-mono font-bold text-cyan-500 w-6 text-center">{key}</span>
-                      <span className="text-xs text-foreground">{label}</span>
+                      <span className="text-sm font-mono font-bold text-cyan-500 w-6 text-center">{groupLabel}</span>
+                      <span className="text-xs text-foreground">Façade {groupLabel}</span>
                     </button>
                   ))
                 })()}
