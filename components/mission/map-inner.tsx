@@ -785,7 +785,9 @@ export default function MapInner({
           const side = facadeLetters[i] ?? String.fromCharCode(65 + i)
 
           // Only consider edges matching the selected facade
-          if (sensorPlaceMode.side && side !== sensorPlaceMode.side) continue
+          const shouldSkip = sensorPlaceMode.side && side !== sensorPlaceMode.side
+          console.log(`[v0] Edge ${i}: facadeLetter=${side}, selectedSide=${sensorPlaceMode.side}, skip=${shouldSkip}`)
+          if (shouldSkip) continue
 
           // Project click onto this edge
           const bx = (pB[1] - pA[1]) * 111320 * cosRef
