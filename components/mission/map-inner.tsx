@@ -756,82 +756,8 @@ export default function MapInner({
     }
   }, [onMapMove])
 
-  // ── Sensor placement click handler (backup for clicking on map, not Polyline) ──
-  useEffect(() => {
-    if (!sensorPlaceMode || !onSensorPlace) return
-    if (!zones.length) return
-
-    const handler = (e: { latlng: { lat: number; lng: number } }) => {
-      const cLat = e.latlng.lat
-      const cLon = e.latlng.lng
-      const cosRef = Math.cos(cLat * Math.PI / 180)
-
-      // Find the closest edge among ALL zones
-      let bestZoneId = ""
-      let bestSide = ""
-      let bestT = 0.5
-      let bestDist = Infinity
-
-      for (const zone of zones) {
-        if (!zone.polygon?.length || zone.polygon.length < 3) continue
-        // Use zone.sides if available, otherwise calculate from bearing
-        // zone.sides has structure { "A": "facadeLetter", "B": "facadeLetter", ... }
-        // where key is segment index (A=0, B=1, etc.) and value is facade group letter
-        const zoneSides = zone.sides as Record<string, string> | undefined
-        for (let i = 0; i < zone.polygon.length; i++) {
-          const pA = zone.polygon[i] as [number, number]
-          const pB = zone.polygon[(i + 1) % zone.polygon.length] as [number, number]
-          const segmentKey = String.fromCharCode(65 + i) // A, B, C, D, E, F...
-          const side = zoneSides?.[segmentKey] ?? segmentKey
-
-          // Only consider edges matching the selected facade
-          if (sensorPlaceMode.side && side !== sensorPlaceMode.side) continue
-
-          // Project click onto this edge
-          const bx = (pB[1] - pA[1]) * 111320 * cosRef
-          const by = (pB[0] - pA[0]) * 111320
-          const cx = (cLon - pA[1]) * 111320 * cosRef
-          const cy = (cLat - pA[0]) * 111320
-          const abLen2 = bx * bx + by * by
-          if (abLen2 === 0) continue
-          let t = (cx * bx + cy * by) / abLen2
-          t = Math.max(0, Math.min(1, t))
-          // Point on edge at parameter t
-          const px = t * bx
-          const py = t * by
-          const dist = Math.sqrt((cx - px) ** 2 + (cy - py) ** 2)
-
-          if (dist < bestDist) {
-            bestDist = dist
-            bestZoneId = zone.id
-            bestSide = side
-            bestT = Math.max(0.02, Math.min(0.98, t))
-          }
-        }
-      }
-
-      // Only accept if click is within ~15m of an edge
-      if (bestZoneId && bestDist < 15) {
-        onSensorPlace(bestZoneId, bestSide, bestT)
-      }
-    }
-
-    const attach = () => {
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const map = mapRef.current as any
-      if (map && typeof map.on === "function") { map.on("click", handler); return true }
-      return false
-    }
-    if (!attach()) {
-      const t = setTimeout(attach, 300)
-      return () => clearTimeout(t)
-    }
-    return () => {
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const map = mapRef.current as any
-      if (map && typeof map.off === "function") map.off("click", handler)
-    }
-  }, [sensorPlaceMode, onSensorPlace, zones])
+  // Sensor placement is now handled directly by Polyline eventHandlers in the JSX
+  // This ensures consistency with the displayed facade labels (using groupSidesByBearing)
 
   const finishDrawing = useCallback(() => {
   if (drawPoints.length >= 3 && onPolygonDrawn) onPolygonDrawn(drawPoints)
