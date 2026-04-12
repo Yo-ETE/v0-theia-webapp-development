@@ -777,6 +777,8 @@ export default function MapInner({
         if (!zone.polygon?.length || zone.polygon.length < 3) continue
         // Get facade letters using the same groupSidesByBearing function
         const facadeLetters = groupSidesByBearing(zone.polygon as [number, number][])
+        console.log("[v0] facadeLetters for zone:", facadeLetters.join(","))
+        console.log("[v0] sensorPlaceMode.side:", sensorPlaceMode.side)
         for (let i = 0; i < zone.polygon.length; i++) {
           const pA = zone.polygon[i] as [number, number]
           const pB = zone.polygon[(i + 1) % zone.polygon.length] as [number, number]
@@ -807,6 +809,7 @@ export default function MapInner({
 
       // Only accept if click is within ~15m of an edge
       if (bestZoneId && bestDist < 15) {
+        console.log("[v0] Placing sensor on side:", bestSide)
         onSensorPlace(bestZoneId, bestSide, bestT)
       }
     }
