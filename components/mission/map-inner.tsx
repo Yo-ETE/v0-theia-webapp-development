@@ -56,6 +56,7 @@ function groupSidesByBearing(polygon: [number, number][]): string[] {
     segToGroup[i] = letter
   }
   
+  console.log("[v0] map-inner groupSidesByBearing result:", segToGroup.join(","))
   return segToGroup
 }
 
