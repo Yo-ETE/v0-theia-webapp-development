@@ -354,12 +354,18 @@ export default function MissionDetailPage() {
   // ��������─ Bearing grouping: segments facing the same direction share the same face label ──
   // Uses FULL 0-360 bearing so north-facing (0) and south-facing (180) are DIFFERENT faces.
   // Returns e.g. { A: [0,3], B: [1,4], C: [2,5] } meaning polygon edges 0&3 are "A", etc.
-  const groupSidesByBearing = useCallback((polygon: [number, number][]) => {
-    if (polygon.length < 3) {
-      const labels: Record<string, string> = {}
-      for (let i = 0; i < polygon.length; i++) labels[String.fromCharCode(65 + i)] = ""
-      return { labels, segmentToGroup: polygon.map((_,i) => String.fromCharCode(65 + i)) }
-    }
+// Correct — attribue les lettres dans l'ordre de tracé (clic 1 = début façade A)
+  const groupSidesByBearing = (points: LatLng[]) => {
+    return points.map((p, i) => {
+      const next = points[(i + 1) % points.length]
+      return {
+        from: p,
+        to: next,
+        bearing: computeBearing(p, next),
+        label: String.fromCharCode(65 + i), // A, B, C, D... dans l'ordre des clics
+      }
+    })
+  }
     // Edge 0 = A, then letters assigned based on clockwise rotation from edge 0:
     // 0 deg = A, 90 deg = B, 180 deg = C, 270 deg = D
 
