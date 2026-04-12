@@ -351,7 +351,7 @@ export default function MissionDetailPage() {
     })
   }, [events])
 
-  // ��������─ Bearing grouping: segments facing the same direction share the same face label ──
+  // ���������─ Bearing grouping: segments facing the same direction share the same face label ──
   // Uses FULL 0-360 bearing so north-facing (0) and south-facing (180) are DIFFERENT faces.
   // Returns e.g. { A: [0,3], B: [1,4], C: [2,5] } meaning polygon edges 0&3 are "A", etc.
 const groupSidesByBearing = useCallback((polygon: [number, number][]) => {
@@ -577,6 +577,7 @@ const groupSidesByBearing = useCallback((polygon: [number, number][]) => {
 
   // ── Handle click-to-place sensor on the map side ──
   const handleSensorPlace = useCallback((zoneId: string, side: string, position: number) => {
+    console.log("[v0] handleSensorPlace called - zoneId:", zoneId, "side:", side, "position:", position)
     if (!sensorPlaceMode) return
     
     // For gravity_mw, show config dialog after placement instead of assigning directly
