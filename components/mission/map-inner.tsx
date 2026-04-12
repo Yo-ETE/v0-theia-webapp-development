@@ -1544,7 +1544,8 @@ export default function MapInner({
                 const mLon = (pt[1] + next[1]) / 2
                 // Use grouped facade letter (e.g. two colinear segments both get "D")
                 const groupKey = seg2group[idx] ?? String.fromCharCode(65 + idx)
-                const sideLabel = zone.sides?.[groupKey] ?? groupKey
+                const segKey = String.fromCharCode(65 + idx)
+                const sideLabel = zone.sides?.[segKey] ?? groupKey
                 const displayLabel = sideLabel || groupKey
                 const dist = haversineM(pt[0], pt[1], next[0], next[1])
                 // Compute screen-space angle of the edge for CSS rotation
