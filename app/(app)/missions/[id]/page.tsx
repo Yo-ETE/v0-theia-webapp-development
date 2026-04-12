@@ -351,7 +351,7 @@ export default function MissionDetailPage() {
     })
   }, [events])
 
-  // �������─ Bearing grouping: segments facing the same direction share the same face label ──
+  // ��������─ Bearing grouping: segments facing the same direction share the same face label ──
   // Uses FULL 0-360 bearing so north-facing (0) and south-facing (180) are DIFFERENT faces.
   // Returns e.g. { A: [0,3], B: [1,4], C: [2,5] } meaning polygon edges 0&3 are "A", etc.
   const groupSidesByBearing = useCallback((polygon: [number, number][]) => {
@@ -360,15 +360,13 @@ export default function MissionDetailPage() {
       for (let i = 0; i < polygon.length; i++) labels[String.fromCharCode(65 + i)] = ""
       return { labels, segmentToGroup: polygon.map((_,i) => String.fromCharCode(65 + i)) }
     }
-    // Compute the OUTWARD NORMAL bearing (0-360) for each edge.
-    // The outward normal tells us which direction the wall faces (not which way it runs).
-    // For a CW polygon, outward normal is +90 from edge direction.
-    // For a CCW polygon, outward normal is -90 from edge direction.
+    // Edge 0 = A, then letters assigned based on clockwise rotation from edge 0:
+    // 0 deg = A, 90 deg = B, 180 deg = C, 270 deg = D
 
     // Detect if coordinates are pixel-based (>200) or lat/lon (-90..90)
     const isPixelCoords = polygon.some(([a, b]) => Math.abs(a) > 200 || Math.abs(b) > 200)
 
-    // First compute edge bearings
+    // First compute edge bearings (direction each edge points to)
     const edgeBearings: number[] = []
     for (let i = 0; i < polygon.length; i++) {
       const [y1, x1] = polygon[i]
@@ -389,47 +387,43 @@ export default function MissionDetailPage() {
       edgeBearings.push(deg)
     }
 
-    // Determine polygon winding (signed area). Positive = CCW in lat/lng.
-    let signedArea = 0
-    for (let i = 0; i < polygon.length; i++) {
-      const j = (i + 1) % polygon.length
-      signedArea += (polygon[j][1] - polygon[i][1]) * (polygon[j][0] + polygon[i][0])
-    }
-    // Shoelace with (lng,lat): signedArea < 0 means CW on screen → outward normal = bearing + 90
-    // signedArea > 0 means CCW on screen → outward normal = bearing - 90
-    const normalOffset = signedArea < 0 ? 90 : -90
-
-    // Compute outward normal bearings
-    const bearings: number[] = edgeBearings.map(b => ((b + normalOffset) % 360 + 360) % 360)
-
-    // Group edges whose outward normals point in similar directions (within tolerance)
-    const TOLERANCE = 30
-    const groups: number[][] = []
-    const assigned = new Set<number>()
-    for (let i = 0; i < bearings.length; i++) {
-      if (assigned.has(i)) continue
-      const group = [i]
-      assigned.add(i)
-      for (let j = i + 1; j < bearings.length; j++) {
-        if (assigned.has(j)) continue
-        // Angular difference on a circle (0-360)
-        let diff = Math.abs(bearings[i] - bearings[j])
-        if (diff > 180) diff = 360 - diff
-        if (diff <= TOLERANCE) {
-          group.push(j)
-          assigned.add(j)
-        }
-      }
-      groups.push(group)
-    }
-    // Assign labels A, B, C... to each group
+    // Reference bearing is edge 0's bearing - this defines direction A
+    const refBearing = edgeBearings[0]
+    
+    // Calculate relative rotation from edge 0 for each edge
+    // and assign letter based on quadrant:
+    // 0 deg +/- 45 = A, 90 deg +/- 45 = B, 180 deg +/- 45 = C, 270 deg +/- 45 = D
     const segmentToGroup: string[] = new Array(polygon.length)
+    const usedLetters = new Set<string>()
+    
+    for (let i = 0; i < polygon.length; i++) {
+      // Calculate rotation from edge 0's bearing
+      let rot = edgeBearings[i] - refBearing
+      // Normalize to 0-360
+      while (rot < 0) rot += 360
+      while (rot >= 360) rot -= 360
+      
+      // Assign letter based on quadrant
+      let letter: string
+      if (rot < 45 || rot >= 315) {
+        letter = 'A' // 0 deg quadrant (same direction as edge 0)
+      } else if (rot >= 45 && rot < 135) {
+        letter = 'B' // 90 deg clockwise from A
+      } else if (rot >= 135 && rot < 225) {
+        letter = 'C' // 180 deg from A (opposite direction)
+      } else {
+        letter = 'D' // 270 deg clockwise (or 90 deg counter-clockwise) from A
+      }
+      segmentToGroup[i] = letter
+      usedLetters.add(letter)
+    }
+    
+    // Build labels object with only the used letters
     const labels: Record<string, string> = {}
-    groups.forEach((group, gi) => {
-      const letter = String.fromCharCode(65 + gi)
+    for (const letter of usedLetters) {
       labels[letter] = ""
-      for (const idx of group) segmentToGroup[idx] = letter
-    })
+    }
+    
     return { labels, segmentToGroup }
   }, [])
 
