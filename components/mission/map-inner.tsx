@@ -1520,12 +1520,11 @@ export default function MapInner({
         {/* ── Highlighted edges for sensor placement mode (all facades clickable) ── */}
         {sensorPlaceMode && onSensorPlace && zones.map((zone) => {
           if (!zone.polygon?.length || zone.polygon.length < 3) return null
-          // Get facade letters from zone.sides
-          const zoneSides = zone.sides as Record<string, string> | undefined
+          // Use groupSidesByBearing for consistency with the displayed labels
+          const seg2group = groupSidesByBearing(zone.polygon as [number, number][])
           return zone.polygon.map((pt: [number, number], idx: number) => {
             const nextPt = zone.polygon[(idx + 1) % zone.polygon.length]
-            const segmentKey = String.fromCharCode(65 + idx) // A, B, C...
-            const facadeLetter = zoneSides?.[segmentKey] ?? segmentKey
+            const facadeLetter = seg2group[idx] ?? String.fromCharCode(65 + idx)
             
             // Only show edges matching the selected facade
             const isSelected = !sensorPlaceMode.side || facadeLetter === sensorPlaceMode.side
@@ -1552,6 +1551,7 @@ export default function MapInner({
                     if (len2 === 0) return
                     let t = ((clickLng - pt[1]) * dx + (clickLat - pt[0]) * dy) / len2
                     t = Math.max(0.02, Math.min(0.98, t))
+                    console.log("[v0] Polyline clicked - idx:", idx, "facadeLetter:", facadeLetter, "sensorPlaceMode.side:", sensorPlaceMode.side)
                     onSensorPlace(zone.id, facadeLetter, t)
                   }
                 } : undefined}

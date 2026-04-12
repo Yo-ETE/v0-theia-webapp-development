@@ -44,6 +44,7 @@ import { updateMission, updateDevice } from "@/lib/api-client"
 import { missionStatusConfig, eventTypeConfig, deviceStatusConfig, formatRelative, formatTime, formatDateTime } from "@/lib/format"
 import { cn } from "@/lib/utils"
 import type { Zone, Floor, DetectionEvent } from "@/lib/types"
+import { groupSidesByBearing } from "@/lib/facade-utils"
 
 const ZONE_COLORS = ["#3b82f6", "#ef4444", "#22c55e", "#f59e0b", "#8b5cf6", "#ec4899", "#06b6d4", "#f97316"]
 const ZONE_TYPES = [
@@ -351,7 +352,7 @@ export default function MissionDetailPage() {
     })
   }, [events])
 
-  // ����������─ Bearing grouping: segments facing the same direction share the same face label ──
+  // �����������─ Bearing grouping: segments facing the same direction share the same face label ──
   // Uses FULL 0-360 bearing so north-facing (0) and south-facing (180) are DIFFERENT faces.
   // Returns e.g. { A: [0,3], B: [1,4], C: [2,5] } meaning polygon edges 0&3 are "A", etc.
 const groupSidesByBearing = useCallback((polygon: [number, number][]) => {
@@ -2717,9 +2718,10 @@ const groupSidesByBearing = useCallback((polygon: [number, number][]) => {
               <div className="flex flex-col gap-2 py-2">
                 {(() => {
                   const assignZone = zones.find((z) => z.id === assignDialog)
-                  const sides = assignZone?.sides ?? {}
-                  // Déduplique : ne garder qu'une entrée par groupe unique
-                  const uniqueGroups = [...new Set(Object.values(sides).filter(Boolean))]
+                  if (!assignZone?.polygon || assignZone.polygon.length < 3) return null
+                  // Use groupSidesByBearing for consistency with map display
+                  const facadeLetters = groupSidesByBearing(assignZone.polygon as [number, number][])
+                  const uniqueGroups = [...new Set(facadeLetters)]
                   return uniqueGroups.map((groupLabel) => (
                     <button
                       key={groupLabel}
