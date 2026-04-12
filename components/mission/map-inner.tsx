@@ -7,7 +7,7 @@ import type { VisualConfig } from "@/hooks/use-visual-config"
 import { VISUAL_DEFAULTS } from "@/hooks/use-visual-config"
 import HeatmapCanvas from "./heatmap-canvas"
 
-/** Group polygon edges by outward-normal bearing so colinear walls share the same facade letter
+/** Group polygon edges by edge bearing so parallel walls share the same facade letter
  *  Edge 0 = A, then letters assigned based on clockwise rotation from edge 0:
  *  0° = A, 90° = B, 180° = C, 270° = D */
 function groupSidesByBearing(polygon: [number, number][]): string[] {
@@ -28,37 +28,30 @@ function groupSidesByBearing(polygon: [number, number][]): string[] {
     edgeBearings.push(deg)
   }
 
-  // Polygon winding to compute outward normals (perpendicular to edges, pointing outward)
-  let signedArea = 0
-  for (let i = 0; i < n; i++) {
-    const j = (i + 1) % n
-    signedArea += (polygon[j][1] - polygon[i][1]) * (polygon[j][0] + polygon[i][0])
-  }
-  const normalOffset = signedArea < 0 ? 90 : -90
-  const normals = edgeBearings.map(b => ((b + normalOffset) % 360 + 360) % 360)
-
-  // Reference bearing is edge 0's normal - this defines direction A
-  const refBearing = normals[0]
+  // Reference bearing is edge 0's bearing - this defines direction A
+  const refBearing = edgeBearings[0]
   
-  // Calculate relative rotation from edge 0 for each edge (clockwise)
+  // Calculate relative rotation from edge 0 for each edge
   // and assign letter based on quadrant:
   // 0° ± 45° = A, 90° ± 45° = B, 180° ± 45° = C, 270° ± 45° = D
   const segToGroup = new Array<string>(n)
   for (let i = 0; i < n; i++) {
-    // Calculate clockwise rotation from edge 0
-    let rot = normals[i] - refBearing
-    if (rot < 0) rot += 360
+    // Calculate rotation from edge 0's bearing
+    let rot = edgeBearings[i] - refBearing
+    // Normalize to 0-360
+    while (rot < 0) rot += 360
+    while (rot >= 360) rot -= 360
     
     // Assign letter based on quadrant
     let letter: string
     if (rot < 45 || rot >= 315) {
       letter = 'A' // 0° quadrant (same direction as edge 0)
     } else if (rot >= 45 && rot < 135) {
-      letter = 'B' // 90° quadrant (clockwise from A)
+      letter = 'B' // 90° clockwise from A
     } else if (rot >= 135 && rot < 225) {
-      letter = 'C' // 180° quadrant (opposite to A)
+      letter = 'C' // 180° from A (opposite direction)
     } else {
-      letter = 'D' // 270° quadrant (counter-clockwise from A)
+      letter = 'D' // 270° clockwise (or 90° counter-clockwise) from A
     }
     segToGroup[i] = letter
   }
