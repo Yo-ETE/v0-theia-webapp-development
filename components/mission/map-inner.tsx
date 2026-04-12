@@ -773,17 +773,20 @@ export default function MapInner({
       let bestT = 0.5
       let bestDist = Infinity
 
+      console.log("[v0] Click handler triggered, sensorPlaceMode.side:", sensorPlaceMode.side)
       for (const zone of zones) {
         if (!zone.polygon?.length || zone.polygon.length < 3) continue
         // Use zone.sides if available, otherwise calculate from bearing
         // zone.sides has structure { "A": "facadeLetter", "B": "facadeLetter", ... }
         // where key is segment index (A=0, B=1, etc.) and value is facade group letter
         const zoneSides = zone.sides as Record<string, string> | undefined
+        console.log("[v0] zone.sides:", JSON.stringify(zoneSides))
         for (let i = 0; i < zone.polygon.length; i++) {
           const pA = zone.polygon[i] as [number, number]
           const pB = zone.polygon[(i + 1) % zone.polygon.length] as [number, number]
           const segmentKey = String.fromCharCode(65 + i) // A, B, C, D, E, F...
           const side = zoneSides?.[segmentKey] ?? segmentKey
+          console.log(`[v0] Segment ${segmentKey}: facade=${side}, selected=${sensorPlaceMode.side}, skip=${sensorPlaceMode.side && side !== sensorPlaceMode.side}`)
 
           // Only consider edges matching the selected facade
           if (sensorPlaceMode.side && side !== sensorPlaceMode.side) continue
