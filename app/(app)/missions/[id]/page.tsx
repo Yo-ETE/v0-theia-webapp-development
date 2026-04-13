@@ -44,7 +44,6 @@ import { updateMission, updateDevice } from "@/lib/api-client"
 import { missionStatusConfig, eventTypeConfig, deviceStatusConfig, formatRelative, formatTime, formatDateTime } from "@/lib/format"
 import { cn } from "@/lib/utils"
 import type { Zone, Floor, DetectionEvent } from "@/lib/types"
-import { groupSidesByBearing } from "@/lib/facade-utils"
 
 const ZONE_COLORS = ["#3b82f6", "#ef4444", "#22c55e", "#f59e0b", "#8b5cf6", "#ec4899", "#06b6d4", "#f97316"]
 const ZONE_TYPES = [
@@ -2718,10 +2717,11 @@ const groupSidesByBearing = useCallback((polygon: [number, number][]) => {
               <div className="flex flex-col gap-2 py-2">
                 {(() => {
                   const assignZone = zones.find((z) => z.id === assignDialog)
-                  if (!assignZone?.polygon || assignZone.polygon.length < 3) return null
+                  if (!assignZone?.polygon || !Array.isArray(assignZone.polygon) || assignZone.polygon.length < 3) return null
                   // Use groupSidesByBearing for consistency with map display
-                  const facadeLetters = groupSidesByBearing(assignZone.polygon as [number, number][])
-                  const uniqueGroups = [...new Set(facadeLetters)]
+                  const { segmentToGroup } = groupSidesByBearing(assignZone.polygon as [number, number][])
+                  if (!Array.isArray(segmentToGroup) || segmentToGroup.length === 0) return null
+                  const uniqueGroups = [...new Set(segmentToGroup)]
                   return uniqueGroups.map((groupLabel) => (
                     <button
                       key={groupLabel}
