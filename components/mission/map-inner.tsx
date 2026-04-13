@@ -751,28 +751,21 @@ export default function MapInner({
   }
 
   function getSideEdge(zone: Zone, sideKey: string): [[number, number], [number, number]] | null {
-    // Use bearing-based grouping to find the segment(s) that belong to this facade
+    // First try: direct segment index mapping (A=0, B=1, C=2, etc.)
+    // This is the primary method when sideKey is a segment index
+    const directIdx = sideKey.charCodeAt(0) - 65
+    if (directIdx >= 0 && directIdx < zone.polygon.length) {
+      const nextIdx = (directIdx + 1) % zone.polygon.length
+      return [zone.polygon[directIdx], zone.polygon[nextIdx]]
+    }
+    // Fallback: try as facade group letter (for backward compatibility)
     const seg2group = zone.polygon.length >= 3 ? groupSidesByBearing(zone.polygon) : []
-    // Find the first segment matching this facade group
     const segIdx = seg2group.indexOf(sideKey)
     if (segIdx >= 0) {
-      // For multi-segment facades, compute the combined edge (start of first segment to end of last)
-      const matchingSegs = seg2group.reduce<number[]>((acc, g, i) => g === sideKey ? [...acc, i] : acc, [])
-      if (matchingSegs.length === 1) {
-        const nextIdx = (matchingSegs[0] + 1) % zone.polygon.length
-        return [zone.polygon[matchingSegs[0]], zone.polygon[nextIdx]]
-      }
-      // Multiple segments: return start of first to end of last
-      const first = matchingSegs[0]
-      const last = matchingSegs[matchingSegs.length - 1]
-      const endIdx = (last + 1) % zone.polygon.length
-      return [zone.polygon[first], zone.polygon[endIdx]]
+      const nextIdx = (segIdx + 1) % zone.polygon.length
+      return [zone.polygon[segIdx], zone.polygon[nextIdx]]
     }
-    // Fallback: direct index mapping
-    const idx = sideKey.charCodeAt(0) - 65
-    if (idx < 0 || idx >= zone.polygon.length) return null
-    const nextIdx = (idx + 1) % zone.polygon.length
-    return [zone.polygon[idx], zone.polygon[nextIdx]]
+    return null
   }
 
   function pointAlongSide(p1: [number, number], p2: [number, number], t: number): [number, number] {
@@ -1122,6 +1115,10 @@ export default function MapInner({
     if (!edge) return null
     const centroid = zoneCentroids[zone.id]
     if (!centroid) return null
+    // Convert segment index to facade group letter for display
+    const seg2group = zone.polygon.length >= 3 ? groupSidesByBearing(zone.polygon) : []
+    const segIdx = sp.side.charCodeAt(0) - 65
+    const facadeGroup = (segIdx >= 0 && segIdx < seg2group.length) ? seg2group[segIdx] : sp.side
     const sensorLatLon = pointAlongSide(edge[0], edge[1], sp.sensor_position)
     const rawNormalM = inwardNormalM(edge[0], edge[1], centroid)
     // Flip normal direction when sensor faces outward (exterior detection)
@@ -1204,7 +1201,7 @@ export default function MapInner({
       sensorPos: sensorLatLon,
       detectionPos: detectionLatLon,
       deviceName: sp.device_name,
-      side: sp.side,
+      side: facadeGroup,
       detection: det ?? null,
       zoneColor: zone.color,
       normalBearingDeg,

@@ -351,7 +351,7 @@ export default function MissionDetailPage() {
     })
   }, [events])
 
-  // �����������─ Bearing grouping: segments facing the same direction share the same face label ──
+  // ������������─ Bearing grouping: segments facing the same direction share the same face label ──
   // Uses FULL 0-360 bearing so north-facing (0) and south-facing (180) are DIFFERENT faces.
   // Returns e.g. { A: [0,3], B: [1,4], C: [2,5] } meaning polygon edges 0&3 are "A", etc.
 const groupSidesByBearing = useCallback((polygon: [number, number][]) => {
@@ -430,6 +430,19 @@ const groupSidesByBearing = useCallback((polygon: [number, number][]) => {
 
   return { labels, segmentToGroup }
 }, [])
+
+  // Helper: convert segment index (A, B, C...) to facade group letter using a zone's polygon
+  const getDisplaySide = useCallback((zoneId: string | undefined, side: string | undefined): string => {
+    if (!side) return ""
+    const zone = zones.find(z => z.id === zoneId)
+    if (!zone?.polygon || zone.polygon.length < 3) return side
+    const { segmentToGroup } = groupSidesByBearing(zone.polygon as [number, number][])
+    const segIdx = side.charCodeAt(0) - 65
+    if (segIdx >= 0 && segIdx < segmentToGroup.length) {
+      return segmentToGroup[segIdx]
+    }
+    return side
+  }, [zones, groupSidesByBearing])
 
   // ── Zone drawing ──
   const handlePolygonDrawn = useCallback((polygon: [number, number][]) => {
@@ -1269,7 +1282,7 @@ const groupSidesByBearing = useCallback((polygon: [number, number][]) => {
                         <div className="flex items-center gap-1.5">
                           <span className="text-[10px] font-semibold text-foreground font-mono">{d.dev_eui || d.name}</span>
                           {d.zone_label && (
-                            <span className="text-[9px] text-muted-foreground truncate">{d.zone_label} [{d.side}]</span>
+                            <span className="text-[9px] text-muted-foreground truncate">{d.zone_label} [{getDisplaySide(d.zone_id, d.side)}]</span>
                           )}
                         </div>
                         <div className="flex items-center gap-2 mt-0.5">
@@ -1811,7 +1824,7 @@ const groupSidesByBearing = useCallback((polygon: [number, number][]) => {
                             <div className="flex flex-wrap items-center gap-x-2 gap-y-0 text-[10px] text-muted-foreground">
                               <span>
                                 {d.zone_label || (d.floor != null ? `Etage ${d.floor}` : "---")}
-                                {d.side && <span className="text-primary ml-0.5">[{d.side}]</span>}
+                                {d.side && <span className="text-primary ml-0.5">[{getDisplaySide(d.zone_id, d.side)}]</span>}
                                 {wallDist && <span className="ml-0.5">{wallDist}</span>}
                               </span>
                               {rssiVal != null && rssiVal !== 0 && (
@@ -2370,7 +2383,7 @@ const groupSidesByBearing = useCallback((polygon: [number, number][]) => {
                               </TableCell>
                               <TableCell className="text-xs text-muted-foreground">
                                 {device.zone_label || device.floor != null ? (
-                                  <span>{device.zone_label || `Etage ${device.floor}`}{device.side && <span className="ml-1 text-primary font-mono">[{device.side}]</span>}</span>
+                                  <span>{device.zone_label || `Etage ${device.floor}`}{device.side && <span className="ml-1 text-primary font-mono">[{getDisplaySide(device.zone_id, device.side)}]</span>}</span>
                                 ) : "---"}
                               </TableCell>
                               <TableCell>
