@@ -44,6 +44,7 @@ import { updateMission, updateDevice } from "@/lib/api-client"
 import { missionStatusConfig, eventTypeConfig, deviceStatusConfig, formatRelative, formatTime, formatDateTime } from "@/lib/format"
 import { cn } from "@/lib/utils"
 import type { Zone, Floor, DetectionEvent } from "@/lib/types"
+import { groupSidesByBearing } from "@/lib/facade-utils"
 
 const ZONE_COLORS = ["#3b82f6", "#ef4444", "#22c55e", "#f59e0b", "#8b5cf6", "#ec4899", "#06b6d4", "#f97316"]
 const ZONE_TYPES = [
@@ -351,99 +352,21 @@ export default function MissionDetailPage() {
     })
   }, [events])
 
-  // �������������─ Bearing grouping: segments facing the same direction share the same face label ──
+  // ��������������─ Bearing grouping: segments facing the same direction share the same face label ──
   // Uses FULL 0-360 bearing so north-facing (0) and south-facing (180) are DIFFERENT faces.
   // Returns e.g. { A: [0,3], B: [1,4], C: [2,5] } meaning polygon edges 0&3 are "A", etc.
-const groupSidesByBearing = useCallback((polygon: [number, number][]) => {
-  if (!polygon || polygon.length < 2) return { labels: {}, segmentToGroup: [] }
-
-  const isPixelCoords = polygon.some(([a, b]) => Math.abs(a) > 200 || Math.abs(b) > 200)
-
-  // Calcule le bearing de chaque segment
-  const edgeBearings: number[] = []
-  for (let i = 0; i < polygon.length; i++) {
-    const [y1, x1] = polygon[i]
-    const [y2, x2] = polygon[(i + 1) % polygon.length]
-    let deg: number
-    if (isPixelCoords) {
-      deg = Math.atan2(x2 - x1, y2 - y1) * 180 / Math.PI
-    } else {
-      const dLon = (x2 - x1) * Math.PI / 180
-      const yy = Math.sin(dLon) * Math.cos(y2 * Math.PI / 180)
-      const xx = Math.cos(y1 * Math.PI / 180) * Math.sin(y2 * Math.PI / 180) -
-                 Math.sin(y1 * Math.PI / 180) * Math.cos(y2 * Math.PI / 180) * Math.cos(dLon)
-      deg = Math.atan2(yy, xx) * 180 / Math.PI
-    }
-    edgeBearings.push(((deg % 360) + 360) % 360)
-  }
-
-  // Bearing de référence = segment 0 (premier clic = début façade A)
-  const refBearing = edgeBearings[0]
-
-  // Calcule la rotation relative à A, normalisée 0-360
-  const relativeRot = (bearing: number) => {
-    let rot = bearing - refBearing
-    while (rot < 0) rot += 360
-    while (rot >= 360) rot -= 360
-    return rot
-  }
-
-  // Assign les lettres dans l'ordre de tracé (A, B, C, D)
-  // en tournant en sens horaire depuis A.
-  // Seuil de tolérance angulaire pour regrouper les parallèles : ±30°
-  const TOLERANCE = 30
-
-  // Les 4 quadrants horaires depuis A
-  // Quadrant A : rot dans [0, TOLERANCE] ou [360-TOLERANCE, 360]
-  // Quadrant B : rot dans [90-TOLERANCE, 90+TOLERANCE]
-  // Quadrant C : rot dans [180-TOLERANCE, 180+TOLERANCE]
-  // Quadrant D : rot dans [270-TOLERANCE, 270+TOLERANCE]
-  const getQuadrantLetter = (rot: number): string => {
-    if (rot <= TOLERANCE || rot >= 360 - TOLERANCE) return 'A'
-    if (rot >= 90 - TOLERANCE && rot <= 90 + TOLERANCE) return 'B'
-    if (rot >= 180 - TOLERANCE && rot <= 180 + TOLERANCE) return 'C'
-    if (rot >= 270 - TOLERANCE && rot <= 270 + TOLERANCE) return 'D'
-    // Segment diagonal ou avancée : trouver la face la plus proche
-    const distances = [
-      { letter: 'A', dist: Math.min(rot, 360 - rot) },
-      { letter: 'B', dist: Math.abs(rot - 90) },
-      { letter: 'C', dist: Math.abs(rot - 180) },
-      { letter: 'D', dist: Math.abs(rot - 270) },
-    ]
-    return distances.sort((a, b) => a.dist - b.dist)[0].letter
-  }
-
-  const segmentToGroup: string[] = []
-  const usedLetters = new Set<string>()
-
-  for (let i = 0; i < polygon.length; i++) {
-    const rot = relativeRot(edgeBearings[i])
-    const letter = getQuadrantLetter(rot)
-    segmentToGroup.push(letter)
-    usedLetters.add(letter)
-  }
-
-  const labels: Record<string, string> = {}
-  for (const letter of Array.from(usedLetters).sort()) {
-    labels[letter] = ""
-  }
-
-  return { labels, segmentToGroup }
-}, [])
-
   // Helper: convert segment index (A, B, C...) to facade group letter using a zone's polygon
-  const getDisplaySide = useCallback((zoneId: string | undefined, side: string | undefined): string => {
+  const getDisplaySide = (zoneId: string | undefined, side: string | undefined): string => {
     if (!side) return ""
     const zone = zones.find(z => z.id === zoneId)
     if (!zone?.polygon || zone.polygon.length < 3) return side
     const { segmentToGroup } = groupSidesByBearing(zone.polygon as [number, number][])
     const segIdx = side.charCodeAt(0) - 65
-    console.log("[v0] getDisplaySide - side:", side, "segIdx:", segIdx, "segmentToGroup:", segmentToGroup, "result:", segIdx >= 0 && segIdx < segmentToGroup.length ? segmentToGroup[segIdx] : side)
     if (segIdx >= 0 && segIdx < segmentToGroup.length) {
       return segmentToGroup[segIdx]
     }
     return side
-  }, [zones, groupSidesByBearing])
+  }
 
   // ── Zone drawing ──
   const handlePolygonDrawn = useCallback((polygon: [number, number][]) => {

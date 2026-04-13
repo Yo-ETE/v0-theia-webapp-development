@@ -343,7 +343,7 @@ export default function MapInner({
     }
 
     // Side distance labels with grouped facade letter
-    const editSeg2group = groupSidesByBearing(localPoly)
+    const { segmentToGroup: editSeg2group } = groupSidesByBearing(localPoly)
     localPoly.forEach((pt, i) => {
       const next = localPoly[(i + 1) % localPoly.length]
       // Side label at the START vertex of this edge (corner), not midpoint
@@ -759,7 +759,7 @@ export default function MapInner({
       return [zone.polygon[directIdx], zone.polygon[nextIdx]]
     }
     // Fallback: try as facade group letter (for backward compatibility)
-    const seg2group = zone.polygon.length >= 3 ? groupSidesByBearing(zone.polygon) : []
+    const { segmentToGroup: seg2group } = zone.polygon.length >= 3 ? groupSidesByBearing(zone.polygon) : { segmentToGroup: [] }
     const segIdx = seg2group.indexOf(sideKey)
     if (segIdx >= 0) {
       const nextIdx = (segIdx + 1) % zone.polygon.length
@@ -1116,7 +1116,7 @@ export default function MapInner({
     const centroid = zoneCentroids[zone.id]
     if (!centroid) return null
     // Convert segment index to facade group letter for display
-    const seg2group = zone.polygon.length >= 3 ? groupSidesByBearing(zone.polygon) : []
+    const { segmentToGroup: seg2group } = zone.polygon.length >= 3 ? groupSidesByBearing(zone.polygon) : { segmentToGroup: [] }
     const segIdx = sp.side.charCodeAt(0) - 65
     const facadeGroup = (segIdx >= 0 && segIdx < seg2group.length) ? seg2group[segIdx] : sp.side
     const sensorLatLon = pointAlongSide(edge[0], edge[1], sp.sensor_position)
@@ -1387,7 +1387,7 @@ export default function MapInner({
         {sensorPlaceMode && onSensorPlace && zones.map((zone) => {
           if (!zone.polygon?.length || zone.polygon.length < 3) return null
           // Use groupSidesByBearing for consistency with the displayed labels
-          const seg2group = groupSidesByBearing(zone.polygon as [number, number][])
+          const { segmentToGroup: seg2group } = groupSidesByBearing(zone.polygon as [number, number][])
           const selectedSide = sensorPlaceMode.side // Capture in variable
           return zone.polygon.map((pt: [number, number], idx: number) => {
             const nextPt = zone.polygon[(idx + 1) % zone.polygon.length]
@@ -1437,7 +1437,6 @@ export default function MapInner({
                     if (len2 === 0) return
                     let t = ((clickLng - pt[1]) * dx + (clickLat - pt[0]) * dy) / len2
                     t = Math.max(0.02, Math.min(0.98, t))
-                    console.log("[v0] Click - idx:", idx, "segmentKey:", segmentKey, "facadeLetter:", facadeLetter, "t:", t, "seg2group:", seg2group)
                     // Pass segment key (A, B, C...) for precise positioning on this specific segment
                     onSensorPlace(zone.id, segmentKey, t)
                   }
@@ -1450,7 +1449,7 @@ export default function MapInner({
         {/* ── Side labels with distance on saved zones - rotated parallel to edge ── */}
         {(zones ?? []).map((zone) => {
           // Compute bearing-based grouping so colinear segments share the same facade letter
-          const seg2group = zone.polygon?.length >= 3 ? groupSidesByBearing(zone.polygon) : []
+          const { segmentToGroup: seg2group } = zone.polygon?.length >= 3 ? groupSidesByBearing(zone.polygon) : { segmentToGroup: [] }
           return zone.polygon?.length >= 2 && RL && leafletL
             ? zone.polygon.map((pt, idx) => {
                 const nextIdx = (idx + 1) % zone.polygon.length

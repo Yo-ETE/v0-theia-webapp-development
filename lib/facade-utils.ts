@@ -1,9 +1,19 @@
 /** Group polygon edges by edge bearing so parallel walls share the same facade letter
  *  Edge 0 = A, then letters assigned based on clockwise rotation from edge 0:
- *  0° = A, 90° = B, 180° = C, 270° = D */
-export function groupSidesByBearing(polygon: [number, number][]): string[] {
+ *  0° = A, 90° = B, 180° = C, 270° = D
+ *  
+ *  Returns { labels, segmentToGroup } where:
+ *  - segmentToGroup[i] = facade letter (A/B/C/D) for segment i
+ *  - labels = object with used letters as keys
+ */
+export function groupSidesByBearing(polygon: [number, number][]): { labels: Record<string, string>; segmentToGroup: string[] } {
   const n = polygon.length
-  if (n < 3) return polygon.map((_, i) => String.fromCharCode(65 + i))
+  if (n < 3) {
+    const segmentToGroup = polygon.map((_, i) => String.fromCharCode(65 + i))
+    const labels: Record<string, string> = {}
+    segmentToGroup.forEach(l => { labels[l] = "" })
+    return { labels, segmentToGroup }
+  }
 
   const isPixelCoords = polygon.some(([a, b]) => Math.abs(a) > 200 || Math.abs(b) > 200)
 
@@ -48,10 +58,19 @@ export function groupSidesByBearing(polygon: [number, number][]): string[] {
     return distances.sort((a, b) => a.dist - b.dist)[0].letter
   }
 
-  const segToGroup = new Array<string>(n)
+  const segmentToGroup: string[] = []
+  const usedLetters = new Set<string>()
+
   for (let i = 0; i < n; i++) {
-    segToGroup[i] = getQuadrantLetter(relativeRot(edgeBearings[i]))
+    const letter = getQuadrantLetter(relativeRot(edgeBearings[i]))
+    segmentToGroup.push(letter)
+    usedLetters.add(letter)
   }
 
-  return segToGroup
+  const labels: Record<string, string> = {}
+  for (const letter of Array.from(usedLetters).sort()) {
+    labels[letter] = ""
+  }
+
+  return { labels, segmentToGroup }
 }
