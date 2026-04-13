@@ -1437,6 +1437,7 @@ export default function MapInner({
                     if (len2 === 0) return
                     let t = ((clickLng - pt[1]) * dx + (clickLat - pt[0]) * dy) / len2
                     t = Math.max(0.02, Math.min(0.98, t))
+                    console.log("[v0] Click - idx:", idx, "segmentKey:", segmentKey, "facadeLetter:", facadeLetter, "t:", t, "seg2group:", seg2group)
                     // Pass segment key (A, B, C...) for precise positioning on this specific segment
                     onSensorPlace(zone.id, segmentKey, t)
                   }
