@@ -452,7 +452,7 @@ export default function MissionDetailPage() {
         sensor_position: sensorPos ?? 0.5,
       } as Partial<import("@/lib/types").Device>)
       // Verify the PATCH actually set the correct mission_id
-      if (result && (result as Record<string, unknown>).mission_id !== id) {
+      if (result && (result as unknown as Record<string, unknown>).mission_id !== id) {
         console.error("[THEIA] assignDevice: mission_id not set correctly!", result)
       }
     } catch (err) {
@@ -559,7 +559,7 @@ export default function MissionDetailPage() {
         updateMission(id, { zones: updatedZones, floors: updatedFloors }),
       ])
       // Verify the PATCH actually cleared mission_id
-      if (devRes && (devRes as Record<string, unknown>).mission_id) {
+      if (devRes && (devRes as unknown as Record<string, unknown>).mission_id) {
         console.error("[THEIA] PATCH did not clear mission_id! Response:", devRes)
       }
       // Backend PATCH succeeded -- revalidate SWR caches immediately
@@ -802,7 +802,17 @@ export default function MissionDetailPage() {
 
   // Build sensor placements for map (exclude muted)
   // If devices are currently assigned, use live data; otherwise reconstruct from events
-  const savedPlacements = mission?.device_placements ?? {}
+  type SavedPlacement = {
+    zone_id?: string
+    side?: string
+    sensor_position?: number
+    orientation?: string
+    device_name?: string
+    device_type?: string
+    effective_range?: number
+    effective_fov?: number
+  }
+  const savedPlacements = (mission?.device_placements ?? {}) as Record<string, SavedPlacement>
   const livePlacements = missionDevices
     .filter((d) => d.zone_id && d.side && !mutedIds.has(d.id))
     .map((d) => {
