@@ -298,29 +298,29 @@ export default function MissionDetailPage() {
     return ts.replace("T", " ").replace("Z", "").replace(/\.\d+$/, "").split("+")[0]
   }
   const raNorm = ra ? normTs(ra) : null
-  const filteredEvents = raNorm ? events.filter((e: Record<string, unknown>) => !e.timestamp || normTs(e.timestamp as string) > raNorm) : events
+  const filteredEvents = raNorm ? events.filter((e) => !e.timestamp || normTs(e.timestamp) > raNorm) : events
 
-    const dbDetections: LiveDetection[] = filteredEvents.slice(0, 30).map((e: Record<string, unknown>) => {
-      const p = (typeof e.payload === "string" ? (() => { try { return JSON.parse(e.payload as string) } catch { return {} } })() : (e.payload ?? {})) as Record<string, unknown>
+    const dbDetections: LiveDetection[] = filteredEvents.slice(0, 30).map((e) => {
+      const ev = e as DetectionEvent & Record<string, unknown>
+      const p = (typeof ev.payload === "string" ? (() => { try { return JSON.parse(ev.payload as string) } catch { return {} } })() : (ev.payload ?? {})) as Record<string, unknown>
       return {
-        device_id: e.device_id as string ?? "",
-        device_name: (p.device_name ?? e.device_name ?? e.device_id ?? "") as string,
-        tx_id: (p.tx_id ?? e.tx_id ?? "") as string,
+        device_id: ev.device_id ?? "",
+        device_name: (p.device_name ?? ev.device_name ?? ev.device_id ?? "") as string,
+        tx_id: (p.tx_id ?? (ev as Record<string, unknown>).tx_id ?? "") as string | null,
         sensor_type: (p.sensor_type ?? "ld2450") as string,
-        serial_port: "",
-        mission_id: (e.mission_id ?? "") as string,
-        zone: (e.zone_name ?? "") as string,
-        zone_id: (e.zone_id ?? "") as string,
-        zone_label: (p.zone_label ?? e.zone_label ?? "") as string,
-        side: (e.side ?? "") as string,
+        mission_id: ev.mission_id ?? "",
+        zone_id: ev.zone_id ?? "",
+        zone_label: (p.zone_label ?? (ev as Record<string, unknown>).zone_label ?? "") as string,
+        side: ((ev as Record<string, unknown>).side ?? "") as string,
         presence: true,
         distance: Number(p.distance ?? 0),
         speed: Number(p.speed ?? 0),
         angle: Number(p.angle ?? 0),
         direction: (p.direction ?? "C") as string,
-        rssi: Number(e.rssi ?? -120),
-        timestamp: (e.timestamp ?? new Date().toISOString()) as string,
-      } as LiveDetection
+        vbatt_tx: null,
+        rssi: ev.rssi ?? null,
+        timestamp: ev.timestamp ?? new Date().toISOString(),
+      } satisfies LiveDetection
     })
     // Merge: keep existing live SSE detections on top, add DB ones below
     setLiveDetections(prev => {
@@ -338,7 +338,7 @@ export default function MissionDetailPage() {
   // Uses FULL 0-360 bearing so north-facing (0) and south-facing (180) are DIFFERENT faces.
   // Returns e.g. { A: [0,3], B: [1,4], C: [2,5] } meaning polygon edges 0&3 are "A", etc.
   // Helper: convert segment index (A, B, C...) to facade group letter using a zone's polygon
-  const getDisplaySide = (zoneId: string | undefined, side: string | undefined): string => {
+  const getDisplaySide = (zoneId: string | null | undefined, side: string | null | undefined): string => {
     if (!side) return ""
     const zone = zones.find(z => z.id === zoneId)
     if (!zone?.polygon || zone.polygon.length < 3) return side

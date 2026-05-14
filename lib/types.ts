@@ -146,7 +146,7 @@ export interface Device {
   firmware: string
   firmware_version?: string
   needs_update?: boolean
-  sensor_status?: {
+  sensor_status?: string | {
     presence?: boolean
     direction?: string
     distance?: number
