@@ -2061,15 +2061,11 @@ export default function MissionDetailPage() {
                 {eventList.length > 0 && (() => {
                   const NUM_SLOTS = 48
                   
-                  // Parse all timestamps and find range (timestamps are UTC in DB)
-                  const parseAsUTC = (t: string) => {
-                    if (t.includes("Z") || /[+-]\d{2}:\d{2}$/.test(t)) return new Date(t)
-                    return new Date(t.replace(" ", "T") + "Z")
-                  }
+                  // Parse all timestamps - DB stores in local Paris time
                   const timestamps: number[] = []
                   for (const evt of eventList) {
                     if (!evt.timestamp) continue
-                    const ts = parseAsUTC(evt.timestamp)
+                    const ts = new Date(evt.timestamp.replace(" ", "T"))
                     if (!isNaN(ts.getTime())) timestamps.push(ts.getTime())
                   }
                   
@@ -2093,7 +2089,7 @@ export default function MissionDetailPage() {
                   const slots = slotCounts.map((count, i) => {
                     const slotTs = new Date(minTs + i * slotDuration)
                     return {
-                      label: slotTs.toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit", timeZone: "Europe/Paris" }),
+                      label: slotTs.toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit" }),
                       count,
                       pct: (count / maxCount) * 100,
                     }

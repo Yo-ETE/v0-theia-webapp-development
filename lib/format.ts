@@ -101,38 +101,29 @@ export const eventTypeConfig: Record<
 
 /** 
  * Parse a timestamp string from the database.
- * The backend (Python/SQLite) stores timestamps in UTC.
- * We add "Z" suffix so JavaScript parses them as UTC, not local time.
+ * The backend (Python/SQLite) stores timestamps in LOCAL Paris time.
+ * We just normalize the format and let JavaScript parse it as local time.
  */
-function parseTimestampAsUTC(ts: string): Date {
-  // Check if already has timezone indicator
-  if (ts.includes("Z") || /[+-]\d{2}:\d{2}$/.test(ts)) {
-    return new Date(ts)
-  }
-  // Add "Z" to force UTC interpretation
-  return new Date(ts.replace(" ", "T") + "Z")
+function parseTimestamp(ts: string): Date {
+  return new Date(ts.replace(" ", "T"))
 }
 
 export function formatDate(iso: string): string {
-  const date = parseTimestampAsUTC(iso)
+  const date = parseTimestamp(iso)
   return date.toLocaleDateString("fr-FR", {
     day: "2-digit",
     month: "2-digit",
     year: "numeric",
-    timeZone: "Europe/Paris",
   })
 }
 
 export function formatTime(iso: string): string {
-  const date = parseTimestampAsUTC(iso)
-  const result = date.toLocaleTimeString("fr-FR", {
+  const date = parseTimestamp(iso)
+  return date.toLocaleTimeString("fr-FR", {
     hour: "2-digit",
     minute: "2-digit",
     second: "2-digit",
-    timeZone: "Europe/Paris",
   })
-  console.log("[v0] formatTime:", iso, "->", date.toISOString(), "-> Paris:", result)
-  return result
 }
 
 export function formatDateTime(iso: string): string {
@@ -140,7 +131,7 @@ export function formatDateTime(iso: string): string {
 }
 
 export function formatRelative(iso: string): string {
-  const diff = Date.now() - parseTimestampAsUTC(iso).getTime()
+  const diff = Date.now() - parseTimestamp(iso).getTime()
   const secs = Math.floor(diff / 1000)
   if (secs < 60) return `${secs}s ago`
   const mins = Math.floor(secs / 60)
