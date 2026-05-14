@@ -1159,7 +1159,7 @@ export default function MissionDetailPage() {
                   drawingMode={false}
                   onPolygonDrawn={() => {}}
                   onZoneClick={() => {}}
-                  sensorPlaceMode={false}
+                  sensorPlaceMode={null}
                   onSensorPlace={() => {}}
                   onMapMove={handleMapMove}
                   editingZoneId={null}
@@ -1262,18 +1262,19 @@ export default function MissionDetailPage() {
                         events={eventList}
                         liveDetections={timelapseMode
                           ? Object.values(replayDetections).map((d: Record<string, unknown>) => ({
+                              device_id: String(d.device_id ?? ""),
+                              device_name: String(d.device_name ?? ""),
+                              zone_id: d.zone_id != null ? String(d.zone_id) : null,
+                              zone_label: String(d.zone_label ?? ""),
+                              side: String(d.side ?? ""),
                               presence: true,
                               distance: Number(d.distance ?? 0),
                               direction: String(d.direction ?? "C"),
-                              device_name: String(d.device_name ?? ""),
-                              device_id: String(d.device_id ?? ""),
-                              side: String(d.side ?? ""),
                               rssi: d.rssi != null ? Number(d.rssi) : null,
                               timestamp: String(d.timestamp ?? ""),
                               angle: Number(d.angle ?? 0),
                               speed: Number(d.speed ?? 0),
                               floor: d.floor != null ? Number(d.floor) : null,
-                              zone_label: String(d.zone_label ?? ""),
                               sensor_type: String(d.sensor_type ?? "ld2450"),
                             }))
                           : liveDetections
@@ -1378,8 +1379,8 @@ export default function MissionDetailPage() {
                             try {
                               setPlanDeleted(true)          // ✅ bloque PlanEditor tout de suite
                               setPlanImageTs(Date.now())    // bust cache
-                              // optimistic: mission.plan_image -> false immédiatement
-                              mutate({ ...mission, plan_image: false }, false)
+                              // optimistic: mission.plan_image -> null immédiatement
+                              mutate({ ...mission, plan_image: null }, false)
                             
                               const backendBase = typeof window !== "undefined"
                                 ? `http://${window.location.hostname}:8000`
@@ -1966,7 +1967,7 @@ export default function MissionDetailPage() {
                                 : `${det.distance}cm`
                               }
                             </span>
-                            {det.speed > 0 && (
+                            {(det.speed ?? 0) > 0 && (
                               <span className="text-[9px] font-mono text-muted-foreground">
                                 {det.speed}cm/s
                               </span>
@@ -2020,7 +2021,7 @@ export default function MissionDetailPage() {
                       // Call both proxy and backend directly to ensure deletion
                       const backendUrl = window.location.protocol + "//" + window.location.hostname + ":8000"
                       const _t = localStorage.getItem("theia_token")
-                      const _ah = _t ? { Authorization: `Bearer ${_t}` } : {}
+                      const _ah: Record<string, string> = _t ? { Authorization: `Bearer ${_t}` } : {}
                       await Promise.allSettled([
                         fetch(`/api/events?mission_id=${id}`, { method: "DELETE", credentials: "include", headers: _ah }),
                         fetch(`${backendUrl}/api/events?mission_id=${id}`, { method: "DELETE", credentials: "include", headers: _ah }),
