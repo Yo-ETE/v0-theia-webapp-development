@@ -99,50 +99,32 @@ export const eventTypeConfig: Record<
 
 // ─── Formatters ──────────────────────────────────────────────────
 
-// Parse timestamp assuming it's in local Paris time (no timezone suffix)
-function parseLocalTimestamp(ts: string): Date {
-  // If timestamp has no timezone info (e.g. "2025-04-02 10:07:20"), treat as Europe/Paris local time
-  // by appending the offset. Otherwise, parse as-is.
-  if (!ts.includes("Z") && !ts.includes("+") && !ts.includes("T")) {
-    // Format: "2025-04-02 10:07:20" - convert to ISO with explicit Paris interpretation
-    // We create a date assuming it's already in local time
-    const d = new Date(ts.replace(" ", "T"))
-    // The date was parsed as UTC, but it's actually local time
-    // So we need to NOT convert it - just use the values directly
-    return d
-  }
-  return new Date(ts)
-}
-
-/** Parse a timestamp string, treating ambiguous (no Z/+) timestamps as UTC */
-function parseTimestampAsUTC(ts: string): Date {
-  // If timestamp lacks timezone indicator, assume it's UTC from the database
-  // Check for timezone offset format like +02:00 or -05:00
-  const hasTimezoneOffset = /[+-]\d{2}:\d{2}$/.test(ts)
-  if (!ts.includes("Z") && !hasTimezoneOffset) {
-    // Replace space with T and add Z suffix for UTC
-    return new Date(ts.replace(" ", "T") + "Z")
-  }
-  return new Date(ts)
+/** 
+ * Parse a timestamp string from the database.
+ * The backend (Python/SQLite) stores timestamps in LOCAL Paris time, not UTC.
+ * So we parse them directly without adding "Z" suffix.
+ */
+function parseTimestamp(ts: string): Date {
+  // Normalize space to T for ISO format parsing
+  // Do NOT add "Z" - timestamps are already in local Paris time
+  return new Date(ts.replace(" ", "T"))
 }
 
 export function formatDate(iso: string): string {
-  const date = parseTimestampAsUTC(iso)
+  const date = parseTimestamp(iso)
   return date.toLocaleDateString("fr-FR", {
     day: "2-digit",
     month: "2-digit",
     year: "numeric",
-    timeZone: "Europe/Paris",
   })
 }
 
 export function formatTime(iso: string): string {
-  const date = parseTimestampAsUTC(iso)
+  const date = parseTimestamp(iso)
   return date.toLocaleTimeString("fr-FR", {
     hour: "2-digit",
     minute: "2-digit",
     second: "2-digit",
-    timeZone: "Europe/Paris",
   })
 }
 
@@ -151,7 +133,7 @@ export function formatDateTime(iso: string): string {
 }
 
 export function formatRelative(iso: string): string {
-  const diff = Date.now() - parseTimestampAsUTC(iso).getTime()
+  const diff = Date.now() - parseTimestamp(iso).getTime()
   const secs = Math.floor(diff / 1000)
   if (secs < 60) return `${secs}s ago`
   const mins = Math.floor(secs / 60)
