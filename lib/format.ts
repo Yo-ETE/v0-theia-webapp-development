@@ -125,12 +125,14 @@ export function formatDate(iso: string): string {
 
 export function formatTime(iso: string): string {
   const date = parseTimestampAsUTC(iso)
-  return date.toLocaleTimeString("fr-FR", {
+  const result = date.toLocaleTimeString("fr-FR", {
     hour: "2-digit",
     minute: "2-digit",
     second: "2-digit",
     timeZone: "Europe/Paris",
   })
+  console.log("[v0] formatTime:", iso, "->", date.toISOString(), "-> Paris:", result)
+  return result
 }
 
 export function formatDateTime(iso: string): string {
