@@ -881,8 +881,6 @@ export default function MissionDetailPage() {
     ? historicalPlacements
     : (livePlacements.length > 0 ? livePlacements : historicalPlacements)
 
-  console.log("[v0] sensorPlacements device_ids:", sensorPlacements.map(sp => sp.device_id))
-
   // Map detections: ONLY from SSE (real-time). Never from DB -- DB events are history.
   // Filter out muted devices from zone-level AND device-level aggregation
   const filteredLiveByZone = Object.fromEntries(
@@ -891,7 +889,6 @@ export default function MissionDetailPage() {
   const filteredLiveByDevice = Object.fromEntries(
     Object.entries(liveByDevice).filter(([devId]) => !mutedIds.has(devId))
   )
-  console.log("[v0] page.tsx liveByDevice:", Object.keys(liveByDevice), "filteredLiveByDevice:", Object.keys(filteredLiveByDevice))
   const effectiveLiveByZone: Record<string, LiveDetection> = timelapseMode
   ? { ...replayDetections }
   : { ...filteredLiveByZone }

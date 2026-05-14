@@ -7,6 +7,16 @@ import { useEventsRange } from "@/hooks/use-api"
 import { formatTime } from "@/lib/format"
 import type { DetectionEvent, LiveDetection } from "@/lib/types"
 
+/** Parse a timestamp string, treating ambiguous (no Z/+) timestamps as UTC */
+function parseTimestampAsUTC(ts: string): Date {
+  // If timestamp lacks timezone indicator, assume it's UTC
+  if (!ts.includes("Z") && !ts.includes("+") && !ts.includes("-", 10)) {
+    // Replace space with T and add Z suffix for UTC
+    return new Date(ts.replace(" ", "T") + "Z")
+  }
+  return new Date(ts)
+}
+
 // LiveDetection is imported from @/lib/types
 
 interface DetectionTimelapseProps {
@@ -55,8 +65,8 @@ function parseEventToDetection(ev: DetectionEvent): LiveDetection | null {
 function buildActivityHistogram(events: DetectionEvent[], slots: number = 48): { slot: number; count: number; label: string; pct: number }[] {
   if (!events.length) return []
   
-  // Get time range
-  const timestamps = events.map(e => new Date(e.timestamp.replace(" ", "T")).getTime()).filter(t => !isNaN(t))
+  // Get time range - parse timestamps as UTC
+  const timestamps = events.map(e => parseTimestampAsUTC(e.timestamp).getTime()).filter(t => !isNaN(t))
   if (!timestamps.length) return []
   
   const minTs = Math.min(...timestamps)
@@ -155,7 +165,7 @@ export function DetectionTimelapse({ missionId, onDetection, onClose }: Detectio
     }
     const ev = events[currentIdx]
     const det = parseEventToDetection(ev)
-    const currentTsMs = new Date(ev.timestamp).getTime()
+    const currentTsMs = parseTimestampAsUTC(ev.timestamp).getTime()
 
     // Update rolling window with current detection
     if (det) {
@@ -212,7 +222,7 @@ export function DetectionTimelapse({ missionId, onDetection, onClose }: Detectio
   }, [onDetection])
 
   const currentEvent = events[currentIdx]
-  const currentTs = currentEvent?.timestamp ? new Date(currentEvent.timestamp) : null
+  const currentTs = currentEvent?.timestamp ? parseTimestampAsUTC(currentEvent.timestamp) : null
 
   const handleLoad = useCallback(() => {
     setLoaded(true)

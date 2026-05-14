@@ -508,8 +508,6 @@ export default function MapInner({
   // Build effective detections by device_id (same hold/fade logic)
   const effectiveByDevice: Record<string, LiveDetection & { _state: DetState }> = {}
 
-  console.log("[v0] map-inner liveByDevice:", Object.keys(liveByDevice), "replayMode:", replayMode)
-
   if (replayMode) {
     // In replay mode, keys are "zoneId::deviceId" composites
     // Extract device_id from each detection
@@ -523,10 +521,8 @@ export default function MapInner({
   } else {
     for (const [devId, det] of Object.entries(liveByDevice)) {
       // Accept presence-only sensors (distance=0)
-      console.log("[v0] checking devId:", devId, "presence:", det.presence, "distance:", det.distance)
       if (det.presence) {
         effectiveByDevice[devId] = { ...det, _state: "live" }
-        console.log("[v0] added to effectiveByDevice:", devId)
       }
     }
     for (const [devId, lastPresenceTs] of Object.entries(lastPresenceTsByDevRef.current)) {
@@ -1141,7 +1137,6 @@ export default function MapInner({
 
     // Per-device detection ONLY -- no zone fallback to prevent TX02 copying TX01
     const det = effectiveByDevice[sp.device_id] || null
-    console.log("[v0] sensorMarker sp.device_id:", sp.device_id, "det:", det ? { presence: det.presence, distance: det.distance } : null)
     let detectionLatLon: [number, number] | null = null
     // Get sensor specs early (needed for presence-only check)
     // Check both placement type and detection sensor_type (for replay where det has sensor_type)
@@ -1321,7 +1316,7 @@ export default function MapInner({
           )
         })}
 
-        {/* ── FOV detection cones for regular sensors (only when showFov enabled) ── */}
+        {/* ���─ FOV detection cones for regular sensors (only when showFov enabled) ── */}
         {showFov && sensorMarkers.filter(sm => !sm.presenceOnly).map((sm) => {
           const arcPositions = buildFovArc(sm.sensorPos, sm.normalBearingDeg, sm.fovDeg, sm.maxRangeM)
           return (

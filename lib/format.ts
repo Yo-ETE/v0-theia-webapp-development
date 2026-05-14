@@ -114,15 +114,19 @@ function parseLocalTimestamp(ts: string): Date {
   return new Date(ts)
 }
 
-export function formatDate(iso: string): string {
-  // For timestamps without timezone, display as-is (they're already in local time)
-  if (!iso.includes("Z") && !iso.includes("+")) {
-    const parts = iso.split(/[- :]/)
-    if (parts.length >= 3) {
-      return `${parts[2]}/${parts[1]}/${parts[0]}`
-    }
+/** Parse a timestamp string, treating ambiguous (no Z/+) timestamps as UTC */
+function parseTimestampAsUTC(ts: string): Date {
+  // If timestamp lacks timezone indicator, assume it's UTC from the database
+  if (!ts.includes("Z") && !ts.includes("+") && !ts.includes("-", 10)) {
+    // Replace space with T and add Z suffix for UTC
+    return new Date(ts.replace(" ", "T") + "Z")
   }
-  return new Date(iso).toLocaleDateString("fr-FR", {
+  return new Date(ts)
+}
+
+export function formatDate(iso: string): string {
+  const date = parseTimestampAsUTC(iso)
+  return date.toLocaleDateString("fr-FR", {
     day: "2-digit",
     month: "2-digit",
     year: "numeric",
@@ -131,14 +135,8 @@ export function formatDate(iso: string): string {
 }
 
 export function formatTime(iso: string): string {
-  // For timestamps without timezone, display as-is (they're already in local time)
-  if (!iso.includes("Z") && !iso.includes("+")) {
-    const parts = iso.split(/[- :]/)
-    if (parts.length >= 6) {
-      return `${parts[3]}:${parts[4]}:${parts[5]}`
-    }
-  }
-  return new Date(iso).toLocaleTimeString("fr-FR", {
+  const date = parseTimestampAsUTC(iso)
+  return date.toLocaleTimeString("fr-FR", {
     hour: "2-digit",
     minute: "2-digit",
     second: "2-digit",
@@ -151,7 +149,7 @@ export function formatDateTime(iso: string): string {
 }
 
 export function formatRelative(iso: string): string {
-  const diff = Date.now() - new Date(iso).getTime()
+  const diff = Date.now() - parseTimestampAsUTC(iso).getTime()
   const secs = Math.floor(diff / 1000)
   if (secs < 60) return `${secs}s ago`
   const mins = Math.floor(secs / 60)
