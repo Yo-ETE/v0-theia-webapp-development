@@ -315,7 +315,7 @@ export function BatteryChart() {
                         ? "bg-muted ring-1 text-foreground"
                         : "bg-muted/40 text-muted-foreground/50"
                     )}
-                    style={visible ? { ringColor: dev.color, borderColor: dev.color, boxShadow: `inset 0 0 0 1px ${dev.color}40` } : undefined}
+                    style={visible ? { borderColor: dev.color, boxShadow: `inset 0 0 0 1px ${dev.color}40` } : undefined}
                     title="Clic = afficher seul | Shift+clic = ajouter/retirer"
                   >
                     <span

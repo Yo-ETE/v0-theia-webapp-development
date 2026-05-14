@@ -1243,7 +1243,7 @@ export default function MapInner({
   return (
     <div key={mapKey} ref={containerDivRef} className={cn("relative rounded-lg overflow-hidden border border-border/50", className)}>
       <MapContainer
-        ref={(instance) => {
+        ref={(instance: L.Map | null) => {
           mapRef.current = instance
           if (instance && !mapInstanceSet.current) {
             mapInstanceSet.current = true
@@ -1415,7 +1415,7 @@ export default function MapInner({
                   className: "sensor-place-side cursor-pointer",
                 }}
                 eventHandlers={{
-                  click: (e: { latlng: { lat: number; lng: number } }) => {
+                  click: (e: L.LeafletMouseEvent) => {
                     e.originalEvent?.stopPropagation?.()
                     // Calculate position along this specific segment (t parameter 0-1)
                     const clickLat = e.latlng.lat

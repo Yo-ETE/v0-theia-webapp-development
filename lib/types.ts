@@ -190,6 +190,7 @@ export interface DetectionEvent {
   device_name: string
   zone_id: string | null
   zone_label: string | null
+  zone_name?: string | null
   side: string | null
   sensor_position: number | null
   orientation: "inward" | "outward" | null

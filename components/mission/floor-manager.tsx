@@ -106,7 +106,7 @@ export function FloorManager({
         continue
       }
       // Try matching zone_label / zone_name to floor labels
-      const zoneLabel = (evt.zone_label ?? evt.zone_name ?? "").toLowerCase()
+      const zoneLabel = (evt.zone_label ?? (evt as unknown as Record<string, unknown>).zone_name ?? "").toString().toLowerCase()
       if (zoneLabel) {
         for (const [label, level] of labelToLevel) {
           if (zoneLabel.includes(label) || label.includes(zoneLabel)) {
@@ -210,12 +210,12 @@ export function FloorManager({
         if (p && p.floor != null) fl = Number(p.floor)
       }
       // Fallback: floor stored on event row itself
-      if (fl == null && (evt as Record<string, unknown>).floor != null) {
-        fl = Number((evt as Record<string, unknown>).floor)
+      if (fl == null && evt.floor != null) {
+        fl = Number(evt.floor)
       }
       // Fallback: match zone_label to floor labels
       if (fl == null) {
-        const zl = (evt.zone_label ?? evt.zone_name ?? "").toLowerCase()
+        const zl = (evt.zone_label ?? evt.zone_name ?? "").toString().toLowerCase()
         if (zl) {
           for (const f of floors) {
             if (f.label.toLowerCase() === zl || zl.includes(f.label.toLowerCase()) || f.label.toLowerCase().includes(zl)) {

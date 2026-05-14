@@ -1120,7 +1120,7 @@ export default function MissionDetailPage() {
           {isPlanMode ? (
             /* Fullscreen PlanEditor */
             <PlanEditor
-              imageUrl={planImageUrl}
+              imageUrl={planImageUrl ?? undefined}
               imageWidth={mission?.plan_width ?? undefined}
               imageHeight={mission?.plan_height ?? undefined}
               zones={zones}
@@ -1420,7 +1420,7 @@ export default function MissionDetailPage() {
                       <Maximize2 className="h-3.5 w-3.5" />
                     </Button>
                     <PlanEditor
-                      imageUrl={planImageUrl}
+                      imageUrl={planImageUrl ?? undefined}
                       imageWidth={mission?.plan_width ?? undefined}
                       imageHeight={mission?.plan_height ?? undefined}
                       zones={zones}

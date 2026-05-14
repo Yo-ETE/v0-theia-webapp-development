@@ -597,7 +597,7 @@ export default function NewMissionPage() {
                         {form.environment === "etages" && <Building2 className="h-3.5 w-3.5 text-primary" />}
                         {form.environment === "plan" && <FileImage className="h-3.5 w-3.5 text-primary" />}
                         <p className="text-sm text-foreground capitalize">
-                          {{ habitation: "Habitation", garage: "Garage / Souterrain", etages: "Etages", plan: "Sur Plan" }[form.environment] ?? form.environment}
+                          {({ habitation: "Habitation", garage: "Garage / Souterrain", etages: "Etages", plan: "Sur Plan" } as Record<string, string>)[form.environment] ?? form.environment}
                         </p>
                       </div>
                     </div>
