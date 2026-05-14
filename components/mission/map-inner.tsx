@@ -1,7 +1,7 @@
 "use client"
 
 import { useEffect, useState, useCallback, useRef } from "react"
-import type { Zone, DetectionEvent } from "@/lib/types"
+import type { Zone, DetectionEvent, LiveDetection } from "@/lib/types"
 import { cn } from "@/lib/utils"
 import type { VisualConfig } from "@/hooks/use-visual-config"
 import { VISUAL_DEFAULTS } from "@/hooks/use-visual-config"
@@ -31,18 +31,7 @@ function buildFovArc(
   return arcPoints
 }
 
-interface LiveDetection {
-  presence: boolean
-  distance: number
-  direction: string
-  device_name: string
-  side: string
-  rssi: number | null
-  timestamp: string
-  device_id?: string
-  sensor_position?: number
-  [key: string]: unknown
-}
+// LiveDetection is imported from @/lib/types
 
 interface SensorPlacement {
   device_id: string

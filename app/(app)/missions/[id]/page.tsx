@@ -43,7 +43,7 @@ import { useNotificationSound } from "@/hooks/use-notification-sound"
 import { updateMission, updateDevice } from "@/lib/api-client"
 import { missionStatusConfig, eventTypeConfig, deviceStatusConfig, formatRelative, formatTime, formatDateTime } from "@/lib/format"
 import { cn } from "@/lib/utils"
-import type { Zone, Floor, DetectionEvent } from "@/lib/types"
+import type { Zone, Floor, DetectionEvent, LiveDetection } from "@/lib/types"
 import { groupSidesByBearing } from "@/lib/facade-utils"
 
 const ZONE_COLORS = ["#3b82f6", "#ef4444", "#22c55e", "#f59e0b", "#8b5cf6", "#ec4899", "#06b6d4", "#f97316"]
@@ -57,25 +57,7 @@ const ZONE_TYPES = [
   { value: "custom", label: "Custom" },
 ] as const
 
-// ── Live detection type from SSE ──
-interface LiveDetection {
-  device_id: string
-  device_name: string
-  tx_id: string | null
-  mission_id: string
-  zone_id: string | null
-  zone_label: string
-  side: string
-  presence: boolean
-  distance: number
-  speed: number
-  angle: number
-  direction: string
-  vbatt_tx: number | null
-  rssi: number | null
-  sensor_type?: string
-  timestamp: string
-}
+// LiveDetection type is now imported from @/lib/types
 
 /** Haversine distance between two lat/lon points in meters */
 function haversineM(lat1: number, lon1: number, lat2: number, lon2: number): number {

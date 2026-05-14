@@ -1,7 +1,7 @@
 "use client"
 
 import { useState, useCallback, useMemo } from "react"
-import type { Floor, Device, DetectionEvent } from "@/lib/types"
+import type { Floor, Device, DetectionEvent, LiveDetection } from "@/lib/types"
 import { Card, CardContent } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
@@ -24,19 +24,7 @@ function modeLabel(mode: FloorMode, plural = false) {
   return plural ? "Troncons" : "Troncon"
 }
 
-interface LiveDetection {
-  presence: boolean
-  distance: number
-  direction: string
-  device_name: string
-  side: string
-  rssi: number | null
-  timestamp: string
-  device_id?: string
-  angle?: number
-  speed?: number
-  [key: string]: unknown
-}
+// LiveDetection is imported from @/lib/types
 
 // Convert LD2450 angle to position label (Left / Centre / Right)
 // Angle: negative = left, 0 = center, positive = right (from sensor POV)

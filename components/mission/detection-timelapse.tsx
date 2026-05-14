@@ -5,29 +5,9 @@ import { Play, Pause, SkipBack, SkipForward, X } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { useEventsRange } from "@/hooks/use-api"
 import { formatTime } from "@/lib/format"
-import type { DetectionEvent } from "@/lib/types"
+import type { DetectionEvent, LiveDetection } from "@/lib/types"
 
-interface LiveDetection {
-  device_id: string
-  device_name: string
-  tx_id: string | null
-  zone_id: string | null
-  zone_label: string
-  side: string
-  presence: boolean
-  distance: number
-  speed: number
-  angle: number
-  direction: string
-  vbatt_tx: number | null
-  rssi: number | null
-  sensor_type?: string
-  floor?: number | null
-  sensor_position?: number | null
-  orientation?: string | null
-  timestamp: string
-  mission_id?: string
-}
+// LiveDetection is imported from @/lib/types
 
 interface DetectionTimelapseProps {
   missionId: string

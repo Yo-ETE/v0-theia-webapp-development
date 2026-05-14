@@ -83,6 +83,7 @@ export interface Mission {
   detection_reset_at?: string | null  // ISO timestamp: ignore events/detections before this
   device_placements?: Record<string, { zone_id: string; side: string; sensor_position: number; orientation: string; device_name: string }> // Persisted TX positions for timelapse replay
   notification_config?: { enabled: boolean; cooldown_minutes: number; channels: string[]; zones: string[] } | null
+  visual_config?: Record<string, unknown> | null
   device_count: number
   event_count: number
 }
@@ -117,6 +118,7 @@ export interface Device {
   dev_eui?: string
   name: string
   type: "tx_microwave" | "microwave_tx" | string
+  device_type?: string
   serial_port?: string
   status: DeviceStatus
   mission_id: string | null
@@ -134,6 +136,39 @@ export interface Device {
   enabled: boolean
   enrolled_at: string
   firmware: string
+  firmware_version?: string
+  needs_update?: boolean
+  sensor_status?: {
+    presence?: boolean
+    direction?: string
+    distance?: number
+    rssi?: number
+    battery?: number
+  }
+}
+
+// ─── Live Detection (SSE) ────────────────────────────────────────
+
+export interface LiveDetection {
+  device_id: string
+  device_name: string
+  tx_id?: string | null
+  mission_id?: string
+  zone_id: string | null
+  zone_label: string
+  side: string
+  presence: boolean
+  distance: number
+  speed?: number
+  angle?: number
+  direction: string
+  vbatt_tx?: number | null
+  rssi: number | null
+  sensor_type?: string
+  timestamp: string
+  sensor_position?: number
+  floor?: number | null
+  [key: string]: unknown
 }
 
 // ─── Events / Detections ─────────────────────────────────────────

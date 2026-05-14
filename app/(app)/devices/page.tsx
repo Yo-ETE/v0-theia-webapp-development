@@ -52,7 +52,7 @@ export default function DevicesPage() {
   const logEndRef = useRef<HTMLDivElement>(null)
   const baselineRef = useRef<Set<string>>(new Set())
   const fileInputRef = useRef<HTMLInputElement>(null)
-  type FirmwareInfo = { name: string; file: string; sensor_type?: string; is_template?: boolean; is_custom?: boolean }
+  type FirmwareInfo = { name: string; file: string; sensor_type?: string; is_template?: boolean; is_custom?: boolean; current_version?: string }
   const [firmwares, setFirmwares] = useState<FirmwareInfo[]>([])
 
   const backendBase = typeof window !== "undefined" ? `http://${window.location.hostname}:8000` : ""
@@ -328,8 +328,8 @@ export default function DevicesPage() {
     mutate()
   }, [mutate])
 
-  const enabledDevices = devices?.filter((d) => d.enabled !== 0) ?? []
-  const disabledDevices = devices?.filter((d) => d.enabled === 0) ?? []
+  const enabledDevices = devices?.filter((d) => d.enabled) ?? []
+  const disabledDevices = devices?.filter((d) => !d.enabled) ?? []
   const onlineCount = enabledDevices.filter((d) => d.status === "online").length
   const offlineCount = enabledDevices.filter((d) => d.status === "offline").length
   const totalCount = enabledDevices.length

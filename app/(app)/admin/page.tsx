@@ -973,7 +973,7 @@ export default function AdminPage() {
                       <div className="flex items-center gap-2">
                         {network.security !== "Open" ? <Lock className="h-4 w-4 text-muted-foreground" /> : <Unlock className="h-4 w-4 text-muted-foreground" />}
                         <span className="text-sm font-medium text-foreground">{network.ssid}</span>
-                        {savedNetworks.includes(network.ssid) && <Star className="h-3 w-3 text-warning fill-warning" title="Reseau enregistre" />}
+                        {savedNetworks.includes(network.ssid) && <Star className="h-3 w-3 text-warning fill-warning" aria-label="Reseau enregistre" />}
                         {wifiStatus?.ssid === network.ssid && <CheckCircle2 className="h-4 w-4 text-success" />}
                       </div>
                       <div className="flex items-center gap-2">
