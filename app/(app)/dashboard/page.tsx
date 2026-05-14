@@ -116,40 +116,40 @@ export default function DashboardPage() {
   const hub = {
     cpu_percent: status.hub?.cpu_percent ?? 0,
     ram_percent: status.hub?.ram_percent ?? 0,
-    ram_used_mb: (status.hub as Record<string, unknown>)?.ram_used_mb ?? 0,
-    ram_total_mb: (status.hub as Record<string, unknown>)?.ram_total_mb ?? 0,
+    ram_used_mb: status.hub?.ram_used_mb ?? 0,
+    ram_total_mb: status.hub?.ram_total_mb ?? 0,
     disk_percent: status.hub?.disk_percent ?? 0,
-    disk_used_gb: (status.hub as Record<string, unknown>)?.disk_used_gb ?? 0,
-    disk_total_gb: (status.hub as Record<string, unknown>)?.disk_total_gb ?? 0,
-    temperature: status.hub?.temperature ?? (0 as number | null),
+    disk_used_gb: status.hub?.disk_used_gb ?? 0,
+    disk_total_gb: status.hub?.disk_total_gb ?? 0,
+    temperature: status.hub?.temperature ?? null,
     uptime_seconds: status.hub?.uptime_seconds ?? 0,
   }
   const gps = {
     fix: status.gps?.fix ?? false,
-    latitude: status.gps?.latitude ?? (null as number | null),
-    longitude: status.gps?.longitude ?? (null as number | null),
-    altitude: status.gps?.altitude ?? (null as number | null),
+    latitude: status.gps?.latitude ?? null,
+    longitude: status.gps?.longitude ?? null,
+    altitude: status.gps?.altitude ?? null,
     satellites: status.gps?.satellites ?? 0,
-    hdop: status.gps?.hdop ?? (null as number | null),
+    hdop: status.gps?.hdop ?? null,
   }
   const lora = {
     connected: status.lora?.connected ?? false,
     port: status.lora?.port ?? "---",
     baud_rate: status.lora?.baud_rate ?? 0,
-    rssi: status.lora?.rssi ?? (null as number | null),
-    snr: status.lora?.snr ?? (null as number | null),
+    rssi: status.lora?.rssi ?? null,
+    snr: status.lora?.snr ?? null,
     packets_received: status.lora?.packets_received ?? 0,
     packets_errors: status.lora?.packets_errors ?? 0,
   }
   const network = {
     hostname: status.network?.hostname ?? "---",
     lan_ip: status.network?.lan_ip ?? "---",
-    tailscale_ip: status.network?.tailscale_ip ?? (null as string | null),
-    interfaces: status.network?.interfaces ?? ({} as Record<string, string>),
-    internet: (status.network as Record<string, unknown>)?.internet ?? { connected: false, ping_ms: 0 },
-    wifi: (status.network as Record<string, unknown>)?.wifi ?? { connected: false, ssid: "", signal: 0, tx_rate: "", rx_rate: "" },
-    ethernet: (status.network as Record<string, unknown>)?.ethernet ?? { connected: false, ip: "" },
-    usb_modem: (status.network as Record<string, unknown>)?.usb_modem ?? { connected: false, ip: "", interface: "", type: "USB Modem" },
+    tailscale_ip: status.network?.tailscale_ip ?? null,
+    interfaces: status.network?.interfaces ?? {},
+    internet: status.network?.internet ?? { connected: false, ping_ms: 0 },
+    wifi: status.network?.wifi ?? { connected: false, ssid: "", signal: 0, tx_rate: "", rx_rate: "" },
+    ethernet: status.network?.ethernet ?? { connected: false, ip: "" },
+    usb_modem: status.network?.usb_modem ?? { connected: false, ip: "", interface: "", type: "USB Modem" },
   }
 
   return (

@@ -3,8 +3,12 @@
 export interface HubStatus {
   cpu_percent: number
   ram_percent: number
+  ram_used_mb?: number
+  ram_total_mb?: number
   disk_percent: number
-  temperature: number
+  disk_used_gb?: number
+  disk_total_gb?: number
+  temperature: number | null
   uptime_seconds: number
 }
 
@@ -13,6 +17,10 @@ export interface NetworkInfo {
   lan_ip: string
   tailscale_ip: string | null
   interfaces: Record<string, string>
+  internet?: { connected: boolean; ping_ms: number }
+  wifi?: { connected: boolean; ssid: string; signal: number; tx_rate?: string; rx_rate?: string }
+  ethernet?: { connected: boolean; ip: string }
+  usb_modem?: { connected: boolean; ip: string; interface: string; type: string }
 }
 
 export interface GpsData {
