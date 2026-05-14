@@ -11,12 +11,9 @@ import type { DetectionEvent, LiveDetection } from "@/lib/types"
 function parseTimestampAsUTC(ts: string): Date {
   // Check for timezone offset format like +02:00 or -05:00
   const hasTimezoneOffset = /[+-]\d{2}:\d{2}$/.test(ts)
-  console.log("[v0] timelapse parseTimestampAsUTC:", ts, "hasZ:", ts.includes("Z"), "hasOffset:", hasTimezoneOffset)
   if (!ts.includes("Z") && !hasTimezoneOffset) {
     // Replace space with T and add Z suffix for UTC
-    const utcTs = ts.replace(" ", "T") + "Z"
-    console.log("[v0] timelapse -> UTC:", utcTs)
-    return new Date(utcTs)
+    return new Date(ts.replace(" ", "T") + "Z")
   }
   return new Date(ts)
 }
@@ -130,16 +127,20 @@ export function DetectionTimelapse({ missionId, onDetection, onClose }: Detectio
 
   const { data: rawEvents, isLoading } = useEventsRange(fetchParams)
 
-  // Filter by date range client-side (comparing timestamps as strings)
-  // and sort chronologically (API returns DESC)
+  // Filter by date range client-side using proper timezone-aware comparison
+  // fromTime/toTime are in local Paris time, DB timestamps are in UTC
   const events = useMemo(() => {
     if (!rawEvents) return []
-    const fromStr = fromTime.replace("T", " ")
-    const toStr = toTime.replace("T", " ") + ":59"
+    // Convert local datetime-local input to UTC timestamp for comparison
+    // datetime-local input is in browser local time (Paris)
+    const fromMs = new Date(fromTime).getTime()
+    const toMs = new Date(toTime + ":59").getTime()
     return rawEvents
       .filter(e => {
-        const ts = e.timestamp ?? ""
-        return ts >= fromStr && ts <= toStr
+        if (!e.timestamp) return false
+        // Parse DB timestamp as UTC
+        const evtMs = parseTimestampAsUTC(e.timestamp).getTime()
+        return evtMs >= fromMs && evtMs <= toMs
       })
       .slice()
       .reverse()

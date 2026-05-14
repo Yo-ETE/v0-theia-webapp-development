@@ -121,11 +121,8 @@ function parseTimestampAsUTC(ts: string): Date {
   const hasTimezoneOffset = /[+-]\d{2}:\d{2}$/.test(ts)
   if (!ts.includes("Z") && !hasTimezoneOffset) {
     // Replace space with T and add Z suffix for UTC
-    const utcTs = ts.replace(" ", "T") + "Z"
-    console.log("[v0] format.ts parseTimestampAsUTC:", ts, "->", utcTs)
-    return new Date(utcTs)
+    return new Date(ts.replace(" ", "T") + "Z")
   }
-  console.log("[v0] format.ts parseTimestampAsUTC direct:", ts)
   return new Date(ts)
 }
 
