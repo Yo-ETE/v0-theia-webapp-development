@@ -191,10 +191,10 @@ export interface DetectionEvent {
   zone_id: string | null
   zone_label: string | null
   zone_name?: string | null
-  side: string | null
-  sensor_position: number | null
-  orientation: "inward" | "outward" | null
-  floor: number | null
+  side?: string | null
+  sensor_position?: number | null
+  orientation?: "inward" | "outward" | null
+  floor?: number | null
   type: EventType
   payload: Record<string, unknown>
   rssi: number | null

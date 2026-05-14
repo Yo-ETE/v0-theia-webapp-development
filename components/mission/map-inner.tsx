@@ -748,7 +748,7 @@ export default function MapInner({
       return [zone.polygon[directIdx], zone.polygon[nextIdx]]
     }
     // Fallback: try as facade group letter (for backward compatibility)
-    const { segmentToGroup: seg2group } = zone.polygon.length >= 3 ? groupSidesByBearing(zone.polygon) : { segmentToGroup: [] }
+    const { segmentToGroup: seg2group } = zone.polygon.length >= 3 ? groupSidesByBearing(zone.polygon) : { segmentToGroup: [] as string[] }
     const segIdx = seg2group.indexOf(sideKey)
     if (segIdx >= 0) {
       const nextIdx = (segIdx + 1) % zone.polygon.length

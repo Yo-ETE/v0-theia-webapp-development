@@ -44,7 +44,7 @@ function parseEventToDetection(ev: DetectionEvent): LiveDetection | null {
     sensor_type: String(p.sensor_type ?? "ld2450"),
     // Prefer event-level fields (stored at recording time) over payload fields
     floor: ev.floor != null ? Number(ev.floor) : (p.floor != null ? Number(p.floor) : null),
-    sensor_position: ev.sensor_position != null ? Number(ev.sensor_position) : null,
+    sensor_position: ev.sensor_position != null ? Number(ev.sensor_position) : undefined,
     orientation: ev.orientation ?? null,
     timestamp: ev.timestamp,
     mission_id: ev.mission_id,
