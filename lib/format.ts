@@ -117,10 +117,15 @@ function parseLocalTimestamp(ts: string): Date {
 /** Parse a timestamp string, treating ambiguous (no Z/+) timestamps as UTC */
 function parseTimestampAsUTC(ts: string): Date {
   // If timestamp lacks timezone indicator, assume it's UTC from the database
-  if (!ts.includes("Z") && !ts.includes("+") && !ts.includes("-", 10)) {
+  // Check for timezone offset format like +02:00 or -05:00
+  const hasTimezoneOffset = /[+-]\d{2}:\d{2}$/.test(ts)
+  if (!ts.includes("Z") && !hasTimezoneOffset) {
     // Replace space with T and add Z suffix for UTC
-    return new Date(ts.replace(" ", "T") + "Z")
+    const utcTs = ts.replace(" ", "T") + "Z"
+    console.log("[v0] format.ts parseTimestampAsUTC:", ts, "->", utcTs)
+    return new Date(utcTs)
   }
+  console.log("[v0] format.ts parseTimestampAsUTC direct:", ts)
   return new Date(ts)
 }
 

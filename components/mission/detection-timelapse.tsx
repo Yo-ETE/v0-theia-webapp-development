@@ -9,10 +9,14 @@ import type { DetectionEvent, LiveDetection } from "@/lib/types"
 
 /** Parse a timestamp string, treating ambiguous (no Z/+) timestamps as UTC */
 function parseTimestampAsUTC(ts: string): Date {
-  // If timestamp lacks timezone indicator, assume it's UTC
-  if (!ts.includes("Z") && !ts.includes("+") && !ts.includes("-", 10)) {
+  // Check for timezone offset format like +02:00 or -05:00
+  const hasTimezoneOffset = /[+-]\d{2}:\d{2}$/.test(ts)
+  console.log("[v0] timelapse parseTimestampAsUTC:", ts, "hasZ:", ts.includes("Z"), "hasOffset:", hasTimezoneOffset)
+  if (!ts.includes("Z") && !hasTimezoneOffset) {
     // Replace space with T and add Z suffix for UTC
-    return new Date(ts.replace(" ", "T") + "Z")
+    const utcTs = ts.replace(" ", "T") + "Z"
+    console.log("[v0] timelapse -> UTC:", utcTs)
+    return new Date(utcTs)
   }
   return new Date(ts)
 }
