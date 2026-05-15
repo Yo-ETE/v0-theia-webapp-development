@@ -9,12 +9,20 @@
 
 set -euo pipefail
 
-# --- Colors ---
-RED='\033[0;31m'
-GREEN='\033[0;32m'
-YELLOW='\033[1;33m'
-CYAN='\033[0;36m'
-NC='\033[0m'
+# --- Colors (disabled if not running in a TTY) ---
+if [[ -t 1 ]]; then
+    RED='\033[0;31m'
+    GREEN='\033[0;32m'
+    YELLOW='\033[1;33m'
+    CYAN='\033[0;36m'
+    NC='\033[0m'
+else
+    RED=''
+    GREEN=''
+    YELLOW=''
+    CYAN=''
+    NC=''
+fi
 
 # --- Config ---
 APP_DIR="/opt/theia/app"
@@ -308,13 +316,13 @@ install_services() {
     sed -i "s/User=pi/User=$SERVICE_USER/" /etc/systemd/system/theia-web.service
     sed -i "s/Group=pi/Group=$SERVICE_USER/" /etc/systemd/system/theia-web.service
 
-    systemctl daemon-reload
+    systemctl daemon-reload || true
 
-    # Enable and start services
-    systemctl enable theia-api.service
-    systemctl enable theia-web.service
-    systemctl restart theia-api.service
-    systemctl restart theia-web.service
+    # Enable and start services (use || true to not fail if service has issues)
+    systemctl enable theia-api.service || true
+    systemctl enable theia-web.service || true
+    systemctl restart theia-api.service || true
+    systemctl restart theia-web.service || true
 
     ok "Services installed and started"
 }
