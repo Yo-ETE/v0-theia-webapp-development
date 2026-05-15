@@ -140,14 +140,18 @@ export function formatTime(iso: string): string {
  */
 export function formatTimeLocal(iso: string): string {
   if (!iso) return ""
+  console.log("[v0] formatTimeLocal input:", iso)
   // Strip Z suffix and timezone offsets to display raw time value as-is
   const cleaned = iso.replace("Z", "").replace(/[+-]\d{2}:\d{2}$/, "").replace(" ", "T")
+  console.log("[v0] formatTimeLocal cleaned:", cleaned)
   const date = new Date(cleaned)
-  return date.toLocaleTimeString("fr-FR", {
+  const result = date.toLocaleTimeString("fr-FR", {
     hour: "2-digit",
     minute: "2-digit",
     second: "2-digit",
   })
+  console.log("[v0] formatTimeLocal result:", result)
+  return result
 }
 
 export function formatDateTime(iso: string): string {
