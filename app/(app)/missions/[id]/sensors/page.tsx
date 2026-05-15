@@ -13,7 +13,7 @@ import {
 } from "@/components/ui/table"
 import { useMission, useDevices } from "@/hooks/use-api"
 import { updateDevice, updateMission } from "@/lib/api-client"
-import { deviceStatusConfig, formatRelativeLocal } from "@/lib/format"
+import { deviceStatusConfig, formatRelative } from "@/lib/format"
 import { cn } from "@/lib/utils"
 
 export default function SensorsPage() {
@@ -148,7 +148,7 @@ export default function SensorsPage() {
                             )}
                           </TableCell>
                           <TableCell className="text-[11px] text-muted-foreground">
-                            {device.last_seen ? formatRelativeLocal(device.last_seen) : "Never"}
+                            {device.last_seen ? formatRelative(device.last_seen) : "Never"}
                           </TableCell>
                           <TableCell>
                             <Button
