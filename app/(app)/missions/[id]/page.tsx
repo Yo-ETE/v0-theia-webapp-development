@@ -41,7 +41,7 @@ import { Switch } from "@/components/ui/switch"
 import { useSSE } from "@/hooks/use-sse"
 import { useNotificationSound } from "@/hooks/use-notification-sound"
 import { updateMission, updateDevice } from "@/lib/api-client"
-import { missionStatusConfig, eventTypeConfig, deviceStatusConfig, formatRelative, formatTime, formatTimeLocal, formatDateTime } from "@/lib/format"
+import { missionStatusConfig, eventTypeConfig, deviceStatusConfig, formatRelative, formatRelativeLocal, formatTime, formatTimeLocal, formatDateTime } from "@/lib/format"
 import { cn } from "@/lib/utils"
 import type { Zone, Floor, DetectionEvent, LiveDetection } from "@/lib/types"
 import { groupSidesByBearing } from "@/lib/facade-utils"
@@ -2323,7 +2323,7 @@ export default function MissionDetailPage() {
                                   </div>
                                 ) : <span className="text-xs text-muted-foreground">---</span>}
                               </TableCell>
-                              <TableCell className="text-[11px] text-muted-foreground">{device.last_seen ? formatRelative(device.last_seen) : "Never"}</TableCell>
+                              <TableCell className="text-[11px] text-muted-foreground">{device.last_seen ? formatRelativeLocal(device.last_seen) : "Never"}</TableCell>
                               <TableCell>
                                 <Button variant="ghost" size="sm" className="h-6 text-[10px] px-2 text-destructive hover:text-destructive/80" onClick={() => unassignDevice(device.id)}>
                                   <Unlink className="mr-1 h-3 w-3" />Remove
