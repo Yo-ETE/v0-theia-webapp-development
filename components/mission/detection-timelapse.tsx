@@ -8,11 +8,15 @@ import { formatTime } from "@/lib/format"
 import type { DetectionEvent, LiveDetection } from "@/lib/types"
 
 /** 
- * Parse a timestamp string from the database.
- * The backend stores timestamps in LOCAL Paris time.
+ * Parse a timestamp string from the database as UTC.
+ * The backend stores timestamps in UTC.
  */
-function parseTimestamp(ts: string): Date {
-  return new Date(ts.replace(" ", "T"))
+function parseAsUTC(ts: string): Date {
+  if (!ts) return new Date(NaN)
+  if (ts.includes("Z") || /[+-]\d{2}:\d{2}$/.test(ts)) {
+    return new Date(ts)
+  }
+  return new Date(ts.replace(" ", "T") + "Z")
 }
 
 // LiveDetection is imported from @/lib/types
@@ -64,7 +68,7 @@ function buildActivityHistogram(events: DetectionEvent[], slots: number = 48): {
   if (!events.length) return []
   
   // Get time range (UTC)
-  const timestamps = events.map(e => parseTimestamp(e.timestamp).getTime()).filter(t => !isNaN(t))
+  const timestamps = events.map(e => parseAsUTC(e.timestamp).getTime()).filter(t => !isNaN(t))
   if (!timestamps.length) return []
   
   const minTs = Math.min(...timestamps)
@@ -86,7 +90,7 @@ function buildActivityHistogram(events: DetectionEvent[], slots: number = 48): {
     return {
       slot: i,
       count,
-      label: slotTs.toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit" }),
+      label: slotTs.toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit", timeZone: "Europe/Paris" }),
       pct: (count / maxCount) * 100,
     }
   })
@@ -136,7 +140,7 @@ export function DetectionTimelapse({ missionId, onDetection, onClose }: Detectio
       .filter(e => {
         if (!e.timestamp) return false
         // Parse DB timestamp as UTC
-        const evtMs = parseTimestamp(e.timestamp).getTime()
+        const evtMs = parseAsUTC(e.timestamp).getTime()
         return evtMs >= fromMs && evtMs <= toMs
       })
       .slice()
@@ -167,7 +171,7 @@ export function DetectionTimelapse({ missionId, onDetection, onClose }: Detectio
     }
     const ev = events[currentIdx]
     const det = parseEventToDetection(ev)
-    const currentTsMs = parseTimestamp(ev.timestamp).getTime()
+    const currentTsMs = parseAsUTC(ev.timestamp).getTime()
 
     // Update rolling window with current detection
     if (det) {
@@ -224,7 +228,7 @@ export function DetectionTimelapse({ missionId, onDetection, onClose }: Detectio
   }, [onDetection])
 
   const currentEvent = events[currentIdx]
-  const currentTs = currentEvent?.timestamp ? parseTimestamp(currentEvent.timestamp) : null
+  const currentTs = currentEvent?.timestamp ? parseAsUTC(currentEvent.timestamp) : null
 
   const handleLoad = useCallback(() => {
     setLoaded(true)
@@ -320,7 +324,7 @@ export function DetectionTimelapse({ missionId, onDetection, onClose }: Detectio
                 {events[0]?.timestamp ? formatTime(events[0].timestamp) : "--"}
               </span>
               <span className="text-xs font-mono font-bold text-primary">
-                {currentTs ? currentTs.toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit", second: "2-digit" }) : "--"}
+                {currentTs ? currentTs.toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit", second: "2-digit", timeZone: "Europe/Paris" }) : "--"}
               </span>
               <span className="text-[10px] font-mono text-muted-foreground">
                 {events[events.length - 1]?.timestamp ? formatTime(events[events.length - 1].timestamp) : "--"}
