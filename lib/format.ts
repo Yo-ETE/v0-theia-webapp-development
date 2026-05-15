@@ -164,3 +164,18 @@ export function formatRelative(iso: string): string {
   if (hours < 24) return `${hours}h ago`
   return `${Math.floor(hours / 24)}d ago`
 }
+
+/** Format relative time for timestamps that are already in local Paris time (e.g. SSE live data) */
+export function formatRelativeLocal(iso: string): string {
+  if (!iso) return ""
+  // Strip Z suffix and timezone offsets to parse raw time value
+  const cleaned = iso.replace("Z", "").replace(/[+-]\d{2}:\d{2}$/, "").replace(" ", "T")
+  const diff = Date.now() - new Date(cleaned).getTime()
+  const secs = Math.floor(diff / 1000)
+  if (secs < 60) return `${secs}s ago`
+  const mins = Math.floor(secs / 60)
+  if (mins < 60) return `${mins}m ago`
+  const hours = Math.floor(mins / 60)
+  if (hours < 24) return `${hours}h ago`
+  return `${Math.floor(hours / 24)}d ago`
+}
