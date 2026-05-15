@@ -134,6 +134,17 @@ export function formatTime(iso: string): string {
   })
 }
 
+/** Format time for timestamps that are already in local time (e.g. SSE live data) */
+export function formatTimeLocal(iso: string): string {
+  if (!iso) return ""
+  const date = new Date(iso.replace(" ", "T"))
+  return date.toLocaleTimeString("fr-FR", {
+    hour: "2-digit",
+    minute: "2-digit",
+    second: "2-digit",
+  })
+}
+
 export function formatDateTime(iso: string): string {
   return `${formatDate(iso)} ${formatTime(iso)}`
 }

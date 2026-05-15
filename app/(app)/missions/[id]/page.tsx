@@ -41,7 +41,7 @@ import { Switch } from "@/components/ui/switch"
 import { useSSE } from "@/hooks/use-sse"
 import { useNotificationSound } from "@/hooks/use-notification-sound"
 import { updateMission, updateDevice } from "@/lib/api-client"
-import { missionStatusConfig, eventTypeConfig, deviceStatusConfig, formatRelative, formatTime, formatDateTime } from "@/lib/format"
+import { missionStatusConfig, eventTypeConfig, deviceStatusConfig, formatRelative, formatTime, formatTimeLocal, formatDateTime } from "@/lib/format"
 import { cn } from "@/lib/utils"
 import type { Zone, Floor, DetectionEvent, LiveDetection } from "@/lib/types"
 import { groupSidesByBearing } from "@/lib/facade-utils"
@@ -1228,7 +1228,7 @@ export default function MissionDetailPage() {
                       </div>
                       {det?.timestamp && (
                         <span className="text-[8px] font-mono text-muted-foreground shrink-0">
-                          {formatTime(det.timestamp)}
+                          {formatTimeLocal(det.timestamp)}
                         </span>
                       )}
                     </div>
@@ -1943,7 +1943,7 @@ export default function MissionDetailPage() {
                               </span>
                             )}
                             <span className="text-[9px] text-muted-foreground font-mono ml-auto shrink-0">
-                              {formatTime(det.timestamp)}
+                              {formatTimeLocal(det.timestamp)}
                             </span>
                           </div>
                           <div className="flex items-center gap-2 mt-0.5 flex-wrap">
