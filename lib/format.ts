@@ -134,10 +134,15 @@ export function formatTime(iso: string): string {
   })
 }
 
-/** Format time for timestamps that are already in local time (e.g. SSE live data) */
+/** Format time for timestamps that are already in local Paris time (e.g. SSE live data).
+ * The backend may send timestamps with "Z" suffix but the value is actually Paris time.
+ * We strip the Z to display the raw time value without UTC conversion.
+ */
 export function formatTimeLocal(iso: string): string {
   if (!iso) return ""
-  const date = new Date(iso.replace(" ", "T"))
+  // Strip Z suffix and timezone offsets to display raw time value as-is
+  const cleaned = iso.replace("Z", "").replace(/[+-]\d{2}:\d{2}$/, "").replace(" ", "T")
+  const date = new Date(cleaned)
   return date.toLocaleTimeString("fr-FR", {
     hour: "2-digit",
     minute: "2-digit",
