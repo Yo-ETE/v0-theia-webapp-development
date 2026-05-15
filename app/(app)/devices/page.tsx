@@ -23,7 +23,7 @@ import { BatteryChart } from "@/components/battery-chart"
 import { FirmwareManager } from "@/components/admin/firmware-manager"
 import { useAuth } from "@/lib/auth-context"
 import { createDevice, deleteDevice, updateDevice } from "@/lib/api-client"
-import { deviceStatusConfig, formatRelative } from "@/lib/format"
+import { deviceStatusConfig, formatRelativeLocal } from "@/lib/format"
 import { cn } from "@/lib/utils"
 
 export default function DevicesPage() {
@@ -516,7 +516,7 @@ export default function DevicesPage() {
                             )}
                           </TableCell>
                           <TableCell className="text-[11px] text-muted-foreground">
-                            {device.last_seen ? formatRelative(device.last_seen) : "Never"}
+                            {device.last_seen ? formatRelativeLocal(device.last_seen) : "Never"}
                           </TableCell>
                           <TableCell>
                             <div className="flex items-center gap-2">
