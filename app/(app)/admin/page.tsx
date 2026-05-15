@@ -193,6 +193,12 @@ function getSignalIcon(signal: number) {
   return <Signal className="h-4 w-4 text-destructive" />
 }
 
+/** Strip ANSI escape codes from terminal output */
+function stripAnsi(str: string): string {
+  // eslint-disable-next-line no-control-regex
+  return str.replace(/\x1B(?:[@-Z\\-_]|\[[0-?]*[ -/]*[@-~])/g, "")
+}
+
 // ── Page ──
 
 export default function AdminPage() {
@@ -1242,7 +1248,7 @@ export default function AdminPage() {
                               <code className="text-[11px] font-mono text-foreground">{step.name}</code>
                             </div>
                             {step.output && (
-                              <pre className="ml-5 mt-0.5 text-[10px] font-mono text-muted-foreground whitespace-pre-wrap leading-relaxed pl-2 border-l border-border/30">{step.output}</pre>
+                              <pre className="ml-5 mt-0.5 text-[10px] font-mono text-muted-foreground whitespace-pre-wrap leading-relaxed pl-2 border-l border-border/30">{stripAnsi(step.output)}</pre>
                             )}
                           </div>
                         ))
@@ -1266,7 +1272,7 @@ export default function AdminPage() {
 
                       {/* Raw output */}
                       {updateOutput && !updateResult?.steps && (
-                        <pre className="text-[10px] font-mono text-muted-foreground whitespace-pre-wrap leading-relaxed mt-1 pt-1 border-t border-border/20">{updateOutput}</pre>
+                        <pre className="text-[10px] font-mono text-muted-foreground whitespace-pre-wrap leading-relaxed mt-1 pt-1 border-t border-border/20">{stripAnsi(updateOutput)}</pre>
                       )}
                     </div>
                   </ScrollArea>
