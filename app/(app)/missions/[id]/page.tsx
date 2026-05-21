@@ -2072,17 +2072,43 @@ export default function MissionDetailPage() {
                 <div className="flex items-center justify-between">
                   <CardTitle className="text-sm">Events ({eventList.length})</CardTitle>
                   <div className="flex items-center gap-2">
+                  {sensorPlacements.length > 0 && (
+                    <Button
+                      variant={showFov ? "default" : "outline"}
+                      size="sm"
+                      className="min-h-[32px] text-[10px] px-2.5 gap-1"
+                      onClick={() => setShowFov(!showFov)}
+                      title="Afficher couverture theorique des capteurs"
+                    >
+                      {showFov ? <EyeOff className="h-3.5 w-3.5" /> : <Eye className="h-3.5 w-3.5" />}
+                      FOV
+                    </Button>
+                  )}
+                  {!isFloorMode && (
+                    <Button
+                      variant={showGrid ? "default" : "outline"}
+                      size="sm"
+                      className="min-h-[32px] text-[10px] px-2.5 gap-1"
+                      onClick={() => setShowGrid(!showGrid)}
+                      title="Afficher carroyage A-Q / 1-12"
+                    >
+                      <Grid3X3 className="h-3.5 w-3.5" />
+                      Grille
+                    </Button>
+                  )}
                   {!isFloorMode && (
                   <Button
                     variant={heatmapMode ? "default" : "outline"} size="sm"
+                    className="min-h-[32px] text-[10px] px-2.5 gap-1"
                     disabled={eventList.length === 0}
                     onClick={() => setHeatmapMode(!heatmapMode)}
                   >
-                    <Flame className="mr-1.5 h-3.5 w-3.5" />Heatmap
+                    <Flame className="h-3.5 w-3.5" />Heatmap
                   </Button>
                   )}
                   <Button
                     variant="destructive" size="sm"
+                    className="min-h-[32px] text-[10px] px-2.5 gap-1"
                     disabled={eventList.length === 0}
                     onClick={async () => {
                       if (!confirm("Purger tous les events de cette mission ?")) return
@@ -2098,10 +2124,11 @@ export default function MissionDetailPage() {
                       await mutateEvents([], false)
                     }}
                   >
-                    <Trash2 className="mr-1.5 h-3.5 w-3.5" />Purger
+                    <Trash2 className="h-3.5 w-3.5" />Purger
                   </Button>
                   <Button
                     variant="outline" size="sm"
+                    className="min-h-[32px] text-[10px] px-2.5 gap-1"
                     disabled={eventList.length === 0}
                     onClick={() => {
                       const csv = [
@@ -2119,7 +2146,7 @@ export default function MissionDetailPage() {
                       URL.revokeObjectURL(url)
                     }}
                   >
-                    <Download className="mr-1.5 h-3.5 w-3.5" />Export CSV
+                    <Download className="h-3.5 w-3.5" />Export CSV
                   </Button>
                   </div>
                 </div>
