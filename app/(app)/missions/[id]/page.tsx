@@ -834,8 +834,14 @@ export default function MissionDetailPage() {
     })
   // Reconstruct placements from historical events (preserves positions at time of recording)
   // Falls back to mission.device_placements (persisted at assignment time) for old events
+  // Falls back to current device orientation for FOV display consistency
   const historicalPlacements = (() => {
     if (!events || events.length === 0) return []
+    // Build a map of current device orientations for fallback
+    const currentOrientations = new Map<string, "inward" | "outward">()
+    for (const d of missionDevices) {
+      currentOrientations.set(d.id, (d.orientation as "inward" | "outward") ?? "inward")
+    }
     const seen = new Map<string, (typeof livePlacements)[0]>()
     for (const e of events) {
       const did = e.device_id ?? ""
@@ -845,6 +851,8 @@ export default function MissionDetailPage() {
       const zoneId = e.zone_id || saved?.zone_id
       const side = e.side || saved?.side
       if (!zoneId || !side) continue
+      // Priority: event orientation > saved placement > current device > default inward
+      const orientation = (e.orientation ?? saved?.orientation ?? currentOrientations.get(did) ?? "inward") as "inward" | "outward"
       seen.set(did, {
         device_id: did,
         device_name: e.device_name ?? saved?.device_name ?? did,
@@ -852,7 +860,7 @@ export default function MissionDetailPage() {
         side: side,
         sensor_position: e.sensor_position ?? saved?.sensor_position ?? 0.5,
         device_type: saved?.device_type ?? "",
-        orientation: (e.orientation ?? saved?.orientation ?? "inward") as "inward" | "outward",
+        orientation,
         // Include gravity_mw effective range/fov from saved placements
         effective_range: saved?.effective_range as number | undefined,
         effective_fov: saved?.effective_fov as number | undefined,
@@ -861,6 +869,7 @@ export default function MissionDetailPage() {
     // Also add devices from saved placements that have no events (assigned but no detection yet)
     for (const [did, p] of Object.entries(savedPlacements)) {
       if (!seen.has(did) && p.zone_id && p.side) {
+        const orientation = (p.orientation ?? currentOrientations.get(did) ?? "inward") as "inward" | "outward"
         seen.set(did, {
           device_id: did,
           device_name: p.device_name ?? did,
@@ -868,7 +877,7 @@ export default function MissionDetailPage() {
           side: p.side,
           sensor_position: p.sensor_position ?? 0.5,
           device_type: p.device_type ?? "",
-          orientation: (p.orientation as "inward" | "outward") ?? "inward",
+          orientation,
           // Include gravity_mw effective range/fov
           effective_range: p.effective_range as number | undefined,
           effective_fov: p.effective_fov as number | undefined,
