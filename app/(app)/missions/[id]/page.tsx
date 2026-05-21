@@ -1792,6 +1792,26 @@ export default function MissionDetailPage() {
                               e.stopPropagation()
                               const newOrientation = (d.orientation ?? "inward") === "inward" ? "outward" : "inward"
                               await updateDevice(d.id, { orientation: newOrientation })
+                              // Also update device_placements in mission for timelapse replay
+                              if (mission) {
+                                const placements = { ...(mission.device_placements ?? {}) }
+                                if (placements[d.id]) {
+                                  placements[d.id] = { ...placements[d.id], orientation: newOrientation }
+                                } else {
+                                  placements[d.id] = {
+                                    zone_id: d.zone_id ?? "",
+                                    side: d.side ?? "",
+                                    sensor_position: d.sensor_position ?? 0.5,
+                                    orientation: newOrientation,
+                                    device_name: d.name,
+                                  }
+                                }
+                                await fetch(`/api/missions/${id}`, {
+                                  method: "PATCH",
+                                  headers: { "Content-Type": "application/json" },
+                                  body: JSON.stringify({ device_placements: placements }),
+                                })
+                              }
                               mutateDevices()
                               mutate()
                             }}
@@ -1891,6 +1911,18 @@ export default function MissionDetailPage() {
                           >
                             {showFov ? <EyeOff className="h-3.5 w-3.5" /> : <Eye className="h-3.5 w-3.5" />}
                             FOV
+                          </Button>
+                        )}
+                        {!isPlanMode && !isFloorMode && (
+                          <Button
+                            variant={showGrid ? "default" : "outline"}
+                            size="sm"
+                            className="min-h-[36px] text-[10px] px-2.5 gap-1"
+                            onClick={() => setShowGrid(!showGrid)}
+                            title="Afficher carroyage A-Q / 1-12"
+                          >
+                            <Grid3X3 className="h-3.5 w-3.5" />
+                            Grille
                           </Button>
                         )}
                         {!isFloorMode && (missionDevices.length >= 2 || (timelapseMode && sensorPlacements.length >= 2)) && (
