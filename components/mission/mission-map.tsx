@@ -41,6 +41,7 @@ interface MissionMapProps {
   onZonePolygonUpdate?: (zoneId: string, polygon: [number, number][]) => void
   estimatePosition?: boolean
   showFov?: boolean
+  showGrid?: boolean  // Alphanumeric grid overlay (A-Q, 1-12)
   replayMode?: boolean
   visualConfig?: VisualConfig | null
 }

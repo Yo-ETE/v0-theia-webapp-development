@@ -9,7 +9,7 @@ import {
   Activity, Eye, EyeOff, Zap, Timer, Download, Signal, Battery, Wifi, Unlink,
   Flame, Crosshair, ArrowDownLeft, ArrowUpRight, Bell, BellOff,
   Maximize2, Minimize2, FileImage, Ruler, Palette, RotateCw,
-  Volume2, VolumeX,
+  Volume2, VolumeX, Grid3X3,
 } from "lucide-react"
 import { TopHeader } from "@/components/top-header"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
@@ -173,6 +173,7 @@ export default function MissionDetailPage() {
   const [showFov, setShowFov] = useState(false)
   // Sync FOV default from visual config on first load
   useEffect(() => { setShowFov(visualConfig.fov_default_visible) }, []) // eslint-disable-line react-hooks/exhaustive-deps
+  const [showGrid, setShowGrid] = useState(false) // Alphanumeric grid overlay (A-Q, 1-12)
   const [fullMapMode, setFullMapMode] = useState(false)
   const [editingZoneId, setEditingZoneId] = useState<string | null>(null)
   const [editingPolygon, setEditingPolygon] = useState<[number, number][] | null>(null)
@@ -1082,6 +1083,18 @@ export default function MissionDetailPage() {
                       FOV
                     </Button>
                   )}
+                  {!isPlanMode && !isFloorMode && (
+                    <Button
+                      variant={showGrid ? "default" : "outline"}
+                      size="sm"
+                      className="min-h-[36px] text-[10px] px-2.5 gap-1"
+                      onClick={() => setShowGrid(!showGrid)}
+                      title="Afficher carroyage A-Q / 1-12"
+                    >
+                      <Grid3X3 className="h-3.5 w-3.5" />
+                      Grille
+                    </Button>
+                  )}
                   {!isPlanMode && !isFloorMode && (missionDevices.length >= 2 || (timelapseMode && sensorPlacements.length >= 2)) && (
                     <Button
                       variant={estimatePosition ? "default" : "outline"}
@@ -1166,6 +1179,7 @@ export default function MissionDetailPage() {
                   editingPolygon={null}
                   onZonePolygonUpdate={() => {}}
                   showFov={showFov}
+                  showGrid={showGrid}
                   replayMode={false}
                   visualConfig={visualConfig}
                 />
@@ -1508,6 +1522,7 @@ export default function MissionDetailPage() {
                       editingPolygon={editingPolygon}
                       onZonePolygonUpdate={updateZonePolygon}
                       showFov={showFov}
+                      showGrid={showGrid}
                       replayMode={timelapseMode}
                       visualConfig={visualConfig}
                     />
@@ -1528,6 +1543,18 @@ export default function MissionDetailPage() {
                           >
                             {showFov ? <EyeOff className="h-3.5 w-3.5" /> : <Eye className="h-3.5 w-3.5" />}
                             FOV
+                          </Button>
+                        )}
+                        {!isFloorMode && (
+                          <Button
+                            variant={showGrid ? "default" : "outline"}
+                            size="sm"
+                            className="min-h-[36px] text-[10px] px-2.5 gap-1"
+                            onClick={() => setShowGrid(!showGrid)}
+                            title="Afficher carroyage A-Q / 1-12"
+                          >
+                            <Grid3X3 className="h-3.5 w-3.5" />
+                            Grille
                           </Button>
                         )}
                   {!isFloorMode && (missionDevices.length >= 2 || (timelapseMode && sensorPlacements.length >= 2)) && (

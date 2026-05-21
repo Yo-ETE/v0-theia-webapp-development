@@ -1,6 +1,6 @@
 "use client"
 
-import { useEffect, useState, useCallback, useRef } from "react"
+import React, { useEffect, useState, useCallback, useRef } from "react"
 import type { Zone, DetectionEvent, LiveDetection } from "@/lib/types"
 import { cn } from "@/lib/utils"
 import type { VisualConfig } from "@/hooks/use-visual-config"
@@ -83,6 +83,7 @@ interface MapInnerProps {
   editingPolygon?: [number, number][] | null
   onZonePolygonUpdate?: (zoneId: string, polygon: [number, number][]) => void
   showFov?: boolean
+  showGrid?: boolean  // Show alphanumeric grid overlay on zones (A-Q horizontal, 1-12 vertical)
   replayMode?: boolean
   /** Visual configuration (colors, opacities) from per-mission settings */
   visualConfig?: VisualConfig | null
@@ -136,6 +137,46 @@ function polygonPerimeterM(polygon: [number, number][]): number {
   return total
 }
 
+/** Grid columns (A-Q) and rows (1-12) for zone overlay */
+const GRID_COLS = "ABCDEFGHIJKLMNOPQ".split("")
+const GRID_ROWS = Array.from({ length: 12 }, (_, i) => i + 1)
+
+/** Generate grid lines and labels for a zone polygon's bounding box */
+function generateZoneGrid(polygon: [number, number][]): {
+  hLines: { lat: number; minLon: number; maxLon: number; label: string }[]
+  vLines: { lon: number; minLat: number; maxLat: number; label: string }[]
+} {
+  if (polygon.length < 3) return { hLines: [], vLines: [] }
+  
+  // Get bounding box
+  const lats = polygon.map(p => p[0])
+  const lons = polygon.map(p => p[1])
+  const minLat = Math.min(...lats)
+  const maxLat = Math.max(...lats)
+  const minLon = Math.min(...lons)
+  const maxLon = Math.max(...lons)
+  
+  // Generate horizontal lines (rows 1-12, bottom to top)
+  const latStep = (maxLat - minLat) / GRID_ROWS.length
+  const hLines = GRID_ROWS.map((rowNum, i) => ({
+    lat: minLat + latStep * i,
+    minLon,
+    maxLon,
+    label: String(rowNum),
+  }))
+  
+  // Generate vertical lines (columns A-Q, left to right)
+  const lonStep = (maxLon - minLon) / GRID_COLS.length
+  const vLines = GRID_COLS.map((col, i) => ({
+    lon: minLon + lonStep * i,
+    minLat,
+    maxLat,
+    label: col,
+  }))
+  
+  return { hLines, vLines }
+}
+
 export default function MapInner({
   centerLat: rawLat,
   centerLon: rawLon,
@@ -158,6 +199,7 @@ export default function MapInner({
   editingPolygon = null,
   onZonePolygonUpdate,
   showFov = false,
+  showGrid = false,
   replayMode = false,
   visualConfig,
 }: MapInnerProps) {
@@ -1365,6 +1407,68 @@ export default function MapInner({
                 className: isDetecting && detState === "live" ? "detection-pulse" : "",
               }}
             />
+          )
+        })}
+
+        {/* ── Grid overlay on zones (A-Q columns, 1-12 rows) ── */}
+        {showGrid && (zones ?? []).map((zone) => {
+          if (!zone.polygon?.length || zone.polygon.length < 3) return null
+          const { hLines, vLines } = generateZoneGrid(zone.polygon as [number, number][])
+          const gridColor = "#94a3b8" // slate-400
+          return (
+            <React.Fragment key={`grid-${zone.id}`}>
+              {/* Horizontal lines (row separators) */}
+              {hLines.map((line, i) => (
+                <Polyline
+                  key={`hline-${zone.id}-${i}`}
+                  positions={[[line.lat, line.minLon], [line.lat, line.maxLon]]}
+                  pathOptions={{ color: gridColor, weight: 0.8, opacity: 0.6, dashArray: "2 2" }}
+                />
+              ))}
+              {/* Vertical lines (column separators) */}
+              {vLines.map((line, i) => (
+                <Polyline
+                  key={`vline-${zone.id}-${i}`}
+                  positions={[[line.minLat, line.lon], [line.maxLat, line.lon]]}
+                  pathOptions={{ color: gridColor, weight: 0.8, opacity: 0.6, dashArray: "2 2" }}
+                />
+              ))}
+              {/* Row labels (1-12 on left side) */}
+              {hLines.slice(0, -1).map((line, i) => {
+                const nextLine = hLines[i + 1]
+                const midLat = (line.lat + nextLine.lat) / 2
+                return RL && leafletL ? (
+                  <RL.Marker
+                    key={`rowlabel-${zone.id}-${i}`}
+                    position={[midLat, line.minLon - 0.00005]}
+                    icon={leafletL.divIcon({
+                      className: "",
+                      html: `<div style="font-size:9px;font-weight:700;color:${gridColor};background:rgba(255,255,255,0.85);padding:0 2px;border-radius:2px;white-space:nowrap">${line.label}</div>`,
+                      iconSize: [12, 12],
+                      iconAnchor: [12, 6],
+                    })}
+                  />
+                ) : null
+              })}
+              {/* Column labels (A-Q on top) */}
+              {vLines.slice(0, -1).map((line, i) => {
+                const nextLine = vLines[i + 1]
+                const midLon = (line.lon + nextLine.lon) / 2
+                const maxLat = Math.max(...(zone.polygon as [number, number][]).map(p => p[0]))
+                return RL && leafletL ? (
+                  <RL.Marker
+                    key={`collabel-${zone.id}-${i}`}
+                    position={[maxLat + 0.00003, midLon]}
+                    icon={leafletL.divIcon({
+                      className: "",
+                      html: `<div style="font-size:9px;font-weight:700;color:${gridColor};background:rgba(255,255,255,0.85);padding:0 2px;border-radius:2px;white-space:nowrap">${line.label}</div>`,
+                      iconSize: [12, 12],
+                      iconAnchor: [6, 12],
+                    })}
+                  />
+                ) : null
+              })}
+            </React.Fragment>
           )
         })}
 
