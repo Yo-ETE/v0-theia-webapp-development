@@ -137,9 +137,9 @@ function polygonPerimeterM(polygon: [number, number][]): number {
   return total
 }
 
-/** Grid columns (A-Q) and rows (1-12) for zone overlay */
-const GRID_COLS = "ABCDEFGHIJKLMNOPQ".split("")
-const GRID_ROWS = Array.from({ length: 12 }, (_, i) => i + 1)
+/** Grid columns (A-H) and rows (1-6) for zone overlay - simplified for better mobile readability */
+const GRID_COLS = "ABCDEFGH".split("")
+const GRID_ROWS = Array.from({ length: 6 }, (_, i) => i + 1)
 
 /** Generate grid lines and labels for a zone polygon's bounding box */
 function generateZoneGrid(polygon: [number, number][]): {
@@ -156,7 +156,7 @@ function generateZoneGrid(polygon: [number, number][]): {
   const minLon = Math.min(...lons)
   const maxLon = Math.max(...lons)
   
-  // Generate horizontal lines (rows 1-12, bottom to top)
+  // Generate horizontal lines (rows 1-6, bottom to top)
   const latStep = (maxLat - minLat) / GRID_ROWS.length
   const hLines = GRID_ROWS.map((rowNum, i) => ({
     lat: minLat + latStep * i,
@@ -165,7 +165,7 @@ function generateZoneGrid(polygon: [number, number][]): {
     label: String(rowNum),
   }))
   
-  // Generate vertical lines (columns A-Q, left to right)
+  // Generate vertical lines (columns A-H, left to right)
   const lonStep = (maxLon - minLon) / GRID_COLS.length
   const vLines = GRID_COLS.map((col, i) => ({
     lon: minLon + lonStep * i,
@@ -1410,11 +1410,11 @@ export default function MapInner({
           )
         })}
 
-        {/* ── Grid overlay on zones (A-Q columns, 1-12 rows) ── */}
+        {/* ── Grid overlay on zones (A-H columns, 1-6 rows) ── */}
         {showGrid && (zones ?? []).map((zone) => {
           if (!zone.polygon?.length || zone.polygon.length < 3) return null
           const { hLines, vLines } = generateZoneGrid(zone.polygon as [number, number][])
-          const gridColor = "#94a3b8" // slate-400
+          const gridColor = "#64748b" // slate-500 for better visibility
           return (
             <React.Fragment key={`grid-${zone.id}`}>
               {/* Horizontal lines (row separators) */}
@@ -1422,7 +1422,7 @@ export default function MapInner({
                 <Polyline
                   key={`hline-${zone.id}-${i}`}
                   positions={[[line.lat, line.minLon], [line.lat, line.maxLon]]}
-                  pathOptions={{ color: gridColor, weight: 0.8, opacity: 0.6, dashArray: "2 2" }}
+                  pathOptions={{ color: gridColor, weight: 1, opacity: 0.5, dashArray: "4 4" }}
                 />
               ))}
               {/* Vertical lines (column separators) */}
@@ -1430,27 +1430,27 @@ export default function MapInner({
                 <Polyline
                   key={`vline-${zone.id}-${i}`}
                   positions={[[line.minLat, line.lon], [line.maxLat, line.lon]]}
-                  pathOptions={{ color: gridColor, weight: 0.8, opacity: 0.6, dashArray: "2 2" }}
+                  pathOptions={{ color: gridColor, weight: 1, opacity: 0.5, dashArray: "4 4" }}
                 />
               ))}
-              {/* Row labels (1-12 on left side) */}
+              {/* Row labels (1-6 on left side) */}
               {hLines.slice(0, -1).map((line, i) => {
                 const nextLine = hLines[i + 1]
                 const midLat = (line.lat + nextLine.lat) / 2
                 return RL && leafletL ? (
                   <RL.Marker
                     key={`rowlabel-${zone.id}-${i}`}
-                    position={[midLat, line.minLon - 0.00005]}
+                    position={[midLat, line.minLon - 0.00008]}
                     icon={leafletL.divIcon({
                       className: "",
-                      html: `<div style="font-size:9px;font-weight:700;color:${gridColor};background:rgba(255,255,255,0.85);padding:0 2px;border-radius:2px;white-space:nowrap">${line.label}</div>`,
-                      iconSize: [12, 12],
-                      iconAnchor: [12, 6],
+                      html: `<div style="font-size:11px;font-weight:700;color:#1e293b;background:rgba(255,255,255,0.95);padding:1px 4px;border-radius:3px;white-space:nowrap;box-shadow:0 1px 2px rgba(0,0,0,0.1)">${line.label}</div>`,
+                      iconSize: [16, 16],
+                      iconAnchor: [16, 8],
                     })}
                   />
                 ) : null
               })}
-              {/* Column labels (A-Q on top) */}
+              {/* Column labels (A-H on top) */}
               {vLines.slice(0, -1).map((line, i) => {
                 const nextLine = vLines[i + 1]
                 const midLon = (line.lon + nextLine.lon) / 2
@@ -1458,12 +1458,12 @@ export default function MapInner({
                 return RL && leafletL ? (
                   <RL.Marker
                     key={`collabel-${zone.id}-${i}`}
-                    position={[maxLat + 0.00003, midLon]}
+                    position={[maxLat + 0.00005, midLon]}
                     icon={leafletL.divIcon({
                       className: "",
-                      html: `<div style="font-size:9px;font-weight:700;color:${gridColor};background:rgba(255,255,255,0.85);padding:0 2px;border-radius:2px;white-space:nowrap">${line.label}</div>`,
-                      iconSize: [12, 12],
-                      iconAnchor: [6, 12],
+                      html: `<div style="font-size:11px;font-weight:700;color:#1e293b;background:rgba(255,255,255,0.95);padding:1px 4px;border-radius:3px;white-space:nowrap;box-shadow:0 1px 2px rgba(0,0,0,0.1)">${line.label}</div>`,
+                      iconSize: [16, 16],
+                      iconAnchor: [8, 16],
                     })}
                   />
                 ) : null
