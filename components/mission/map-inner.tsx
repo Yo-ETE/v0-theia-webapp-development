@@ -137,17 +137,18 @@ function polygonPerimeterM(polygon: [number, number][]): number {
   return total
 }
 
-/** Grid columns (A-F) and rows (1-4) for zone overlay - optimized for readability */
-const GRID_COLS = "ABCDEF".split("")
-const GRID_ROWS = Array.from({ length: 4 }, (_, i) => i + 1)
+/** Grid columns (A-C) and rows (1-3) for zone overlay - minimal for clarity */
+const GRID_COLS = "ABC".split("")
+const GRID_ROWS = [1, 2, 3]
 
-/** Generate grid cells with center positions for labels */
+/** Generate simple grid lines for a zone polygon's bounding box */
 function generateZoneGrid(polygon: [number, number][]): {
   hLines: { lat: number; minLon: number; maxLon: number }[]
   vLines: { lon: number; minLat: number; maxLat: number }[]
-  cells: { label: string; centerLat: number; centerLon: number }[]
+  colLabels: { label: string; lat: number; lon: number }[]
+  rowLabels: { label: string; lat: number; lon: number }[]
 } {
-  if (polygon.length < 3) return { hLines: [], vLines: [], cells: [] }
+  if (polygon.length < 3) return { hLines: [], vLines: [], colLabels: [], rowLabels: [] }
   
   // Get bounding box
   const lats = polygon.map(p => p[0])
@@ -160,41 +161,33 @@ function generateZoneGrid(polygon: [number, number][]): {
   const latStep = (maxLat - minLat) / GRID_ROWS.length
   const lonStep = (maxLon - minLon) / GRID_COLS.length
   
-  // Generate horizontal lines (row separators)
-  const hLines = GRID_ROWS.map((_, i) => ({
-    lat: minLat + latStep * i,
-    minLon,
-    maxLon,
-  }))
-  // Add top border
-  hLines.push({ lat: maxLat, minLon, maxLon })
-  
-  // Generate vertical lines (column separators)
-  const vLines = GRID_COLS.map((_, i) => ({
-    lon: minLon + lonStep * i,
-    minLat,
-    maxLat,
-  }))
-  // Add right border
-  vLines.push({ lon: maxLon, minLat, maxLat })
-  
-  // Generate cell labels at center of each cell
-  const cells: { label: string; centerLat: number; centerLon: number }[] = []
-  for (let row = 0; row < GRID_ROWS.length; row++) {
-    for (let col = 0; col < GRID_COLS.length; col++) {
-      const cellMinLat = minLat + latStep * row
-      const cellMaxLat = minLat + latStep * (row + 1)
-      const cellMinLon = minLon + lonStep * col
-      const cellMaxLon = minLon + lonStep * (col + 1)
-      cells.push({
-        label: `${GRID_COLS[col]}${GRID_ROWS[row]}`,
-        centerLat: (cellMinLat + cellMaxLat) / 2,
-        centerLon: (cellMinLon + cellMaxLon) / 2,
-      })
-    }
+  // Generate horizontal lines (include all borders)
+  const hLines: { lat: number; minLon: number; maxLon: number }[] = []
+  for (let i = 0; i <= GRID_ROWS.length; i++) {
+    hLines.push({ lat: minLat + latStep * i, minLon, maxLon })
   }
   
-  return { hLines, vLines, cells }
+  // Generate vertical lines (include all borders)
+  const vLines: { lon: number; minLat: number; maxLat: number }[] = []
+  for (let i = 0; i <= GRID_COLS.length; i++) {
+    vLines.push({ lon: minLon + lonStep * i, minLat, maxLat })
+  }
+  
+  // Column labels (A, B, C) positioned at top center of each column
+  const colLabels = GRID_COLS.map((col, i) => ({
+    label: col,
+    lat: maxLat,
+    lon: minLon + lonStep * (i + 0.5),
+  }))
+  
+  // Row labels (1, 2, 3) positioned at left center of each row
+  const rowLabels = GRID_ROWS.map((row, i) => ({
+    label: String(row),
+    lat: minLat + latStep * (i + 0.5),
+    lon: minLon,
+  }))
+  
+  return { hLines, vLines, colLabels, rowLabels }
 }
 
 export default function MapInner({
@@ -1430,39 +1423,52 @@ export default function MapInner({
           )
         })}
 
-        {/* ── Grid overlay on zones (A-F columns, 1-4 rows) with cell labels ── */}
+        {/* ── Grid overlay on zones (A-C columns, 1-3 rows) ── */}
         {showGrid && (zones ?? []).map((zone) => {
           if (!zone.polygon?.length || zone.polygon.length < 3) return null
-          const { hLines, vLines, cells } = generateZoneGrid(zone.polygon as [number, number][])
-          const gridColor = "#475569" // slate-600 for better visibility
+          const { hLines, vLines, colLabels, rowLabels } = generateZoneGrid(zone.polygon as [number, number][])
+          const gridColor = "#64748b" // slate-500
           return (
             <React.Fragment key={`grid-${zone.id}`}>
-              {/* Horizontal lines (row separators) */}
+              {/* Horizontal lines */}
               {hLines.map((line, i) => (
                 <Polyline
                   key={`hline-${zone.id}-${i}`}
                   positions={[[line.lat, line.minLon], [line.lat, line.maxLon]]}
-                  pathOptions={{ color: gridColor, weight: 1.5, opacity: 0.4 }}
+                  pathOptions={{ color: gridColor, weight: 1, opacity: 0.5, dashArray: "6 4" }}
                 />
               ))}
-              {/* Vertical lines (column separators) */}
+              {/* Vertical lines */}
               {vLines.map((line, i) => (
                 <Polyline
                   key={`vline-${zone.id}-${i}`}
                   positions={[[line.minLat, line.lon], [line.maxLat, line.lon]]}
-                  pathOptions={{ color: gridColor, weight: 1.5, opacity: 0.4 }}
+                  pathOptions={{ color: gridColor, weight: 1, opacity: 0.5, dashArray: "6 4" }}
                 />
               ))}
-              {/* Cell labels (A1, B2, etc.) at center of each cell */}
-              {cells.map((cell) => RL && leafletL ? (
+              {/* Column labels (A, B, C) at top */}
+              {colLabels.map((col) => RL && leafletL ? (
                 <RL.Marker
-                  key={`cell-${zone.id}-${cell.label}`}
-                  position={[cell.centerLat, cell.centerLon]}
+                  key={`col-${zone.id}-${col.label}`}
+                  position={[col.lat + 0.00006, col.lon]}
                   icon={leafletL.divIcon({
                     className: "",
-                    html: `<div style="font-size:10px;font-weight:600;color:#334155;background:rgba(255,255,255,0.85);padding:2px 4px;border-radius:3px;white-space:nowrap;border:1px solid rgba(71,85,105,0.3)">${cell.label}</div>`,
-                    iconSize: [24, 16],
-                    iconAnchor: [12, 8],
+                    html: `<div style="font-size:12px;font-weight:700;color:#1e293b;background:#fef3c7;padding:2px 6px;border-radius:4px;border:1px solid #f59e0b">${col.label}</div>`,
+                    iconSize: [20, 20],
+                    iconAnchor: [10, 20],
+                  })}
+                />
+              ) : null)}
+              {/* Row labels (1, 2, 3) on left */}
+              {rowLabels.map((row) => RL && leafletL ? (
+                <RL.Marker
+                  key={`row-${zone.id}-${row.label}`}
+                  position={[row.lat, row.lon - 0.00008]}
+                  icon={leafletL.divIcon({
+                    className: "",
+                    html: `<div style="font-size:12px;font-weight:700;color:#1e293b;background:#fef3c7;padding:2px 6px;border-radius:4px;border:1px solid #f59e0b">${row.label}</div>`,
+                    iconSize: [20, 20],
+                    iconAnchor: [20, 10],
                   })}
                 />
               ) : null)}
