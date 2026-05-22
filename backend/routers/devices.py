@@ -193,57 +193,25 @@ async def get_all_battery_history(hours: int = 24):
 
 @router.get("/rssi-history/all")
 async def get_all_rssi_history(hours: int = 24):
-    """Return RSSI history for ALL enabled devices from rssi_history table.
-    Also includes current RSSI from devices table as fallback for ONLINE devices."""
+    """Return RSSI history for ALL enabled devices (for overlay chart)."""
     db = await get_db()
-    
-    # Get historical data from rssi_history table
+    # Use 'localtime' since timestamps are stored in local time
     cursor = await db.execute(
-        """SELECT r.device_id, d.name, d.dev_eui, r.rssi, r.snr, r.timestamp
-           FROM rssi_history r
-           JOIN devices d ON d.id = r.device_id AND d.enabled=1
-           WHERE r.timestamp >= datetime('now', 'localtime', ?)
-           ORDER BY r.timestamp ASC""",
+        """SELECT rh.device_id, d.name, d.dev_eui, rh.rssi, rh.snr, rh.timestamp
+           FROM rssi_history rh
+           JOIN devices d ON d.id = rh.device_id AND d.enabled=1
+           WHERE rh.timestamp >= datetime('now', 'localtime', ?)
+           ORDER BY rh.timestamp ASC""",
         (f"-{hours} hours",),
     )
     rows = await cursor.fetchall()
-    
     # Group by device
     by_device: dict[str, dict] = {}
     for r in rows:
         did = r["device_id"]
         if did not in by_device:
             by_device[did] = {"device_id": did, "name": r["name"], "dev_eui": r["dev_eui"], "readings": []}
-        by_device[did]["readings"].append({
-            "rssi": r["rssi"],
-            "snr": r["snr"],
-            "timestamp": r["timestamp"]
-        })
-    
-    # Fallback: if no history, include ONLINE devices with current RSSI
-    cursor = await db.execute(
-        """SELECT id, name, dev_eui, rssi, snr, last_seen
-           FROM devices
-           WHERE enabled=1 AND rssi IS NOT NULL AND rssi > -120
-           AND last_seen >= datetime('now', 'localtime', '-5 minutes')"""
-    )
-    online_devices = await cursor.fetchall()
-    
-    for d in online_devices:
-        did = d["id"]
-        if did not in by_device:
-            # Device has no history but is online with valid RSSI - add current reading
-            by_device[did] = {
-                "device_id": did,
-                "name": d["name"],
-                "dev_eui": d["dev_eui"],
-                "readings": [{
-                    "rssi": d["rssi"],
-                    "snr": d["snr"],
-                    "timestamp": d["last_seen"]
-                }]
-            }
-    
+        by_device[did]["readings"].append({"rssi": r["rssi"], "snr": r["snr"], "timestamp": r["timestamp"]})
     return list(by_device.values())
 
 
