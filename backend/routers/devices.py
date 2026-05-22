@@ -204,6 +204,14 @@ async def get_all_rssi_history(hours: int = 24):
         (f"-{hours} hours",),
     )
     rows = await cursor.fetchall()
+    
+    # Debug: log raw data
+    import logging
+    logging.info(f"[RSSI] Found {len(rows)} events in last {hours} hours")
+    if rows:
+        sample_rssi = [r["rssi"] for r in rows[:10]]
+        logging.info(f"[RSSI] Sample RSSI values: {sample_rssi}")
+    
     # Group by device
     by_device: dict[str, dict] = {}
     for r in rows:
@@ -219,6 +227,8 @@ async def get_all_rssi_history(hours: int = 24):
             "snr": r["snr"],
             "timestamp": r["timestamp"]
         })
+    
+    logging.info(f"[RSSI] Returning data for {len(by_device)} devices")
     return list(by_device.values())
 
 
