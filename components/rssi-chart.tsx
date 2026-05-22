@@ -275,53 +275,55 @@ export function RssiChart() {
           </div>
         ) : (
           <>
-            {/* Device filter */}
-            <div className="flex flex-wrap items-center gap-1.5 mb-3">
-              <button
-                onClick={showAll}
-                className={cn(
-                  "px-2 py-0.5 rounded text-[10px] font-medium transition-colors",
-                  selectedDevices === "all"
-                    ? "bg-primary text-primary-foreground"
-                    : "bg-muted text-muted-foreground hover:bg-muted/80"
-                )}
-              >
-                Tous
-              </button>
-              {allDevices.map(dev => {
-                const visible = isDeviceVisible(dev.eui)
-                return (
-                  <button
-                    key={dev.id}
-                    onClick={(e) => {
-                      if (e.shiftKey || e.metaKey) {
+            {/* Device filter - always visible when there's data */}
+            {allDevices.length > 0 && (
+              <div className="flex flex-wrap items-center gap-1.5 mb-3">
+                <button
+                  onClick={showAll}
+                  className={cn(
+                    "px-2 py-0.5 rounded text-[10px] font-medium transition-colors",
+                    selectedDevices === "all"
+                      ? "bg-primary text-primary-foreground"
+                      : "bg-muted text-muted-foreground hover:bg-muted/80"
+                  )}
+                >
+                  Tous
+                </button>
+                {allDevices.map(dev => {
+                  const visible = isDeviceVisible(dev.eui)
+                  return (
+                    <button
+                      key={dev.id}
+                      onClick={(e) => {
+                        if (e.shiftKey || e.metaKey) {
+                          toggleDevice(dev.eui)
+                        } else {
+                          showOnly(dev.eui)
+                        }
+                      }}
+                      onContextMenu={(e) => {
+                        e.preventDefault()
                         toggleDevice(dev.eui)
-                      } else {
-                        showOnly(dev.eui)
-                      }
-                    }}
-                    onContextMenu={(e) => {
-                      e.preventDefault()
-                      toggleDevice(dev.eui)
-                    }}
-                    className={cn(
-                      "flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-medium transition-all",
-                      visible
-                        ? "bg-muted ring-1 text-foreground"
-                        : "bg-muted/40 text-muted-foreground/50"
-                    )}
-                    style={visible ? { borderColor: dev.color, boxShadow: `inset 0 0 0 1px ${dev.color}40` } : undefined}
-                    title="Clic = afficher seul | Shift+clic = ajouter/retirer"
-                  >
-                    <span
-                      className="h-2 w-2 rounded-full shrink-0"
-                      style={{ backgroundColor: visible ? dev.color : "hsl(0 0% 40%)" }}
-                    />
-                    {dev.name}
-                  </button>
-                )
-              })}
-            </div>
+                      }}
+                      className={cn(
+                        "flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-medium transition-all",
+                        visible
+                          ? "bg-muted ring-1 text-foreground"
+                          : "bg-muted/40 text-muted-foreground/50"
+                      )}
+                      style={visible ? { borderColor: dev.color, boxShadow: `inset 0 0 0 1px ${dev.color}40` } : undefined}
+                      title="Clic = afficher seul | Shift+clic = ajouter/retirer"
+                    >
+                      <span
+                        className="h-2 w-2 rounded-full shrink-0"
+                        style={{ backgroundColor: visible ? dev.color : "hsl(0 0% 40%)" }}
+                      />
+                      {dev.name}
+                    </button>
+                  )
+                })}
+              </div>
+            )}
 
             {/* Chart */}
             <div className="h-[220px] w-full">
