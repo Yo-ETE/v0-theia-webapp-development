@@ -137,57 +137,92 @@ function polygonPerimeterM(polygon: [number, number][]): number {
   return total
 }
 
-/** Grid columns (A-C) and rows (1-3) for zone overlay - minimal for clarity */
+/** Grid columns (A-C) and rows (1-3) for zone overlay - follows polygon orientation */
 const GRID_COLS = "ABC".split("")
 const GRID_ROWS = [1, 2, 3]
 
-/** Generate simple grid lines for a zone polygon's bounding box */
+/** Interpolate between two points */
+function lerp2D(p1: [number, number], p2: [number, number], t: number): [number, number] {
+  return [p1[0] + (p2[0] - p1[0]) * t, p1[1] + (p2[1] - p1[1]) * t]
+}
+
+/** Generate grid that follows polygon shape (assumes roughly quadrilateral polygon) */
 function generateZoneGrid(polygon: [number, number][]): {
-  hLines: { lat: number; minLon: number; maxLon: number }[]
-  vLines: { lon: number; minLat: number; maxLat: number }[]
-  cornerLabels: { label: string; lat: number; lon: number }[]
+  gridLines: [number, number][][]
+  cellLabels: { label: string; lat: number; lon: number }[]
 } {
-  if (polygon.length < 3) return { hLines: [], vLines: [], cornerLabels: [] }
+  if (polygon.length < 4) return { gridLines: [], cellLabels: [] }
   
-  // Get bounding box
-  const lats = polygon.map(p => p[0])
-  const lons = polygon.map(p => p[1])
-  const minLat = Math.min(...lats)
-  const maxLat = Math.max(...lats)
-  const minLon = Math.min(...lons)
-  const maxLon = Math.max(...lons)
+  // For a quadrilateral, find the 4 corners
+  // We'll use the first 4 points of the polygon as corners
+  // Assuming polygon is drawn: bottom-left, bottom-right, top-right, top-left (or similar)
+  const pts = polygon.slice(0, 4)
+  if (pts.length < 4) return { gridLines: [], cellLabels: [] }
   
-  const latStep = (maxLat - minLat) / GRID_ROWS.length
-  const lonStep = (maxLon - minLon) / GRID_COLS.length
+  // Find bounding box to determine orientation
+  const lats = pts.map(p => p[0])
+  const lons = pts.map(p => p[1])
   
-  // Generate horizontal lines (include all borders)
-  const hLines: { lat: number; minLon: number; maxLon: number }[] = []
-  for (let i = 0; i <= GRID_ROWS.length; i++) {
-    hLines.push({ lat: minLat + latStep * i, minLon, maxLon })
+  // Sort points to identify corners: find bottom-left, bottom-right, top-right, top-left
+  const sorted = [...pts].sort((a, b) => a[0] - b[0]) // sort by lat
+  const bottom = sorted.slice(0, 2).sort((a, b) => a[1] - b[1]) // bottom 2, sorted by lon
+  const top = sorted.slice(2, 4).sort((a, b) => a[1] - b[1]) // top 2, sorted by lon
+  
+  const bl = bottom[0] // bottom-left
+  const br = bottom[1] // bottom-right
+  const tl = top[0]    // top-left
+  const tr = top[1]    // top-right
+  
+  const numRows = GRID_ROWS.length
+  const numCols = GRID_COLS.length
+  
+  const gridLines: [number, number][][] = []
+  const cellLabels: { label: string; lat: number; lon: number }[] = []
+  
+  // Generate horizontal lines (parallel to top/bottom edges)
+  for (let i = 0; i <= numRows; i++) {
+    const t = i / numRows
+    const leftPt = lerp2D(bl, tl, t)
+    const rightPt = lerp2D(br, tr, t)
+    gridLines.push([leftPt, rightPt])
   }
   
-  // Generate vertical lines (include all borders)
-  const vLines: { lon: number; minLat: number; maxLat: number }[] = []
-  for (let i = 0; i <= GRID_COLS.length; i++) {
-    vLines.push({ lon: minLon + lonStep * i, minLat, maxLat })
+  // Generate vertical lines (parallel to left/right edges)
+  for (let i = 0; i <= numCols; i++) {
+    const t = i / numCols
+    const bottomPt = lerp2D(bl, br, t)
+    const topPt = lerp2D(tl, tr, t)
+    gridLines.push([bottomPt, topPt])
   }
   
-  // Corner labels (A1, B1, C1, A2, B2, C2, etc.) at top-left of each cell
-  const cornerLabels: { label: string; lat: number; lon: number }[] = []
-  for (let row = 0; row < GRID_ROWS.length; row++) {
-    for (let col = 0; col < GRID_COLS.length; col++) {
-      // Position at top-left corner of each cell (inside the cell)
-      const cellTopLat = minLat + latStep * (row + 1) - latStep * 0.15
-      const cellLeftLon = minLon + lonStep * col + lonStep * 0.08
-      cornerLabels.push({
+  // Generate cell labels at center of each cell
+  for (let row = 0; row < numRows; row++) {
+    for (let col = 0; col < numCols; col++) {
+      // Get the 4 corners of this cell
+      const rowT1 = row / numRows
+      const rowT2 = (row + 1) / numRows
+      const colT1 = col / numCols
+      const colT2 = (col + 1) / numCols
+      
+      // Cell corners
+      const cellBL = lerp2D(lerp2D(bl, tl, rowT1), lerp2D(br, tr, rowT1), colT1)
+      const cellBR = lerp2D(lerp2D(bl, tl, rowT1), lerp2D(br, tr, rowT1), colT2)
+      const cellTL = lerp2D(lerp2D(bl, tl, rowT2), lerp2D(br, tr, rowT2), colT1)
+      const cellTR = lerp2D(lerp2D(bl, tl, rowT2), lerp2D(br, tr, rowT2), colT2)
+      
+      // Center of cell
+      const centerLat = (cellBL[0] + cellBR[0] + cellTL[0] + cellTR[0]) / 4
+      const centerLon = (cellBL[1] + cellBR[1] + cellTL[1] + cellTR[1]) / 4
+      
+      cellLabels.push({
         label: `${GRID_COLS[col]}${GRID_ROWS[row]}`,
-        lat: cellTopLat,
-        lon: cellLeftLon,
+        lat: centerLat,
+        lon: centerLon,
       })
     }
   }
   
-  return { hLines, vLines, cornerLabels }
+  return { gridLines, cellLabels }
 }
 
 export default function MapInner({
@@ -1423,39 +1458,31 @@ export default function MapInner({
           )
         })}
 
-        {/* ── Grid overlay on zones (A-C columns, 1-3 rows) ── */}
+        {/* ── Grid overlay on zones (A-C columns, 1-3 rows) - follows polygon shape ── */}
         {showGrid && (zones ?? []).map((zone) => {
-          if (!zone.polygon?.length || zone.polygon.length < 3) return null
-          const { hLines, vLines, cornerLabels } = generateZoneGrid(zone.polygon as [number, number][])
+          if (!zone.polygon?.length || zone.polygon.length < 4) return null
+          const { gridLines, cellLabels } = generateZoneGrid(zone.polygon as [number, number][])
           const gridColor = "#475569" // slate-600
           return (
             <React.Fragment key={`grid-${zone.id}`}>
-              {/* Horizontal lines */}
-              {hLines.map((line, i) => (
+              {/* Grid lines (follow polygon orientation) */}
+              {gridLines.map((line, i) => (
                 <Polyline
-                  key={`hline-${zone.id}-${i}`}
-                  positions={[[line.lat, line.minLon], [line.lat, line.maxLon]]}
+                  key={`gridline-${zone.id}-${i}`}
+                  positions={line}
                   pathOptions={{ color: gridColor, weight: 1.5, opacity: 0.6 }}
                 />
               ))}
-              {/* Vertical lines */}
-              {vLines.map((line, i) => (
-                <Polyline
-                  key={`vline-${zone.id}-${i}`}
-                  positions={[[line.minLat, line.lon], [line.maxLat, line.lon]]}
-                  pathOptions={{ color: gridColor, weight: 1.5, opacity: 0.6 }}
-                />
-              ))}
-              {/* Corner labels (A1, B1, etc.) inside each cell */}
-              {cornerLabels.map((corner) => RL && leafletL ? (
+              {/* Cell labels (A1, B1, etc.) at center of each cell */}
+              {cellLabels.map((cell) => RL && leafletL ? (
                 <RL.Marker
-                  key={`corner-${zone.id}-${corner.label}`}
-                  position={[corner.lat, corner.lon]}
+                  key={`cell-${zone.id}-${cell.label}`}
+                  position={[cell.lat, cell.lon]}
                   icon={leafletL.divIcon({
                     className: "",
-                    html: `<div style="font-size:11px;font-weight:600;color:#374151;background:rgba(255,255,255,0.9);padding:1px 4px;border-radius:3px;box-shadow:0 1px 3px rgba(0,0,0,0.2);pointer-events:none">${corner.label}</div>`,
-                    iconSize: [24, 16],
-                    iconAnchor: [0, 16],
+                    html: `<div style="font-size:10px;font-weight:600;color:#374151;background:rgba(255,255,255,0.85);padding:1px 3px;border-radius:2px;box-shadow:0 1px 2px rgba(0,0,0,0.15);pointer-events:none">${cell.label}</div>`,
+                    iconSize: [20, 14],
+                    iconAnchor: [10, 7],
                   })}
                 />
               ) : null)}
