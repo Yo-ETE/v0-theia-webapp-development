@@ -142,42 +142,19 @@ export function RssiChart() {
     fetcher,
     { refreshInterval: 30000 }
   )
-  
-  // Fetch list of all enabled devices (for filters even when no RSSI data)
-  const { data: devicesList } = useSWR<Array<{ id: string; name: string; dev_eui: string }>>(
-    `/api/devices/`,
-    fetcher,
-    { refreshInterval: 60000 }
-  )
 
-  // Build list of all devices from either RSSI data or devices list
+  // Build list of devices from RSSI data only (like BatteryChart)
   const allDevices = useMemo(() => {
-    // If we have RSSI data, use it (includes readings)
-    if (data && data.length > 0) {
-      return data.map((d, i) => ({
-        id: d.device_id,
-        name: d.name || d.dev_eui,
-        eui: d.dev_eui,
-        color: DEVICE_COLORS[i % DEVICE_COLORS.length],
-        key: `rssi_${d.dev_eui}`,
-        analysis: analyzeRssi(d.readings),
-      }))
-    }
-    // Otherwise use devices list for filters
-    if (devicesList && devicesList.length > 0) {
-      return devicesList
-        .filter((d: Record<string, unknown>) => d.enabled !== false)
-        .map((d: Record<string, unknown>, i: number) => ({
-          id: String(d.id),
-          name: String(d.name || d.dev_eui),
-          eui: String(d.dev_eui),
-          color: DEVICE_COLORS[i % DEVICE_COLORS.length],
-          key: `rssi_${d.dev_eui}`,
-          analysis: null,
-        }))
-    }
-    return []
-  }, [data, devicesList])
+    if (!data || data.length === 0) return []
+    return data.map((d, i) => ({
+      id: d.device_id,
+      name: d.name || d.dev_eui,
+      eui: d.dev_eui,
+      color: DEVICE_COLORS[i % DEVICE_COLORS.length],
+      key: `rssi_${d.dev_eui}`,
+      analysis: analyzeRssi(d.readings),
+    }))
+  }, [data])
 
   // Toggle device visibility
   const toggleDevice = (eui: string) => {
