@@ -193,8 +193,11 @@ async def get_all_battery_history(hours: int = 24):
 
 @router.get("/rssi-history/all")
 async def get_all_rssi_history(hours: int = 24):
-    """Return RSSI history for ALL enabled devices from rssi_history table."""
+    """Return RSSI history for ALL enabled devices from rssi_history table.
+    Also includes current RSSI from devices table as fallback for ONLINE devices."""
     db = await get_db()
+    
+    # Get historical data from rssi_history table
     cursor = await db.execute(
         """SELECT r.device_id, d.name, d.dev_eui, r.rssi, r.snr, r.timestamp
            FROM rssi_history r
@@ -216,6 +219,31 @@ async def get_all_rssi_history(hours: int = 24):
             "snr": r["snr"],
             "timestamp": r["timestamp"]
         })
+    
+    # Fallback: if no history, include ONLINE devices with current RSSI
+    cursor = await db.execute(
+        """SELECT id, name, dev_eui, rssi, snr, last_seen
+           FROM devices
+           WHERE enabled=1 AND rssi IS NOT NULL AND rssi > -120
+           AND last_seen >= datetime('now', 'localtime', '-5 minutes')"""
+    )
+    online_devices = await cursor.fetchall()
+    
+    for d in online_devices:
+        did = d["id"]
+        if did not in by_device:
+            # Device has no history but is online with valid RSSI - add current reading
+            by_device[did] = {
+                "device_id": did,
+                "name": d["name"],
+                "dev_eui": d["dev_eui"],
+                "readings": [{
+                    "rssi": d["rssi"],
+                    "snr": d["snr"],
+                    "timestamp": d["last_seen"]
+                }]
+            }
+    
     return list(by_device.values())
 
 
