@@ -135,24 +135,49 @@ const PERIODS = [
 export function RssiChart() {
   const [hours, setHours] = useState(24)
   const [selectedDevices, setSelectedDevices] = useState<Set<string> | "all">("all")
+  
+  // Fetch RSSI history data
   const { data, isLoading } = useSWR<DeviceRssiData[]>(
     `/api/devices/rssi-history/all?hours=${hours}`,
     fetcher,
     { refreshInterval: 30000 }
   )
+  
+  // Fetch list of all enabled devices (for filters even when no RSSI data)
+  const { data: devicesList } = useSWR<Array<{ id: string; name: string; dev_eui: string }>>(
+    `/api/devices/`,
+    fetcher,
+    { refreshInterval: 60000 }
+  )
 
-  // Build list of all devices
+  // Build list of all devices from either RSSI data or devices list
   const allDevices = useMemo(() => {
-    if (!data || data.length === 0) return []
-    return data.map((d, i) => ({
-      id: d.device_id,
-      name: d.name || d.dev_eui,
-      eui: d.dev_eui,
-      color: DEVICE_COLORS[i % DEVICE_COLORS.length],
-      key: `rssi_${d.dev_eui}`,
-      analysis: analyzeRssi(d.readings),
-    }))
-  }, [data])
+    // If we have RSSI data, use it (includes readings)
+    if (data && data.length > 0) {
+      return data.map((d, i) => ({
+        id: d.device_id,
+        name: d.name || d.dev_eui,
+        eui: d.dev_eui,
+        color: DEVICE_COLORS[i % DEVICE_COLORS.length],
+        key: `rssi_${d.dev_eui}`,
+        analysis: analyzeRssi(d.readings),
+      }))
+    }
+    // Otherwise use devices list for filters
+    if (devicesList && devicesList.length > 0) {
+      return devicesList
+        .filter((d: Record<string, unknown>) => d.enabled !== false)
+        .map((d: Record<string, unknown>, i: number) => ({
+          id: String(d.id),
+          name: String(d.name || d.dev_eui),
+          eui: String(d.dev_eui),
+          color: DEVICE_COLORS[i % DEVICE_COLORS.length],
+          key: `rssi_${d.dev_eui}`,
+          analysis: null,
+        }))
+    }
+    return []
+  }, [data, devicesList])
 
   // Toggle device visibility
   const toggleDevice = (eui: string) => {
@@ -263,6 +288,56 @@ export function RssiChart() {
         </div>
       </CardHeader>
       <CardContent>
+        {/* Device filter - always visible when we have devices */}
+        {allDevices.length > 0 && (
+          <div className="flex flex-wrap items-center gap-1.5 mb-3">
+            <button
+              onClick={showAll}
+              className={cn(
+                "px-2 py-0.5 rounded text-[10px] font-medium transition-colors",
+                selectedDevices === "all"
+                  ? "bg-primary text-primary-foreground"
+                  : "bg-muted text-muted-foreground hover:bg-muted/80"
+              )}
+            >
+              Tous
+            </button>
+            {allDevices.map(dev => {
+              const visible = isDeviceVisible(dev.eui)
+              return (
+                <button
+                  key={dev.id}
+                  onClick={(e) => {
+                    if (e.shiftKey || e.metaKey) {
+                      toggleDevice(dev.eui)
+                    } else {
+                      showOnly(dev.eui)
+                    }
+                  }}
+                  onContextMenu={(e) => {
+                    e.preventDefault()
+                    toggleDevice(dev.eui)
+                  }}
+                  className={cn(
+                    "flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-medium transition-all",
+                    visible
+                      ? "bg-muted ring-1 text-foreground"
+                      : "bg-muted/40 text-muted-foreground/50"
+                  )}
+                  style={visible ? { borderColor: dev.color, boxShadow: `inset 0 0 0 1px ${dev.color}40` } : undefined}
+                  title="Clic = afficher seul | Shift+clic = ajouter/retirer"
+                >
+                  <span
+                    className="h-2 w-2 rounded-full shrink-0"
+                    style={{ backgroundColor: visible ? dev.color : "hsl(0 0% 40%)" }}
+                  />
+                  {dev.name}
+                </button>
+              )
+            })}
+          </div>
+        )}
+        
         {isLoading ? (
           <div className="flex items-center justify-center h-[220px] text-xs text-muted-foreground">
             Chargement...
@@ -275,56 +350,6 @@ export function RssiChart() {
           </div>
         ) : (
           <>
-            {/* Device filter - always visible when there's data */}
-            {allDevices.length > 0 && (
-              <div className="flex flex-wrap items-center gap-1.5 mb-3">
-                <button
-                  onClick={showAll}
-                  className={cn(
-                    "px-2 py-0.5 rounded text-[10px] font-medium transition-colors",
-                    selectedDevices === "all"
-                      ? "bg-primary text-primary-foreground"
-                      : "bg-muted text-muted-foreground hover:bg-muted/80"
-                  )}
-                >
-                  Tous
-                </button>
-                {allDevices.map(dev => {
-                  const visible = isDeviceVisible(dev.eui)
-                  return (
-                    <button
-                      key={dev.id}
-                      onClick={(e) => {
-                        if (e.shiftKey || e.metaKey) {
-                          toggleDevice(dev.eui)
-                        } else {
-                          showOnly(dev.eui)
-                        }
-                      }}
-                      onContextMenu={(e) => {
-                        e.preventDefault()
-                        toggleDevice(dev.eui)
-                      }}
-                      className={cn(
-                        "flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-medium transition-all",
-                        visible
-                          ? "bg-muted ring-1 text-foreground"
-                          : "bg-muted/40 text-muted-foreground/50"
-                      )}
-                      style={visible ? { borderColor: dev.color, boxShadow: `inset 0 0 0 1px ${dev.color}40` } : undefined}
-                      title="Clic = afficher seul | Shift+clic = ajouter/retirer"
-                    >
-                      <span
-                        className="h-2 w-2 rounded-full shrink-0"
-                        style={{ backgroundColor: visible ? dev.color : "hsl(0 0% 40%)" }}
-                      />
-                      {dev.name}
-                    </button>
-                  )
-                })}
-              </div>
-            )}
-
             {/* Chart */}
             <div className="h-[220px] w-full">
               <ResponsiveContainer width="100%" height="100%">
