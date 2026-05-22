@@ -212,6 +212,32 @@ async def get_all_rssi_history(hours: int = 24):
         if did not in by_device:
             by_device[did] = {"device_id": did, "name": r["name"], "dev_eui": r["dev_eui"], "readings": []}
         by_device[did]["readings"].append({"rssi": r["rssi"], "snr": r["snr"], "timestamp": r["timestamp"]})
+    
+    # Fallback: include ONLINE devices with current RSSI if no history
+    # Use a more permissive query - any device with valid RSSI that was seen recently
+    cursor = await db.execute(
+        """SELECT id, name, dev_eui, rssi, snr, last_seen
+           FROM devices
+           WHERE enabled=1 AND rssi IS NOT NULL AND rssi > -120"""
+    )
+    online_devices = await cursor.fetchall()
+    import logging
+    logging.info(f"[RSSI] Found {len(online_devices)} devices with valid RSSI")
+    for d in online_devices:
+        logging.info(f"[RSSI] Device {d['name']}: rssi={d['rssi']}, last_seen={d['last_seen']}")
+        did = d["id"]
+        if did not in by_device:
+            # Use current timestamp if last_seen is missing
+            from datetime import datetime
+            ts = d["last_seen"] or datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+            by_device[did] = {
+                "device_id": did,
+                "name": d["name"],
+                "dev_eui": d["dev_eui"],
+                "readings": [{"rssi": d["rssi"], "snr": d["snr"], "timestamp": ts}]
+            }
+    
+    logging.info(f"[RSSI] Returning {len(by_device)} devices")
     return list(by_device.values())
 
 
