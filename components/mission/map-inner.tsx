@@ -146,32 +146,69 @@ function lerp2D(p1: [number, number], p2: [number, number], t: number): [number,
   return [p1[0] + (p2[0] - p1[0]) * t, p1[1] + (p2[1] - p1[1]) * t]
 }
 
-/** Generate grid that follows polygon shape (assumes roughly quadrilateral polygon) */
+/** Generate grid that follows polygon shape (assumes quadrilateral polygon drawn in order) */
 function generateZoneGrid(polygon: [number, number][]): {
   gridLines: [number, number][][]
   cellLabels: { label: string; lat: number; lon: number }[]
 } {
   if (polygon.length < 4) return { gridLines: [], cellLabels: [] }
   
-  // For a quadrilateral, find the 4 corners
-  // We'll use the first 4 points of the polygon as corners
-  // Assuming polygon is drawn: bottom-left, bottom-right, top-right, top-left (or similar)
-  const pts = polygon.slice(0, 4)
-  if (pts.length < 4) return { gridLines: [], cellLabels: [] }
+  // Use the 4 corners directly from the polygon points
+  // Polygon is typically drawn as: p0 -> p1 -> p2 -> p3 (forming a quadrilateral)
+  // We need to identify which edge is "bottom" and which is "left"
+  const p0 = polygon[0]
+  const p1 = polygon[1]
+  const p2 = polygon[2]
+  const p3 = polygon[3]
   
-  // Find bounding box to determine orientation
-  const lats = pts.map(p => p[0])
-  const lons = pts.map(p => p[1])
+  // Find the centroid
+  const centroidLat = (p0[0] + p1[0] + p2[0] + p3[0]) / 4
+  const centroidLon = (p0[1] + p1[1] + p2[1] + p3[1]) / 4
   
-  // Sort points to identify corners: find bottom-left, bottom-right, top-right, top-left
-  const sorted = [...pts].sort((a, b) => a[0] - b[0]) // sort by lat
-  const bottom = sorted.slice(0, 2).sort((a, b) => a[1] - b[1]) // bottom 2, sorted by lon
-  const top = sorted.slice(2, 4).sort((a, b) => a[1] - b[1]) // top 2, sorted by lon
+  // Calculate angle from centroid for each point to sort them in clockwise order
+  const withAngles = [p0, p1, p2, p3].map(p => ({
+    point: p,
+    angle: Math.atan2(p[1] - centroidLon, p[0] - centroidLat)
+  }))
+  withAngles.sort((a, b) => a.angle - b.angle)
   
-  const bl = bottom[0] // bottom-left
-  const br = bottom[1] // bottom-right
-  const tl = top[0]    // top-left
-  const tr = top[1]    // top-right
+  // Points are now sorted by angle (starting from most negative angle)
+  // Identify corners: we want bottom-left, bottom-right, top-right, top-left
+  // The "bottom" points have lower latitude, "left" points have lower longitude
+  const sorted = withAngles.map(w => w.point)
+  
+  // Find the point with minimum latitude (most south) - this is one of the bottom corners
+  let minLatIdx = 0
+  for (let i = 1; i < 4; i++) {
+    if (sorted[i][0] < sorted[minLatIdx][0]) minLatIdx = i
+  }
+  
+  // Reorder so bottom-left is first (going counterclockwise: BL, TL, TR, BR)
+  // or clockwise: BL, BR, TR, TL depending on drawing order
+  const reordered = []
+  for (let i = 0; i < 4; i++) {
+    reordered.push(sorted[(minLatIdx + i) % 4])
+  }
+  
+  // Determine if it's clockwise or counterclockwise by checking the next point
+  const nextPoint = reordered[1]
+  const prevPoint = reordered[3]
+  
+  let bl: [number, number], br: [number, number], tr: [number, number], tl: [number, number]
+  
+  // If next point has higher longitude, we're going clockwise (BL -> BR -> TR -> TL)
+  if (nextPoint[1] > reordered[0][1]) {
+    bl = reordered[0]
+    br = reordered[1]
+    tr = reordered[2]
+    tl = reordered[3]
+  } else {
+    // Counterclockwise (BL -> TL -> TR -> BR)
+    bl = reordered[0]
+    tl = reordered[1]
+    tr = reordered[2]
+    br = reordered[3]
+  }
   
   const numRows = GRID_ROWS.length
   const numCols = GRID_COLS.length
@@ -179,7 +216,7 @@ function generateZoneGrid(polygon: [number, number][]): {
   const gridLines: [number, number][][] = []
   const cellLabels: { label: string; lat: number; lon: number }[] = []
   
-  // Generate horizontal lines (parallel to top/bottom edges)
+  // Generate horizontal lines (from left edge to right edge)
   for (let i = 0; i <= numRows; i++) {
     const t = i / numRows
     const leftPt = lerp2D(bl, tl, t)
@@ -187,7 +224,7 @@ function generateZoneGrid(polygon: [number, number][]): {
     gridLines.push([leftPt, rightPt])
   }
   
-  // Generate vertical lines (parallel to left/right edges)
+  // Generate vertical lines (from bottom edge to top edge)
   for (let i = 0; i <= numCols; i++) {
     const t = i / numCols
     const bottomPt = lerp2D(bl, br, t)
@@ -198,13 +235,12 @@ function generateZoneGrid(polygon: [number, number][]): {
   // Generate cell labels at center of each cell
   for (let row = 0; row < numRows; row++) {
     for (let col = 0; col < numCols; col++) {
-      // Get the 4 corners of this cell
       const rowT1 = row / numRows
       const rowT2 = (row + 1) / numRows
       const colT1 = col / numCols
       const colT2 = (col + 1) / numCols
       
-      // Cell corners
+      // Cell corners using bilinear interpolation
       const cellBL = lerp2D(lerp2D(bl, tl, rowT1), lerp2D(br, tr, rowT1), colT1)
       const cellBR = lerp2D(lerp2D(bl, tl, rowT1), lerp2D(br, tr, rowT1), colT2)
       const cellTL = lerp2D(lerp2D(bl, tl, rowT2), lerp2D(br, tr, rowT2), colT1)
