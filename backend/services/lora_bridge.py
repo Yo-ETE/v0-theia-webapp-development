@@ -505,6 +505,20 @@ class PortReader:
                     except Exception as e:
                         print(f"[THEIA] battery_history insert error: {e}")
 
+            # Store RSSI history (throttled to 1 per 30s per device)
+            if self.last_rssi is not None and self.last_rssi > -120:
+                rssi_cache_key = f"rssi_{device_id}"
+                last_rssi_ts = self._last_insert_ts.get(rssi_cache_key, 0)
+                if time.time() - last_rssi_ts >= 30:
+                    self._last_insert_ts[rssi_cache_key] = time.time()
+                    try:
+                        await db.execute(
+                            "INSERT INTO rssi_history (device_id, rssi, snr, timestamp) VALUES (?, ?, ?, ?)",
+                            (device_id, self.last_rssi, self.last_snr, now_iso),
+                        )
+                    except Exception as e:
+                        print(f"[THEIA] rssi_history insert error: {e}")
+
         direction = "D" if angle > 30 else ("G" if angle < -30 else "C")
         effective_distance = d if presence else 0
         payload = {

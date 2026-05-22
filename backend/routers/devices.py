@@ -193,42 +193,29 @@ async def get_all_battery_history(hours: int = 24):
 
 @router.get("/rssi-history/all")
 async def get_all_rssi_history(hours: int = 24):
-    """Return RSSI history for ALL enabled devices from events table."""
+    """Return RSSI history for ALL enabled devices from rssi_history table."""
     db = await get_db()
     cursor = await db.execute(
-        """SELECT e.device_id, d.name, d.dev_eui, e.rssi, e.snr, e.timestamp
-           FROM events e
-           JOIN devices d ON d.id = e.device_id AND d.enabled=1
-           WHERE e.timestamp >= datetime('now', 'localtime', ?)
-           ORDER BY e.timestamp ASC""",
+        """SELECT r.device_id, d.name, d.dev_eui, r.rssi, r.snr, r.timestamp
+           FROM rssi_history r
+           JOIN devices d ON d.id = r.device_id AND d.enabled=1
+           WHERE r.timestamp >= datetime('now', 'localtime', ?)
+           ORDER BY r.timestamp ASC""",
         (f"-{hours} hours",),
     )
     rows = await cursor.fetchall()
     
-    # Debug: log raw data
-    import logging
-    logging.info(f"[RSSI] Found {len(rows)} events in last {hours} hours")
-    if rows:
-        sample_rssi = [r["rssi"] for r in rows[:10]]
-        logging.info(f"[RSSI] Sample RSSI values: {sample_rssi}")
-    
     # Group by device
     by_device: dict[str, dict] = {}
     for r in rows:
-        rssi = r["rssi"]
-        # Skip if no RSSI value
-        if rssi is None or rssi <= -120:
-            continue
         did = r["device_id"]
         if did not in by_device:
             by_device[did] = {"device_id": did, "name": r["name"], "dev_eui": r["dev_eui"], "readings": []}
         by_device[did]["readings"].append({
-            "rssi": rssi,
+            "rssi": r["rssi"],
             "snr": r["snr"],
             "timestamp": r["timestamp"]
         })
-    
-    logging.info(f"[RSSI] Returning data for {len(by_device)} devices")
     return list(by_device.values())
 
 

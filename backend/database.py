@@ -64,6 +64,7 @@ async def _purge_old_data():
                 ("events", "timestamp", RETENTION_EVENTS),
                 ("logs", "timestamp", RETENTION_LOGS),
                 ("battery_history", "timestamp", RETENTION_BATTERY),
+        ("rssi_history", "timestamp", RETENTION_BATTERY),
                 ("notifications", "created_at", RETENTION_NOTIFS),
             ]:
                 cur = await db.execute(
@@ -177,6 +178,15 @@ async def init_tables(db: aiosqlite.Connection):
             FOREIGN KEY (device_id) REFERENCES devices(id) ON DELETE CASCADE
         );
 
+        CREATE TABLE IF NOT EXISTS rssi_history (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            device_id TEXT NOT NULL,
+            rssi INTEGER NOT NULL,
+            snr REAL,
+            timestamp TEXT DEFAULT (datetime('now', 'localtime')),
+            FOREIGN KEY (device_id) REFERENCES devices(id) ON DELETE CASCADE
+        );
+
         CREATE INDEX IF NOT EXISTS idx_events_mission ON events(mission_id);
         CREATE INDEX IF NOT EXISTS idx_events_timestamp ON events(timestamp);
         CREATE INDEX IF NOT EXISTS idx_logs_timestamp ON logs(timestamp);
@@ -186,6 +196,8 @@ async def init_tables(db: aiosqlite.Connection):
         CREATE INDEX IF NOT EXISTS idx_notifications_dismissed ON notifications(dismissed);
         CREATE INDEX IF NOT EXISTS idx_battery_history_device ON battery_history(device_id);
         CREATE INDEX IF NOT EXISTS idx_battery_history_ts ON battery_history(timestamp);
+        CREATE INDEX IF NOT EXISTS idx_rssi_history_device ON rssi_history(device_id);
+        CREATE INDEX IF NOT EXISTS idx_rssi_history_ts ON rssi_history(timestamp);
 
         CREATE TABLE IF NOT EXISTS settings (
             key TEXT PRIMARY KEY,
