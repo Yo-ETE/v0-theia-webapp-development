@@ -191,6 +191,34 @@ async def get_all_battery_history(hours: int = 24):
     return list(by_device.values())
 
 
+@router.get("/rssi-history/all")
+async def get_all_rssi_history(hours: int = 24):
+    """Return RSSI history for ALL enabled devices from events table."""
+    db = await get_db()
+    cursor = await db.execute(
+        """SELECT e.device_id, d.name, d.dev_eui, e.rssi, e.snr, e.timestamp
+           FROM events e
+           JOIN devices d ON d.id = e.device_id AND d.enabled=1
+           WHERE e.timestamp >= datetime('now', 'localtime', ?)
+             AND e.rssi IS NOT NULL
+           ORDER BY e.timestamp ASC""",
+        (f"-{hours} hours",),
+    )
+    rows = await cursor.fetchall()
+    # Group by device
+    by_device: dict[str, dict] = {}
+    for r in rows:
+        did = r["device_id"]
+        if did not in by_device:
+            by_device[did] = {"device_id": did, "name": r["name"], "dev_eui": r["dev_eui"], "readings": []}
+        by_device[did]["readings"].append({
+            "rssi": r["rssi"],
+            "snr": r["snr"],
+            "timestamp": r["timestamp"]
+        })
+    return list(by_device.values())
+
+
 @router.get("/{device_id}/battery-history")
 async def get_battery_history(device_id: str, hours: int = 24):
     """Return battery voltage history for a device over the last N hours."""

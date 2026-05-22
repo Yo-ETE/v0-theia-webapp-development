@@ -20,6 +20,7 @@ import {
 } from "@/components/ui/table"
 import { useDevices, useMissions } from "@/hooks/use-api"
 import { BatteryChart } from "@/components/battery-chart"
+import { RssiChart } from "@/components/rssi-chart"
 import { FirmwareManager } from "@/components/admin/firmware-manager"
 import { useAuth } from "@/lib/auth-context"
 import { createDevice, deleteDevice, updateDevice } from "@/lib/api-client"
@@ -612,6 +613,9 @@ export default function DevicesPage() {
           )}
           {/* Battery consumption chart */}
           <BatteryChart />
+
+          {/* RSSI history chart */}
+          <RssiChart />
 
           {/* Firmware manager (admin only) */}
           {isAdmin && <FirmwareManager />}
