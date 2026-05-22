@@ -195,7 +195,6 @@ async def get_all_battery_history(hours: int = 24):
 async def get_all_rssi_history(hours: int = 24):
     """Return RSSI history for ALL enabled devices (for overlay chart)."""
     db = await get_db()
-    # Use 'localtime' since timestamps are stored in local time
     cursor = await db.execute(
         """SELECT rh.device_id, d.name, d.dev_eui, rh.rssi, rh.snr, rh.timestamp
            FROM rssi_history rh
@@ -212,6 +211,35 @@ async def get_all_rssi_history(hours: int = 24):
         if did not in by_device:
             by_device[did] = {"device_id": did, "name": r["name"], "dev_eui": r["dev_eui"], "readings": []}
         by_device[did]["readings"].append({"rssi": r["rssi"], "snr": r["snr"], "timestamp": r["timestamp"]})
+    
+    # Seed: for ONLINE devices not yet in history, insert current RSSI and return it
+    cursor = await db.execute(
+        """SELECT id, name, dev_eui, rssi, snr, last_seen
+           FROM devices
+           WHERE enabled=1 AND rssi IS NOT NULL AND rssi > -120
+           AND last_seen >= datetime('now', 'localtime', '-2 minutes')"""
+    )
+    online_devices = await cursor.fetchall()
+    for d in online_devices:
+        did = d["id"]
+        if did not in by_device:
+            ts = d["last_seen"]
+            # Insert into rssi_history as seed
+            try:
+                await db.execute(
+                    "INSERT INTO rssi_history (device_id, rssi, snr, timestamp) VALUES (?, ?, ?, ?)",
+                    (did, d["rssi"], d["snr"], ts)
+                )
+                await db.commit()
+            except Exception:
+                pass
+            by_device[did] = {
+                "device_id": did,
+                "name": d["name"],
+                "dev_eui": d["dev_eui"],
+                "readings": [{"rssi": d["rssi"], "snr": d["snr"], "timestamp": ts}]
+            }
+    
     return list(by_device.values())
 
 
