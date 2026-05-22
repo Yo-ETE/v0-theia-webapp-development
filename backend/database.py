@@ -199,6 +199,13 @@ async def init_tables(db: aiosqlite.Connection):
         CREATE INDEX IF NOT EXISTS idx_rssi_history_device ON rssi_history(device_id);
         CREATE INDEX IF NOT EXISTS idx_rssi_history_ts ON rssi_history(timestamp);
 
+        -- Migrate existing RSSI data from events to rssi_history (one-time migration)
+        INSERT OR IGNORE INTO rssi_history (device_id, rssi, snr, timestamp)
+        SELECT device_id, rssi, snr, timestamp
+        FROM events
+        WHERE rssi IS NOT NULL AND rssi > -120
+        AND device_id IN (SELECT id FROM devices WHERE enabled=1);
+
         CREATE TABLE IF NOT EXISTS settings (
             key TEXT PRIMARY KEY,
             value TEXT NOT NULL
