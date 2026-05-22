@@ -200,8 +200,6 @@ async def get_all_rssi_history(hours: int = 24):
            FROM events e
            JOIN devices d ON d.id = e.device_id AND d.enabled=1
            WHERE e.timestamp >= datetime('now', 'localtime', ?)
-             AND e.rssi IS NOT NULL
-             AND e.rssi > -120
            ORDER BY e.timestamp ASC""",
         (f"-{hours} hours",),
     )
@@ -209,11 +207,15 @@ async def get_all_rssi_history(hours: int = 24):
     # Group by device
     by_device: dict[str, dict] = {}
     for r in rows:
+        rssi = r["rssi"]
+        # Skip if no RSSI value
+        if rssi is None or rssi <= -120:
+            continue
         did = r["device_id"]
         if did not in by_device:
             by_device[did] = {"device_id": did, "name": r["name"], "dev_eui": r["dev_eui"], "readings": []}
         by_device[did]["readings"].append({
-            "rssi": r["rssi"],
+            "rssi": rssi,
             "snr": r["snr"],
             "timestamp": r["timestamp"]
         })
