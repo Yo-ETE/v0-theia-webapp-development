@@ -201,6 +201,7 @@ async def get_all_rssi_history(hours: int = 24):
            JOIN devices d ON d.id = e.device_id AND d.enabled=1
            WHERE e.timestamp >= datetime('now', 'localtime', ?)
              AND e.rssi IS NOT NULL
+             AND e.rssi > -120
            ORDER BY e.timestamp ASC""",
         (f"-{hours} hours",),
     )

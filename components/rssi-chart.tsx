@@ -135,11 +135,14 @@ const PERIODS = [
 export function RssiChart() {
   const [hours, setHours] = useState(24)
   const [selectedDevices, setSelectedDevices] = useState<Set<string> | "all">("all")
-  const { data, isLoading } = useSWR<DeviceRssiData[]>(
+  const { data, isLoading, error } = useSWR<DeviceRssiData[]>(
     `/api/devices/rssi-history/all?hours=${hours}`,
     fetcher,
     { refreshInterval: 30000 }
   )
+
+  // Debug logging
+  console.log("[v0] RssiChart data:", data, "error:", error, "isLoading:", isLoading)
 
   // Build list of all devices
   const allDevices = useMemo(() => {
