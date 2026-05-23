@@ -506,10 +506,13 @@ class PortReader:
                         print(f"[THEIA] battery_history insert error: {e}")
 
             # Store RSSI history (throttled to 1 per 30s per device)
+            print(f"[THEIA] RSSI check: device_id={device_id}, last_rssi={self.last_rssi}, last_snr={self.last_snr}")
             if self.last_rssi is not None and self.last_rssi > -120:
                 rssi_cache_key = f"rssi_{device_id}"
                 last_rssi_ts = self._last_insert_ts.get(rssi_cache_key, 0)
-                if time.time() - last_rssi_ts >= 30:
+                time_since = time.time() - last_rssi_ts
+                print(f"[THEIA] RSSI throttle: cache_key={rssi_cache_key}, time_since={time_since:.1f}s")
+                if time_since >= 30:
                     self._last_insert_ts[rssi_cache_key] = time.time()
                     try:
                         await db.execute(
@@ -517,7 +520,7 @@ class PortReader:
                             (device_id, self.last_rssi, self.last_snr, now_iso),
                         )
                         await db.commit()
-                        print(f"[THEIA] rssi_history insert: device={device_id}, rssi={self.last_rssi}, snr={self.last_snr}")
+                        print(f"[THEIA] rssi_history INSERT OK: device={device_id}, rssi={self.last_rssi}, snr={self.last_snr}")
                     except Exception as e:
                         print(f"[THEIA] rssi_history insert error: {e}")
 
@@ -726,6 +729,11 @@ class PortReader:
         if key == "rssi":
             try:
                 self.last_rssi = int(val)
+            except ValueError:
+                pass
+        if key == "snr":
+            try:
+                self.last_snr = float(val)
             except ValueError:
                 pass
 
