@@ -516,6 +516,8 @@ class PortReader:
                             "INSERT INTO rssi_history (device_id, rssi, snr, timestamp) VALUES (?, ?, ?, ?)",
                             (device_id, self.last_rssi, self.last_snr, now_iso),
                         )
+                        await db.commit()
+                        print(f"[THEIA] rssi_history insert: device={device_id}, rssi={self.last_rssi}, snr={self.last_snr}")
                     except Exception as e:
                         print(f"[THEIA] rssi_history insert error: {e}")
 
