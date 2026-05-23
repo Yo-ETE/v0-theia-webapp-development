@@ -203,22 +203,6 @@ export function RssiChart() {
         ts.setSeconds(0, 0)
         const tsKey = ts.toISOString()
         
-        // Check for gap from previous reading
-        if (i > 0) {
-          const prevTs = new Date(readings[i - 1].timestamp).getTime()
-          const currTs = new Date(r.timestamp).getTime()
-          const gapMinutes = (currTs - prevTs) / 60000
-          if (gapMinutes > GAP_THRESHOLD_MINUTES) {
-            const gapTs = new Date(prevTs + 60000)
-            gapTs.setSeconds(0, 0)
-            const gapKey = gapTs.toISOString()
-            if (!allPoints.has(gapKey)) {
-              allPoints.set(gapKey, {})
-            }
-            allPoints.get(gapKey)![key] = null
-          }
-        }
-        
         if (!allPoints.has(tsKey)) {
           allPoints.set(tsKey, {})
         }
@@ -230,14 +214,23 @@ export function RssiChart() {
       .sort(([a], [b]) => a.localeCompare(b))
       .map(([ts, values]) => {
         const d = new Date(ts)
+        // Format based on period: show date for 7d, time for shorter periods
+        let timeLabel: string
+        if (hours >= 168) {
+          // 7 days: show day/month
+          timeLabel = `${String(d.getDate()).padStart(2, "0")}/${String(d.getMonth() + 1).padStart(2, "0")}`
+        } else {
+          // Less than 7 days: show time
+          timeLabel = `${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}`
+        }
         return {
-          time: `${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}`,
+          time: timeLabel,
           fullTime: ts,
           ...values,
         }
       })
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [data, selectedDevices])
+  }, [data, selectedDevices, hours])
 
   const hasData = chartData.length > 0 && allDevices.length > 0
 

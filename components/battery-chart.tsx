@@ -230,8 +230,17 @@ export function BatteryChart() {
       .sort(([a], [b]) => a.localeCompare(b))
       .map(([ts, values]) => {
         const d = new Date(ts)
+        // Format based on period: show date for 7d, time for shorter periods
+        let timeLabel: string
+        if (hours >= 168) {
+          // 7 days: show day/month
+          timeLabel = `${String(d.getDate()).padStart(2, "0")}/${String(d.getMonth() + 1).padStart(2, "0")}`
+        } else {
+          // Less than 7 days: show time
+          timeLabel = `${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}`
+        }
         return {
-          time: `${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}`,
+          time: timeLabel,
           fullTime: ts,
           ...values,
         }
