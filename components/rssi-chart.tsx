@@ -365,7 +365,6 @@ export function RssiChart() {
                       strokeWidth={2}
                       dot={{ r: 3, fill: dev.color, strokeWidth: 0 }}
                       activeDot={{ r: 5, fill: dev.color, strokeWidth: 2, stroke: "hsl(0 0% 10%)" }}
-                      connectNulls={false}
                     />
                   ))}
                 </LineChart>
