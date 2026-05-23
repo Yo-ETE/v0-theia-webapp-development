@@ -65,7 +65,7 @@ const RSSI_WEAK = -100      // Weak signal (below this is poor)
 const GAP_THRESHOLD_MINUTES = 10
 
 function analyzeRssi(readings: RssiReading[]) {
-  if (readings.length < 2) return null
+  if (readings.length === 0) return null
 
   const rssiValues = readings.map(r => r.rssi)
   const avg = rssiValues.reduce((a, b) => a + b, 0) / rssiValues.length
@@ -85,13 +85,16 @@ function analyzeRssi(readings: RssiReading[]) {
     }
   }
 
-  // Trend: compare first half average to second half
-  const midpoint = Math.floor(readings.length / 2)
-  const firstHalf = rssiValues.slice(0, midpoint)
-  const secondHalf = rssiValues.slice(midpoint)
-  const firstAvg = firstHalf.reduce((a, b) => a + b, 0) / firstHalf.length
-  const secondAvg = secondHalf.reduce((a, b) => a + b, 0) / secondHalf.length
-  const trend = secondAvg - firstAvg // positive = improving, negative = degrading
+  // Trend: compare first half average to second half (only if enough data)
+  let trend = 0
+  if (readings.length >= 2) {
+    const midpoint = Math.floor(readings.length / 2)
+    const firstHalf = rssiValues.slice(0, midpoint || 1)
+    const secondHalf = rssiValues.slice(midpoint || 1)
+    const firstAvg = firstHalf.reduce((a, b) => a + b, 0) / firstHalf.length
+    const secondAvg = secondHalf.reduce((a, b) => a + b, 0) / secondHalf.length
+    trend = secondAvg - firstAvg // positive = improving, negative = degrading
+  }
 
   return {
     current: Math.round(current),
@@ -360,7 +363,8 @@ export function RssiChart() {
                       name={dev.name}
                       stroke={dev.color}
                       strokeWidth={2}
-                      dot={false}
+                      dot={{ r: 3, fill: dev.color, strokeWidth: 0 }}
+                      activeDot={{ r: 5, fill: dev.color, strokeWidth: 2, stroke: "hsl(0 0% 10%)" }}
                       connectNulls={false}
                     />
                   ))}
