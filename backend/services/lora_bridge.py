@@ -502,6 +502,7 @@ class PortReader:
                             "INSERT INTO battery_history (device_id, voltage, timestamp) VALUES (?, ?, ?)",
                             (device_id, vbatt, now_iso),
                         )
+                        await db.commit()
                     except Exception as e:
                         print(f"[THEIA] battery_history insert error: {e}")
 
@@ -519,6 +520,10 @@ class PortReader:
                         await db.commit()
                     except Exception as e:
                         print(f"[THEIA] rssi_history insert error: {e}")
+            else:
+                # Debug: log when RSSI is skipped
+                if device_id and (self.last_rssi is None or self.last_rssi <= -120):
+                    print(f"[THEIA] RSSI skip: device={device_id}, rssi={self.last_rssi}")
 
         direction = "D" if angle > 30 else ("G" if angle < -30 else "C")
         effective_distance = d if presence else 0
