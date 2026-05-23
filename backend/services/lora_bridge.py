@@ -71,6 +71,7 @@ class PortReader:
         self.packets_ok = 0
         self.packets_err = 0
         self.last_rssi: int = -120
+        self.last_snr: float = 0.0
         self._last_insert_ts: dict[str, float] = {}
         self._last_empty_ts: dict[str, float] = {}
         self._presence_count: dict[str, int] = {}
@@ -520,10 +521,6 @@ class PortReader:
                         await db.commit()
                     except Exception as e:
                         print(f"[THEIA] rssi_history insert error: {e}")
-            else:
-                # Debug: log when RSSI is skipped
-                if device_id and (self.last_rssi is None or self.last_rssi <= -120):
-                    print(f"[THEIA] RSSI skip: device={device_id}, rssi={self.last_rssi}")
 
         direction = "D" if angle > 30 else ("G" if angle < -30 else "C")
         effective_distance = d if presence else 0
