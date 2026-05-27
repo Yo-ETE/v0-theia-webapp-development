@@ -336,7 +336,7 @@ export default function MissionDetailPage() {
     })
   }, [events])
 
-  // ��������������─ Bearing grouping: segments facing the same direction share the same face label ──
+  // ���������������─ Bearing grouping: segments facing the same direction share the same face label ──
   // Uses FULL 0-360 bearing so north-facing (0) and south-facing (180) are DIFFERENT faces.
   // Returns e.g. { A: [0,3], B: [1,4], C: [2,5] } meaning polygon edges 0&3 are "A", etc.
   // Helper: convert segment index (A, B, C...) to facade group letter using a zone's polygon
@@ -741,6 +741,19 @@ export default function MissionDetailPage() {
   const [planImageTs, setPlanImageTs] = useState(() => Date.now())
   const [planDeleted, setPlanDeleted] = useState(false)
 
+  // Floor filtering - must be before early return (Rules of Hooks)
+  const zones = mission?.zones ?? []
+  const floorLevels = useMemo(() => {
+    const levels = new Set<number>()
+    zones.forEach(z => levels.add(z.floor ?? 0))
+    return Array.from(levels).sort((a, b) => a - b)
+  }, [zones])
+  const floorLabels: Record<number, string> = { 0: "RDC", 1: "1er", 2: "2ème", 3: "3ème", [-1]: "Sous-sol" }
+  const filteredZones = useMemo(() => {
+    if (floorLevels.length <= 1) return zones
+    return zones.filter(z => (z.floor ?? 0) === selectedFloor)
+  }, [zones, selectedFloor, floorLevels.length])
+
   if (isLoading || !mission) {
     return (
       <>
@@ -756,19 +769,6 @@ export default function MissionDetailPage() {
   }
 
   const statusCfg = missionStatusConfig[mission.status] ?? missionStatusConfig.draft
-  const zones = mission.zones ?? []
-  // Get unique floor levels from zones for floor selector
-  const floorLevels = useMemo(() => {
-    const levels = new Set<number>()
-    zones.forEach(z => levels.add(z.floor ?? 0))
-    return Array.from(levels).sort((a, b) => a - b)
-  }, [zones])
-  const floorLabels: Record<number, string> = { 0: "RDC", 1: "1er", 2: "2ème", 3: "3ème", [-1]: "Sous-sol" }
-  // Filter zones by selected floor (or show all if only one floor)
-  const filteredZones = useMemo(() => {
-    if (floorLevels.length <= 1) return zones
-    return zones.filter(z => (z.floor ?? 0) === selectedFloor)
-  }, [zones, selectedFloor, floorLevels.length])
   // eventList = ALL recorded events (history tab). Reset only affects the live feed, not history.
   const eventList = events ?? []
 
