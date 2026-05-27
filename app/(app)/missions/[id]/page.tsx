@@ -177,6 +177,7 @@ export default function MissionDetailPage() {
   const [fullMapMode, setFullMapMode] = useState(false)
   const [editingZoneId, setEditingZoneId] = useState<string | null>(null)
   const [editingPolygon, setEditingPolygon] = useState<[number, number][] | null>(null)
+  const [selectedFloor, setSelectedFloor] = useState<number>(0) // 0 = RDC, 1 = 1er, etc.
   const [errorMsg, setErrorMsg] = useState<string | null>(null)
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const [replayDetections, setReplayDetections] = useState<Record<string, any>>({})
@@ -390,6 +391,7 @@ export default function MissionDetailPage() {
       type: zoneType as Zone["type"],
       polygon: pendingPolygon,
       color: ZONE_COLORS[zones.length % ZONE_COLORS.length],
+      floor: selectedFloor, // Associate zone with selected floor
       devices: [],
       // Build sides map: key = segment letter (A,B,C...), value = display label
       // Segments in the same bearing group share the same label.
@@ -755,6 +757,18 @@ export default function MissionDetailPage() {
 
   const statusCfg = missionStatusConfig[mission.status] ?? missionStatusConfig.draft
   const zones = mission.zones ?? []
+  // Get unique floor levels from zones for floor selector
+  const floorLevels = useMemo(() => {
+    const levels = new Set<number>()
+    zones.forEach(z => levels.add(z.floor ?? 0))
+    return Array.from(levels).sort((a, b) => a - b)
+  }, [zones])
+  const floorLabels: Record<number, string> = { 0: "RDC", 1: "1er", 2: "2ème", 3: "3ème", [-1]: "Sous-sol" }
+  // Filter zones by selected floor (or show all if only one floor)
+  const filteredZones = useMemo(() => {
+    if (floorLevels.length <= 1) return zones
+    return zones.filter(z => (z.floor ?? 0) === selectedFloor)
+  }, [zones, selectedFloor, floorLevels.length])
   // eventList = ALL recorded events (history tab). Reset only affects the live feed, not history.
   const eventList = events ?? []
 
@@ -1145,7 +1159,7 @@ export default function MissionDetailPage() {
               imageUrl={planImageUrl ?? undefined}
               imageWidth={mission?.plan_width ?? undefined}
               imageHeight={mission?.plan_height ?? undefined}
-              zones={zones}
+              zones={filteredZones}
               sensorPlacements={sensorPlacements}
               liveByDevice={filteredLiveByDevice}
               drawingMode={drawingMode}
@@ -1170,7 +1184,7 @@ export default function MissionDetailPage() {
                   centerLat={mission.center_lat}
                   centerLon={mission.center_lon}
                   zoom={mission.zoom ?? 19}
-                  zones={zones}
+                  zones={filteredZones}
                   events={eventList}
                   liveDetections={effectiveLiveByZone}
                   liveByDevice={filteredLiveByDevice}
@@ -1446,7 +1460,7 @@ export default function MissionDetailPage() {
                       imageUrl={planImageUrl ?? undefined}
                       imageWidth={mission?.plan_width ?? undefined}
                       imageHeight={mission?.plan_height ?? undefined}
-                      zones={zones}
+                      zones={filteredZones}
                       sensorPlacements={sensorPlacements}
                       liveByDevice={timelapseMode
                         ? Object.fromEntries(
@@ -1507,7 +1521,7 @@ export default function MissionDetailPage() {
                       centerLat={mission.center_lat}
                       centerLon={mission.center_lon}
                       zoom={mission.zoom ?? 19}
-                      zones={zones}
+                      zones={filteredZones}
                       events={eventList}
   liveDetections={effectiveLiveByZone}
                   liveByDevice={timelapseMode
@@ -1618,6 +1632,32 @@ export default function MissionDetailPage() {
                     </div>
                   </div>
                 </CardHeader>
+                {/* Floor selector - only show if multiple floors */}
+                {floorLevels.length > 1 && (
+                  <div className="px-4 pb-2 flex items-center gap-1 border-b border-border/30">
+                    {floorLevels.map(level => (
+                      <button
+                        key={level}
+                        onClick={() => setSelectedFloor(level)}
+                        className={cn(
+                          "px-2 py-1 text-[10px] rounded transition-colors",
+                          selectedFloor === level 
+                            ? "bg-primary text-primary-foreground" 
+                            : "bg-muted/50 text-muted-foreground hover:bg-muted"
+                        )}
+                      >
+                        {floorLabels[level] ?? `Niveau ${level}`}
+                      </button>
+                    ))}
+                    <button
+                      onClick={() => setSelectedFloor(Math.max(...floorLevels) + 1)}
+                      className="px-2 py-1 text-[10px] rounded bg-muted/30 text-muted-foreground hover:bg-muted"
+                      title="Ajouter un etage"
+                    >
+                      +
+                    </button>
+                  </div>
+                )}
                 <CardContent className="flex flex-col gap-2">
                   {/* Calibration status (plan mode only) */}
                   {isPlanMode && (
@@ -1632,12 +1672,14 @@ export default function MissionDetailPage() {
                       )}
                     </div>
                   )}
-                  {zones.length === 0 ? (
+                  {filteredZones.length === 0 ? (
                     <p className="text-xs text-muted-foreground py-3 text-center">
-                      Cliquez &quot;Draw Zone&quot; puis placez les points un par un sur la carte.
-                      Minimum 3 points. Toute forme est possible (L, T, etc.)
+                      {zones.length === 0 
+                        ? "Cliquez \"Draw Zone\" puis placez les points un par un sur la carte. Minimum 3 points. Toute forme est possible (L, T, etc.)"
+                        : `Aucune zone sur ${floorLabels[selectedFloor] ?? `Niveau ${selectedFloor}`}. Dessinez une nouvelle zone pour cet etage.`
+                      }
                     </p>
-                  ) : zones.map((zone) => {
+                  ) : filteredZones.map((zone) => {
                     const zoneDetRaw = effectiveLiveByZone[zone.id]
                     // Only treat as active if presence + valid distance
                     const zoneDetection = (zoneDetRaw?.presence && zoneDetRaw?.distance > 0) ? zoneDetRaw : null
@@ -2535,6 +2577,27 @@ export default function MissionDetailPage() {
                   {ZONE_TYPES.map((t) => (<SelectItem key={t.value} value={t.value}>{t.label}</SelectItem>))}
                 </SelectContent>
               </Select>
+            </div>
+            {/* Floor selector for multi-floor missions */}
+            <div className="flex flex-col gap-2">
+              <Label className="text-xs text-muted-foreground">Etage</Label>
+              <div className="flex items-center gap-1">
+                {[...floorLevels, Math.max(...floorLevels, -1) + 1].filter((v, i, a) => a.indexOf(v) === i).sort((a,b) => a-b).map(level => (
+                  <button
+                    key={level}
+                    type="button"
+                    onClick={() => setSelectedFloor(level)}
+                    className={cn(
+                      "px-3 py-1.5 text-xs rounded border transition-colors",
+                      selectedFloor === level 
+                        ? "bg-primary text-primary-foreground border-primary" 
+                        : "bg-muted/50 text-muted-foreground border-border hover:bg-muted"
+                    )}
+                  >
+                    {floorLabels[level] ?? `Niveau ${level}`}
+                  </button>
+                ))}
+              </div>
             </div>
             {pendingPolygon && pendingPolygon.length >= 2 && (
               <div className="flex flex-col gap-3">
