@@ -114,6 +114,12 @@ export interface Floor {
   label: string
   devices: string[]
   device_history?: string[]
+  // Multi-floor plan support (for habitation type)
+  plan_image?: string | null      // URL/path to floor plan image
+  plan_width?: number | null      // image natural width in px
+  plan_height?: number | null     // image natural height in px
+  plan_scale?: number | null      // calibrated scale: pixels per metre
+  zones?: Zone[]                  // zones specific to this floor
 }
 
 // ─── Devices (TX) ────────────────────────────────────────────────
