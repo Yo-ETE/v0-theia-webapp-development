@@ -336,7 +336,7 @@ export default function MissionDetailPage() {
     })
   }, [events])
 
-  // ������������������─ Bearing grouping: segments facing the same direction share the same face label ──
+  // �������������������─ Bearing grouping: segments facing the same direction share the same face label ──
   // Uses FULL 0-360 bearing so north-facing (0) and south-facing (180) are DIFFERENT faces.
   // Returns e.g. { A: [0,3], B: [1,4], C: [2,5] } meaning polygon edges 0&3 are "A", etc.
   // Helper: convert segment index (A, B, C...) to facade group letter using a zone's polygon
@@ -921,17 +921,13 @@ export default function MissionDetailPage() {
 
   // Map detections: ONLY from SSE (real-time). Never from DB -- DB events are history.
   // Filter out muted devices from zone-level AND device-level aggregation
-  // Also filter by selected floor when multi-floor mode is active
-  const floorDeviceIds = floorLevels.length > 1 
-    ? new Set(floorFilteredDevices.map(d => d.id))
-    : null
+  // NOTE: We do NOT filter liveByDevice by floor because FOV should show for all devices
+  // that are currently detecting, regardless of floor. The zone filtering handles separation.
   const filteredLiveByZone = Object.fromEntries(
     Object.entries(liveByZone).filter(([, det]) => !mutedIds.has(det.device_id))
   )
   const filteredLiveByDevice = Object.fromEntries(
-    Object.entries(liveByDevice)
-      .filter(([devId]) => !mutedIds.has(devId))
-      .filter(([devId]) => !floorDeviceIds || floorDeviceIds.has(devId))
+    Object.entries(liveByDevice).filter(([devId]) => !mutedIds.has(devId))
   )
   const effectiveLiveByZone: Record<string, LiveDetection> = timelapseMode
   ? { ...replayDetections }
@@ -960,16 +956,19 @@ export default function MissionDetailPage() {
     }
   })
   // Merge: SSE events first (newest), then DB events not already in SSE list
-  // Filter out detections from muted devices AND filter by selected floor
+  // Filter out detections from muted devices
+  // Note: Floor filtering for Detection Feed uses device assignment, not zone
   const mutedDeviceIds = new Set(missionDevices.filter(d => d.muted).map(d => d.id))
-  const floorZoneIds = floorLevels.length > 1 ? new Set(filteredZones.map(z => z.id)) : null
+  const floorDeviceIdsForFeed = floorLevels.length > 1 
+    ? new Set(floorFilteredDevices.map(d => d.id))
+    : null
   const sseTimestamps = new Set(liveDetections.map(d => d.timestamp))
   const displayDetections: LiveDetection[] = [
     ...liveDetections,
     ...dbDetections.filter(d => !sseTimestamps.has(d.timestamp)),
   ].filter(d => !mutedDeviceIds.has(d.device_id))
    .filter(d => feedDeviceFilter === "all" || d.device_id === feedDeviceFilter)
-   .filter(d => !floorZoneIds || !d.zone_id || floorZoneIds.has(d.zone_id)) // Floor filter
+   .filter(d => !floorDeviceIdsForFeed || floorDeviceIdsForFeed.has(d.device_id)) // Floor filter by device
    .slice(0, 50)
 
   return (
