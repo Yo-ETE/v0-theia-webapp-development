@@ -336,7 +336,7 @@ export default function MissionDetailPage() {
     })
   }, [events])
 
-  // �������������������─ Bearing grouping: segments facing the same direction share the same face label ──
+  // ��������������������─ Bearing grouping: segments facing the same direction share the same face label ──
   // Uses FULL 0-360 bearing so north-facing (0) and south-facing (180) are DIFFERENT faces.
   // Returns e.g. { A: [0,3], B: [1,4], C: [2,5] } meaning polygon edges 0&3 are "A", etc.
   // Helper: convert segment index (A, B, C...) to facade group letter using a zone's polygon
@@ -914,10 +914,10 @@ export default function MissionDetailPage() {
     }
     return Array.from(seen.values())
   })()
-  // Use live placements for live mode; for timelapse, prefer historical (preserves original TX positions)
-  const sensorPlacements = timelapseMode && historicalPlacements.length > 0
-    ? historicalPlacements
-    : (livePlacements.length > 0 ? livePlacements : historicalPlacements)
+  // Use live placements consistently across all modes (Live, History, Timelapse)
+  // This ensures FOV angle is always the same for the same sensor
+  // Historical events may have different zone_id/side values but we use current placement for display consistency
+  const sensorPlacements = livePlacements.length > 0 ? livePlacements : historicalPlacements
 
   // Map detections: ONLY from SSE (real-time). Never from DB -- DB events are history.
   // Filter out muted devices from zone-level AND device-level aggregation
