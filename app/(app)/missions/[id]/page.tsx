@@ -336,7 +336,7 @@ export default function MissionDetailPage() {
     })
   }, [events])
 
-  // ����������������─ Bearing grouping: segments facing the same direction share the same face label ──
+  // �����������������─ Bearing grouping: segments facing the same direction share the same face label ──
   // Uses FULL 0-360 bearing so north-facing (0) and south-facing (180) are DIFFERENT faces.
   // Returns e.g. { A: [0,3], B: [1,4], C: [2,5] } meaning polygon edges 0&3 are "A", etc.
   // Helper: convert segment index (A, B, C...) to facade group letter using a zone's polygon
@@ -753,6 +753,14 @@ export default function MissionDetailPage() {
     if (floorLevels.length <= 1) return zones
     return zones.filter(z => (z.floor ?? 0) === selectedFloor)
   }, [zones, selectedFloor, floorLevels.length])
+  
+  // Filter events by selected floor - must be before early return
+  const eventList = events ?? []
+  const floorFilteredEvents = useMemo(() => {
+    if (floorLevels.length <= 1) return eventList
+    const floorZoneIds = new Set(filteredZones.map(z => z.id))
+    return eventList.filter(e => !e.zone_id || floorZoneIds.has(e.zone_id))
+  }, [eventList, filteredZones, floorLevels.length])
 
   if (isLoading || !mission) {
     return (
@@ -769,15 +777,6 @@ export default function MissionDetailPage() {
   }
 
   const statusCfg = missionStatusConfig[mission.status] ?? missionStatusConfig.draft
-  // eventList = ALL recorded events (history tab). Reset only affects the live feed, not history.
-  const eventList = events ?? []
-  
-  // Filter events by selected floor (only show events from zones on selected floor)
-  const floorFilteredEvents = useMemo(() => {
-    if (floorLevels.length <= 1) return eventList
-    const floorZoneIds = new Set(filteredZones.map(z => z.id))
-    return eventList.filter(e => !e.zone_id || floorZoneIds.has(e.zone_id))
-  }, [eventList, filteredZones, floorLevels.length])
 
   // ── Environment / mode detection ──
   const env = mission?.environment ?? "habitation"
@@ -794,11 +793,12 @@ export default function MissionDetailPage() {
   }) ?? []
   
   // Filter devices by selected floor (only show devices assigned to zones on selected floor)
-  const floorFilteredDevices = useMemo(() => {
+  // Not using useMemo here because it's after conditional return and missionDevices changes each render
+  const floorFilteredDevices = (() => {
     if (floorLevels.length <= 1) return missionDevices
     const floorZoneIds = new Set(filteredZones.map(z => z.id))
     return missionDevices.filter(d => !d.zone_id || floorZoneIds.has(d.zone_id))
-  }, [missionDevices, filteredZones, floorLevels.length])
+  })()
 
   // Available to assign: enabled devices not in this mission
   const unassigned = allDevices?.filter((d) => {
