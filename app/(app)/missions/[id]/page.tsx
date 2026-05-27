@@ -336,7 +336,7 @@ export default function MissionDetailPage() {
     })
   }, [events])
 
-  // ���������������─ Bearing grouping: segments facing the same direction share the same face label ──
+  // ����������������─ Bearing grouping: segments facing the same direction share the same face label ──
   // Uses FULL 0-360 bearing so north-facing (0) and south-facing (180) are DIFFERENT faces.
   // Returns e.g. { A: [0,3], B: [1,4], C: [2,5] } meaning polygon edges 0&3 are "A", etc.
   // Helper: convert segment index (A, B, C...) to facade group letter using a zone's polygon
@@ -771,6 +771,13 @@ export default function MissionDetailPage() {
   const statusCfg = missionStatusConfig[mission.status] ?? missionStatusConfig.draft
   // eventList = ALL recorded events (history tab). Reset only affects the live feed, not history.
   const eventList = events ?? []
+  
+  // Filter events by selected floor (only show events from zones on selected floor)
+  const floorFilteredEvents = useMemo(() => {
+    if (floorLevels.length <= 1) return eventList
+    const floorZoneIds = new Set(filteredZones.map(z => z.id))
+    return eventList.filter(e => !e.zone_id || floorZoneIds.has(e.zone_id))
+  }, [eventList, filteredZones, floorLevels.length])
 
   // ── Environment / mode detection ──
   const env = mission?.environment ?? "habitation"
@@ -785,6 +792,13 @@ export default function MissionDetailPage() {
     if (isFloorMode) return true
     return !!(d.zone_id || d.floor != null)
   }) ?? []
+  
+  // Filter devices by selected floor (only show devices assigned to zones on selected floor)
+  const floorFilteredDevices = useMemo(() => {
+    if (floorLevels.length <= 1) return missionDevices
+    const floorZoneIds = new Set(filteredZones.map(z => z.id))
+    return missionDevices.filter(d => !d.zone_id || floorZoneIds.has(d.zone_id))
+  }, [missionDevices, filteredZones, floorLevels.length])
 
   // Available to assign: enabled devices not in this mission
   const unassigned = allDevices?.filter((d) => {
@@ -1185,7 +1199,7 @@ export default function MissionDetailPage() {
                   centerLon={mission.center_lon}
                   zoom={mission.zoom ?? 19}
                   zones={filteredZones}
-                  events={eventList}
+                  events={floorFilteredEvents}
                   liveDetections={effectiveLiveByZone}
                   liveByDevice={filteredLiveByDevice}
                   sensorPlacements={sensorPlacements}
@@ -1296,7 +1310,7 @@ export default function MissionDetailPage() {
                         floors={missionFloors}
                         devices={missionDevices}
                         allDevices={allDevices ?? []}
-                        events={eventList}
+                        events={floorFilteredEvents}
                         liveDetections={timelapseMode
                           ? Object.values(replayDetections).map((d: Record<string, unknown>) => ({
                               device_id: String(d.device_id ?? ""),
@@ -1522,7 +1536,7 @@ export default function MissionDetailPage() {
                       centerLon={mission.center_lon}
                       zoom={mission.zoom ?? 19}
                       zones={filteredZones}
-                      events={eventList}
+                      events={floorFilteredEvents}
   liveDetections={effectiveLiveByZone}
                   liveByDevice={timelapseMode
                     ? Object.fromEntries(
@@ -1758,14 +1772,14 @@ export default function MissionDetailPage() {
               {/* Assigned devices */}
               <Card className="border-border/50 bg-card">
                 <CardHeader className="pb-2">
-                  <CardTitle className="text-xs">Assigned Devices ({missionDevices.length})</CardTitle>
+                  <CardTitle className="text-xs">Assigned Devices ({floorFilteredDevices.length})</CardTitle>
                 </CardHeader>
                 <CardContent className="flex flex-col gap-1.5">
                   {missionDevices.length === 0 ? (
                     <p className="text-xs text-muted-foreground py-2 text-center">
                       Click a zone or the + button to assign TX devices
                     </p>
-                  ) : missionDevices.map((d) => {
+                  ) : floorFilteredDevices.map((d) => {
                     // Only show this device's own detection -- no zone-level fallback
                     // (zone fallback would show another device's data when this one is offline)
                     const detRaw = liveByDevice[d.id]
@@ -1947,7 +1961,7 @@ export default function MissionDetailPage() {
                             className="h-7 rounded border border-border bg-background px-1.5 text-[10px] text-foreground focus:outline-none focus:ring-1 focus:ring-primary"
                           >
                             <option value="all">Tous ({missionDevices.length})</option>
-                            {missionDevices.map(d => (
+                            {floorFilteredDevices.map(d => (
                               <option key={d.id} value={d.id}>{d.name}</option>
                             ))}
                           </select>
@@ -2112,7 +2126,7 @@ export default function MissionDetailPage() {
             <Card className="border-border/50 bg-card">
               <CardHeader className="pb-2">
                 <div className="flex items-center justify-between">
-                  <CardTitle className="text-sm">Events ({eventList.length})</CardTitle>
+                  <CardTitle className="text-sm">Events ({floorFilteredEvents.length})</CardTitle>
                   <div className="flex items-center gap-2">
                   {sensorPlacements.length > 0 && (
                     <Button
@@ -2142,7 +2156,7 @@ export default function MissionDetailPage() {
                   <Button
                     variant={heatmapMode ? "default" : "outline"} size="sm"
                     className="min-h-[32px] text-[10px] px-2.5 gap-1"
-                    disabled={eventList.length === 0}
+                    disabled={floorFilteredEvents.length === 0}
                     onClick={() => setHeatmapMode(!heatmapMode)}
                   >
                     <Flame className="h-3.5 w-3.5" />Heatmap
@@ -2151,7 +2165,7 @@ export default function MissionDetailPage() {
                   <Button
                     variant="destructive" size="sm"
                     className="min-h-[32px] text-[10px] px-2.5 gap-1"
-                    disabled={eventList.length === 0}
+                    disabled={floorFilteredEvents.length === 0}
                     onClick={async () => {
                       if (!confirm("Purger tous les events de cette mission ?")) return
                       // Call both proxy and backend directly to ensure deletion
@@ -2171,11 +2185,11 @@ export default function MissionDetailPage() {
                   <Button
                     variant="outline" size="sm"
                     className="min-h-[32px] text-[10px] px-2.5 gap-1"
-                    disabled={eventList.length === 0}
+                    disabled={floorFilteredEvents.length === 0}
                     onClick={() => {
                       const csv = [
                         "timestamp,type,device,zone,rssi,snr,payload",
-                        ...eventList.map((e) =>
+                        ...floorFilteredEvents.map((e) =>
                           [e.timestamp, e.type, e.device_name, e.zone_label ?? "", e.rssi ?? "", e.snr ?? "", JSON.stringify(e.payload)].join(",")
                         ),
                       ].join("\n")
@@ -2195,7 +2209,7 @@ export default function MissionDetailPage() {
               </CardHeader>
               <CardContent>
                 {/* Activity histogram - always visible when there are events */}
-                {eventList.length > 0 && (() => {
+                {floorFilteredEvents.length > 0 && (() => {
                   const NUM_SLOTS = 48
                   
                   // Parse all timestamps - DB stores in UTC
@@ -2204,7 +2218,7 @@ export default function MissionDetailPage() {
                     return new Date(t.replace(" ", "T") + "Z")
                   }
                   const timestamps: number[] = []
-                  for (const evt of eventList) {
+                  for (const evt of floorFilteredEvents) {
                     if (!evt.timestamp) continue
                     const ts = parseAsUTC(evt.timestamp)
                     if (!isNaN(ts.getTime())) timestamps.push(ts.getTime())
@@ -2259,7 +2273,7 @@ export default function MissionDetailPage() {
                       </div>
                       <div className="flex justify-between mt-1">
                         <span className="text-[8px] font-mono text-muted-foreground">{startLabel}</span>
-                        <span className="text-[8px] font-mono text-primary font-medium">{eventList.length} total</span>
+                        <span className="text-[8px] font-mono text-primary font-medium">{floorFilteredEvents.length} total</span>
                         <span className="text-[8px] font-mono text-muted-foreground">{endLabel}</span>
                       </div>
                     </div>
@@ -2271,7 +2285,7 @@ export default function MissionDetailPage() {
                   const BANDS = [20, 40, 60, 80, 100, 150, 250, 600]
                   const BAND_LABELS = ["0-20", "20-40", "40-60", "60-80", "80-100", "100-150", "150-250", "250+"]
                   const zoneStats: Record<string, { count: number; totalDist: number; devices: Set<string>; label: string; bands: number[]; dirG: number; dirC: number; dirD: number }> = {}
-                  for (const evt of eventList) {
+                  for (const evt of floorFilteredEvents) {
                     // Use zone_id if available, otherwise fallback to zone_label or device_id (for floor mode)
                     const zId = evt.zone_id || evt.zone_label || evt.device_id
                     if (!zId) continue
@@ -2349,7 +2363,7 @@ export default function MissionDetailPage() {
                     </div>
                   )
                 })()}
-                {eventList.length === 0 ? (
+                {floorFilteredEvents.length === 0 ? (
                   <p className="py-8 text-center text-sm text-muted-foreground">No events recorded for this mission. Press REC and walk past the sensors.</p>
                 ) : (
                   <div className="max-h-[500px] overflow-auto">
@@ -2367,7 +2381,7 @@ export default function MissionDetailPage() {
                         </TableRow>
                       </TableHeader>
                       <TableBody>
-                        {eventList.map((evt) => {
+                        {floorFilteredEvents.map((evt) => {
                           const p = evt.payload ?? {}
                           const dir = String(p.direction ?? "C")
                           return (
@@ -2406,7 +2420,7 @@ export default function MissionDetailPage() {
                 <CardHeader className="pb-2">
                   <CardTitle className="flex items-center gap-2 text-sm">
                     <Radio className="h-4 w-4 text-primary" />
-                    Assigned Devices ({missionDevices.length})
+                    Assigned Devices ({floorFilteredDevices.length})
                   </CardTitle>
                 </CardHeader>
                 <CardContent>
@@ -2428,7 +2442,7 @@ export default function MissionDetailPage() {
                         </TableRow>
                       </TableHeader>
                       <TableBody>
-                        {missionDevices.map((device) => {
+                        {floorFilteredDevices.map((device) => {
                           const sCfg = deviceStatusConfig[device.status] ?? deviceStatusConfig.unknown
                           return (
                             <TableRow key={device.id} className="border-border/30">
