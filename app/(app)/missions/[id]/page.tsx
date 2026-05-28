@@ -429,7 +429,8 @@ export default function MissionDetailPage() {
   // Duplicate zones from one floor to another
   const duplicateFloorZones = useCallback(async (sourceFloor: number, targetFloor: number) => {
     if (!mission) return
-    const sourceZones = zones.filter(z => (z.floor ?? 0) === sourceFloor)
+    const missionZones = mission.zones ?? []
+    const sourceZones = missionZones.filter(z => (z.floor ?? 0) === sourceFloor)
     if (sourceZones.length === 0) return
     
     const newZones: Zone[] = sourceZones.map(z => ({
@@ -439,9 +440,9 @@ export default function MissionDetailPage() {
       devices: [], // Don't copy device assignments
     }))
     
-    const updated = await updateMission(id, { zones: [...zones, ...newZones] })
+    const updated = await updateMission(id, { zones: [...missionZones, ...newZones] })
     mutate(updated, false)
-  }, [mission, zones, id, mutate])
+  }, [mission, id, mutate])
 
   const deleteZone = useCallback(async (zoneId: string) => {
     if (!mission) return
