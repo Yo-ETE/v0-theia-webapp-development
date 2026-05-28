@@ -424,7 +424,7 @@ export default function MissionDetailPage() {
     mutate(updated, false)
     setZoneDialog(false)
     setPendingPolygon(null)
-  }, [mission, pendingPolygon, zoneName, zoneType, sideLabels, sideGrouping, id, mutate])
+  }, [mission, pendingPolygon, zoneName, zoneType, sideLabels, sideGrouping, id, mutate, selectedFloor])
 
   // Duplicate zones from one floor to another
   const duplicateFloorZones = useCallback(async (sourceFloor: number, targetFloor: number) => {
@@ -2707,39 +2707,37 @@ export default function MissionDetailPage() {
       </main>
 
       {/* Floor duplication confirmation dialog */}
-      <Dialog open={!!duplicateFloorDialog} onOpenChange={() => setDuplicateFloorDialog(null)}>
-        <DialogContent className="sm:max-w-sm z-[10000]">
-          <DialogHeader>
-            <DialogTitle className="text-sm">Dupliquer les zones</DialogTitle>
-            <DialogDescription className="text-xs text-muted-foreground">
-              Copier toutes les zones de {duplicateFloorDialog && (floorLabels[duplicateFloorDialog.sourceFloor] ?? `Niveau ${duplicateFloorDialog.sourceFloor}`)} vers {duplicateFloorDialog && (floorLabels[duplicateFloorDialog.targetFloor] ?? `Niveau ${duplicateFloorDialog.targetFloor}`)}.
-            </DialogDescription>
-          </DialogHeader>
-          <div className="text-xs text-muted-foreground py-2">
-            {duplicateFloorDialog && (
-              <p>{zones.filter(z => (z.floor ?? 0) === (duplicateFloorDialog?.sourceFloor ?? 0)).length} zone(s) seront copiees. Les capteurs ne seront pas copies.</p>
-            )}
-          </div>
-          <DialogFooter className="gap-2">
-            <Button variant="outline" size="sm" onClick={() => setDuplicateFloorDialog(null)}>
-              Annuler
-            </Button>
-            <Button
-              size="sm"
-              onClick={async () => {
-                if (duplicateFloorDialog) {
+      {duplicateFloorDialog && (
+        <Dialog open={true} onOpenChange={() => setDuplicateFloorDialog(null)}>
+          <DialogContent className="sm:max-w-sm z-[10000]">
+            <DialogHeader>
+              <DialogTitle className="text-sm">Dupliquer les zones</DialogTitle>
+              <DialogDescription className="text-xs text-muted-foreground">
+                Copier toutes les zones de {floorLabels[duplicateFloorDialog.sourceFloor] ?? `Niveau ${duplicateFloorDialog.sourceFloor}`} vers {floorLabels[duplicateFloorDialog.targetFloor] ?? `Niveau ${duplicateFloorDialog.targetFloor}`}.
+              </DialogDescription>
+            </DialogHeader>
+            <div className="text-xs text-muted-foreground py-2">
+              <p>{zones.filter(z => (z.floor ?? 0) === duplicateFloorDialog.sourceFloor).length} zone(s) seront copiees. Les capteurs ne seront pas copies.</p>
+            </div>
+            <DialogFooter className="gap-2">
+              <Button variant="outline" size="sm" onClick={() => setDuplicateFloorDialog(null)}>
+                Annuler
+              </Button>
+              <Button
+                size="sm"
+                onClick={async () => {
                   await duplicateFloorZones(duplicateFloorDialog.sourceFloor, duplicateFloorDialog.targetFloor)
                   setSelectedFloor(duplicateFloorDialog.targetFloor)
                   setDuplicateFloorDialog(null)
-                }
-              }}
-            >
-              <Copy className="h-3.5 w-3.5 mr-1" />
-              Dupliquer
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+                }}
+              >
+                <Copy className="h-3.5 w-3.5 mr-1" />
+                Dupliquer
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
+      )}
 
       {/* Zone creation dialog */}
       <Dialog open={zoneDialog} onOpenChange={setZoneDialog}>
