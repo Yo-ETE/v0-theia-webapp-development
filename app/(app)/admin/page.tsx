@@ -838,8 +838,13 @@ export default function AdminPage() {
                       onClick={async () => {
                         setIsTogglingHotspot(true)
                         try {
-                          await api.post("hotspot/start", { ssid: "THEIA", password: "theia1234" })
+                          const result = await api.post("hotspot/start", { ssid: "THEIA", password: "theia1234" })
+                          if (result.status === "error" || result.status === "warning") {
+                            alert(`Hotspot: ${result.message}`)
+                          }
                           await fetchConnectionStatus()
+                        } catch (e) {
+                          alert(`Erreur hotspot: ${e instanceof Error ? e.message : "Erreur inconnue"}`)
                         } finally {
                           setIsTogglingHotspot(false)
                         }
