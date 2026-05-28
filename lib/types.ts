@@ -1,5 +1,70 @@
 // ─── THEIA Core Types ─────────────────────────────────────────────
 
+// ─── User Permissions ─────────────────────────────────────────────
+export interface UserPermissions {
+  // Pages access
+  dashboard: boolean
+  missions: boolean
+  devices: boolean
+  logs: boolean
+  administration: boolean
+  
+  // Mission actions
+  missions_create: boolean      // Creer un draft
+  missions_edit: boolean        // Modifier une mission (zones, parametres)
+  missions_delete: boolean      // Supprimer une mission
+  missions_control: boolean     // Start/Pause/Resume/Stop
+  
+  // Device actions
+  devices_assign: boolean       // Assigner un capteur a une mission
+  devices_unassign: boolean     // Retirer un capteur
+  devices_flash: boolean        // Flasher le firmware
+  devices_enroll: boolean       // Enroller manuellement
+  devices_delete: boolean       // Supprimer un device
+  
+  // System actions
+  system_backup: boolean        // Creer/restaurer sauvegardes
+  system_update: boolean        // Mettre a jour via Git
+  system_reboot: boolean        // Redemarrer/Arreter le Pi
+}
+
+// Presets de permissions
+export const PERMISSION_PRESETS: Record<string, { label: string; description: string; permissions: UserPermissions }> = {
+  admin: {
+    label: "Administrateur",
+    description: "Acces complet a toutes les fonctionnalites",
+    permissions: {
+      dashboard: true, missions: true, devices: true, logs: true, administration: true,
+      missions_create: true, missions_edit: true, missions_delete: true, missions_control: true,
+      devices_assign: true, devices_unassign: true, devices_flash: true, devices_enroll: true, devices_delete: true,
+      system_backup: true, system_update: true, system_reboot: true,
+    }
+  },
+  operator: {
+    label: "Operateur",
+    description: "Gestion des missions et capteurs, sans acces admin",
+    permissions: {
+      dashboard: true, missions: true, devices: true, logs: true, administration: false,
+      missions_create: true, missions_edit: true, missions_delete: false, missions_control: true,
+      devices_assign: true, devices_unassign: true, devices_flash: false, devices_enroll: true, devices_delete: false,
+      system_backup: false, system_update: false, system_reboot: false,
+    }
+  },
+  viewer: {
+    label: "Visualisateur",
+    description: "Lecture seule : dashboard et missions",
+    permissions: {
+      dashboard: true, missions: true, devices: false, logs: false, administration: false,
+      missions_create: false, missions_edit: false, missions_delete: false, missions_control: false,
+      devices_assign: false, devices_unassign: false, devices_flash: false, devices_enroll: false, devices_delete: false,
+      system_backup: false, system_update: false, system_reboot: false,
+    }
+  },
+}
+
+// Default permissions for new users
+export const DEFAULT_PERMISSIONS: UserPermissions = PERMISSION_PRESETS.viewer.permissions
+
 export interface HubStatus {
   cpu_percent: number
   ram_percent: number

@@ -10,6 +10,13 @@ les affiche sur une carte interactive, et fournit un tableau de bord operationne
 
 ---
 
+## Documentation
+
+- **[Guide d'utilisation](GUIDE_UTILISATION.md)** : Manuel utilisateur complet
+- **[API Docs](http://localhost:8000/docs)** : Documentation Swagger de l'API
+
+---
+
 ## Architecture
 
 ```
@@ -56,12 +63,19 @@ Capteurs Radar (TX LoRa)  --868MHz-->  Heltec RX (USB)  -->  Raspberry Pi 5
 - Carte interactive Leaflet avec zones de detection personnalisables
 - Dessin de zones polygonales avec faces/facades nommables
 - Ajout de plans de batiment (floor plans) georeferencies
+- **Mode multi-etages** : Gestion de plusieurs niveaux (RDC, 1er, 2eme...)
+  - Selecteur d'etage avec filtrage automatique des zones/capteurs/events
+  - Basculement automatique d'etage lors d'une detection sur un autre niveau
 - Mode visualisateur plein ecran (carte grand ecran + barre TX compacte)
 - Detection en temps reel avec direction, distance, vitesse
 - Mode FOV (champ de vision des capteurs) avec orientation ajustable
 - Estimation de position sur la facade avec zone de detection
 - Mode timelapse pour replay des detections historiques
 - Heatmap des evenements avec intensite par zone
+- **Detection Feed temps reel** :
+  - Affichage SSE uniquement (pas de donnees DB)
+  - TTL 5 minutes : apres inactivite, seule la derniere detection reste
+  - Filtrage par etage et par capteur
 - Sourdine par capteur (masquer un TX du feed de detection)
 - Son de detection en temps reel (ping radar synthetique, toggle on/off)
 - Export CSV des evenements
@@ -92,10 +106,18 @@ Capteurs Radar (TX LoRa)  --868MHz-->  Heltec RX (USB)  -->  Raspberry Pi 5
 
 ### Authentification et Comptes
 - Compte admin par defaut : `admin` / `admin` (a changer apres premiere connexion)
-- Deux roles : `admin` (acces complet) et `viewer` (lecture seule)
+- Systeme de permissions granulaires avec presets :
+  - **Admin** : Acces complet a toutes les fonctionnalites
+  - **Operateur** : Gestion missions/capteurs, sans acces admin systeme
+  - **Visualisateur** : Lecture seule (dashboard, missions)
+- Permissions personnalisables par utilisateur :
+  - **Pages** : Dashboard, Missions, Capteurs, Logs, Administration
+  - **Missions** : Creer, Modifier, Supprimer, Controler (Start/Pause/Stop)
+  - **Capteurs** : Assigner, Retirer, Flasher, Enroller, Supprimer
+  - **Systeme** : Sauvegardes, Mise a jour Git, Redemarrer/Arreter
 - Tokens JWT (cookie HTTP-only + header Authorization Bearer)
 - Mots de passe hashes en PBKDF2-SHA256 avec salt aleatoire
-- Gestion des comptes depuis l'admin (creer, supprimer, changer role/mot de passe)
+- Gestion des comptes depuis l'admin (creer, supprimer, modifier permissions)
 - Lien Tailscale integre pour inviter des utilisateurs externes
 
 ### Notifications et Alertes

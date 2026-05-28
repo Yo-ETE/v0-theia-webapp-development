@@ -12,6 +12,11 @@ import {
   KeyRound,
   ExternalLink,
   Network,
+  Settings2,
+  ChevronDown,
+  ChevronUp,
+  Check,
+  Wrench,
 } from "lucide-react"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
@@ -19,11 +24,14 @@ import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Badge } from "@/components/ui/badge"
 import { useAuth } from "@/lib/auth-context"
+import { type UserPermissions, PERMISSION_PRESETS, DEFAULT_PERMISSIONS } from "@/lib/types"
+import { cn } from "@/lib/utils"
 
 interface UserInfo {
   id: number
   username: string
   role: "admin" | "viewer"
+  permissions?: UserPermissions
   created_at: string
   last_login: string | null
 }
@@ -37,6 +45,121 @@ function _bH(): Record<string, string> {
   return t ? { Authorization: `Bearer ${t}` } : {}
 }
 
+// Permission labels for display
+const PERMISSION_LABELS: Record<keyof UserPermissions, { label: string; category: string }> = {
+  dashboard: { label: "Dashboard", category: "Pages" },
+  missions: { label: "Missions", category: "Pages" },
+  devices: { label: "Capteurs", category: "Pages" },
+  logs: { label: "Logs", category: "Pages" },
+  administration: { label: "Administration", category: "Pages" },
+  missions_create: { label: "Creer des missions", category: "Missions" },
+  missions_edit: { label: "Modifier (zones, params)", category: "Missions" },
+  missions_delete: { label: "Supprimer", category: "Missions" },
+  missions_control: { label: "Controler (Start/Pause/Stop)", category: "Missions" },
+  devices_assign: { label: "Assigner a une mission", category: "Capteurs" },
+  devices_unassign: { label: "Retirer d'une mission", category: "Capteurs" },
+  devices_flash: { label: "Flasher le firmware", category: "Capteurs" },
+  devices_enroll: { label: "Enroller manuellement", category: "Capteurs" },
+  devices_delete: { label: "Supprimer", category: "Capteurs" },
+  system_backup: { label: "Sauvegardes", category: "Systeme" },
+  system_update: { label: "Mise a jour Git", category: "Systeme" },
+  system_reboot: { label: "Redemarrer/Arreter", category: "Systeme" },
+}
+
+// Group permissions by category
+const PERMISSION_CATEGORIES = ["Pages", "Missions", "Capteurs", "Systeme"]
+
+function PermissionEditor({ 
+  permissions, 
+  onChange, 
+  onApplyPreset,
+  disabled = false 
+}: { 
+  permissions: UserPermissions
+  onChange: (perms: UserPermissions) => void
+  onApplyPreset: (preset: string) => void
+  disabled?: boolean
+}) {
+  const togglePermission = (key: keyof UserPermissions) => {
+    onChange({ ...permissions, [key]: !permissions[key] })
+  }
+
+  return (
+    <div className="flex flex-col gap-3">
+      {/* Presets */}
+      <div className="flex flex-wrap gap-2">
+        <span className="text-[10px] text-muted-foreground uppercase tracking-wider font-medium self-center mr-1">Presets :</span>
+        {Object.entries(PERMISSION_PRESETS).map(([key, preset]) => (
+          <button
+            key={key}
+            type="button"
+            onClick={() => onApplyPreset(key)}
+            disabled={disabled}
+            className={cn(
+              "flex items-center gap-1.5 rounded-md px-2 py-1 text-[10px] border transition-colors",
+              "border-border text-muted-foreground hover:bg-secondary/50",
+              disabled && "opacity-50 cursor-not-allowed"
+            )}
+            title={preset.description}
+          >
+            {key === "admin" && <Shield className="h-3 w-3" />}
+            {key === "operator" && <Wrench className="h-3 w-3" />}
+            {key === "viewer" && <Eye className="h-3 w-3" />}
+            {preset.label}
+          </button>
+        ))}
+      </div>
+
+      {/* Permissions by category */}
+      <div className="grid grid-cols-2 gap-3">
+        {PERMISSION_CATEGORIES.map(category => {
+          const categoryPerms = Object.entries(PERMISSION_LABELS)
+            .filter(([, info]) => info.category === category)
+          
+          return (
+            <div key={category} className="rounded-md border border-border/50 bg-muted/10 p-2">
+              <p className="text-[10px] font-medium text-foreground mb-2 uppercase tracking-wider">{category}</p>
+              <div className="flex flex-col gap-1">
+                {categoryPerms.map(([key, info]) => {
+                  const permKey = key as keyof UserPermissions
+                  const isChecked = permissions[permKey]
+                  return (
+                    <label
+                      key={key}
+                      className={cn(
+                        "flex items-center gap-2 rounded px-2 py-1 cursor-pointer transition-colors",
+                        isChecked ? "bg-primary/10" : "hover:bg-muted/30",
+                        disabled && "cursor-not-allowed opacity-50"
+                      )}
+                    >
+                      <div
+                        className={cn(
+                          "h-4 w-4 rounded border flex items-center justify-center transition-colors",
+                          isChecked ? "bg-primary border-primary" : "border-border"
+                        )}
+                      >
+                        {isChecked && <Check className="h-3 w-3 text-primary-foreground" />}
+                      </div>
+                      <input
+                        type="checkbox"
+                        checked={isChecked}
+                        onChange={() => togglePermission(permKey)}
+                        disabled={disabled}
+                        className="sr-only"
+                      />
+                      <span className="text-[11px] text-foreground">{info.label}</span>
+                    </label>
+                  )
+                })}
+              </div>
+            </div>
+          )
+        })}
+      </div>
+    </div>
+  )
+}
+
 export function UserManagement() {
   const { user: currentUser } = useAuth()
   const [users, setUsers] = useState<UserInfo[]>([])
@@ -45,10 +168,14 @@ export function UserManagement() {
   const [newUsername, setNewUsername] = useState("")
   const [newPassword, setNewPassword] = useState("")
   const [newRole, setNewRole] = useState<"admin" | "viewer">("viewer")
+  const [newPermissions, setNewPermissions] = useState<UserPermissions>({ ...DEFAULT_PERMISSIONS })
+  const [showPermissions, setShowPermissions] = useState(false)
   const [creating, setCreating] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [success, setSuccess] = useState<string | null>(null)
   const [changingPassword, setChangingPassword] = useState<number | null>(null)
+  const [editingPermissions, setEditingPermissions] = useState<number | null>(null)
+  const [editPerms, setEditPerms] = useState<UserPermissions>({ ...DEFAULT_PERMISSIONS })
   const [newPw, setNewPw] = useState("")
   const [deleting, setDeleting] = useState<number | null>(null)
 
@@ -79,7 +206,12 @@ export function UserManagement() {
         method: "POST",
         credentials: "include",
         headers: { "Content-Type": "application/json", ..._bH() },
-        body: JSON.stringify({ username: newUsername, password: newPassword, role: newRole }),
+        body: JSON.stringify({ 
+          username: newUsername, 
+          password: newPassword, 
+          role: newRole,
+          permissions: newRole === "admin" ? null : newPermissions,
+        }),
       })
       if (!res.ok) {
         const data = await res.json().catch(() => ({ detail: "Erreur" }))
@@ -89,7 +221,9 @@ export function UserManagement() {
       setNewUsername("")
       setNewPassword("")
       setNewRole("viewer")
+      setNewPermissions({ ...DEFAULT_PERMISSIONS })
       setShowCreate(false)
+      setShowPermissions(false)
       fetchUsers()
     } catch (err) {
       setError(err instanceof Error ? err.message : "Erreur")
@@ -158,6 +292,38 @@ export function UserManagement() {
       fetchUsers()
     } catch (err) {
       setError(err instanceof Error ? err.message : "Erreur")
+    }
+  }
+
+  const handleSavePermissions = async (userId: number) => {
+    setError(null)
+    try {
+      const res = await fetch(getBackendUrl(`/auth/users/${userId}`), {
+        method: "PATCH",
+        credentials: "include",
+        headers: { "Content-Type": "application/json", ..._bH() },
+        body: JSON.stringify({ permissions: editPerms }),
+      })
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({ detail: "Erreur" }))
+        throw new Error(data.detail || "Erreur")
+      }
+      setSuccess("Permissions mises a jour")
+      setEditingPermissions(null)
+      fetchUsers()
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Erreur")
+    }
+  }
+
+  const applyPreset = (presetKey: string, forEdit = false) => {
+    const preset = PERMISSION_PRESETS[presetKey]
+    if (preset) {
+      if (forEdit) {
+        setEditPerms({ ...preset.permissions })
+      } else {
+        setNewPermissions({ ...preset.permissions })
+      }
     }
   }
 
@@ -231,30 +397,55 @@ export function UserManagement() {
               <div className="flex gap-2" role="radiogroup" aria-labelledby="role-label">
                 <button
                   type="button"
-                  onClick={() => setNewRole("viewer")}
-                  className={`flex items-center gap-1.5 rounded-md px-3 py-1.5 text-xs border transition-colors ${
+                  onClick={() => { setNewRole("viewer"); setShowPermissions(true) }}
+                  className={cn(
+                    "flex items-center gap-1.5 rounded-md px-3 py-1.5 text-xs border transition-colors",
                     newRole === "viewer"
                       ? "border-primary bg-primary/10 text-primary"
                       : "border-border text-muted-foreground hover:bg-secondary/50"
-                  }`}
+                  )}
                 >
                   <Eye className="h-3 w-3" />
                   Visualisateur
                 </button>
                 <button
                   type="button"
-                  onClick={() => setNewRole("admin")}
-                  className={`flex items-center gap-1.5 rounded-md px-3 py-1.5 text-xs border transition-colors ${
+                  onClick={() => { setNewRole("admin"); setShowPermissions(false) }}
+                  className={cn(
+                    "flex items-center gap-1.5 rounded-md px-3 py-1.5 text-xs border transition-colors",
                     newRole === "admin"
                       ? "border-primary bg-primary/10 text-primary"
                       : "border-border text-muted-foreground hover:bg-secondary/50"
-                  }`}
+                  )}
                 >
                   <Shield className="h-3 w-3" />
                   Admin
                 </button>
               </div>
+              {newRole === "viewer" && (
+                <button
+                  type="button"
+                  onClick={() => setShowPermissions(!showPermissions)}
+                  className="flex items-center gap-1 text-[10px] text-muted-foreground hover:text-foreground transition-colors ml-auto"
+                >
+                  <Settings2 className="h-3 w-3" />
+                  Permissions
+                  {showPermissions ? <ChevronUp className="h-3 w-3" /> : <ChevronDown className="h-3 w-3" />}
+                </button>
+              )}
             </div>
+
+            {/* Permissions editor for non-admin */}
+            {showPermissions && newRole !== "admin" && (
+              <div className="rounded-md border border-border/50 bg-muted/30 p-3">
+                <PermissionEditor
+                  permissions={newPermissions}
+                  onChange={setNewPermissions}
+                  onApplyPreset={(preset) => applyPreset(preset, false)}
+                />
+              </div>
+            )}
+
             {/* Tailscale access info */}
             <div className="rounded-md border border-border/50 bg-muted/30 p-3 flex flex-col gap-2">
               <p className="text-[10px] font-medium text-foreground flex items-center gap-1.5">
@@ -331,6 +522,27 @@ export function UserManagement() {
                         >
                           {u.role === "admin" ? <Eye className="h-3.5 w-3.5" /> : <Shield className="h-3.5 w-3.5" />}
                         </button>
+                        {u.role !== "admin" && (
+                          <button
+                            onClick={() => {
+                              if (editingPermissions === u.id) {
+                                setEditingPermissions(null)
+                              } else {
+                                setEditPerms(u.permissions || { ...DEFAULT_PERMISSIONS })
+                                setEditingPermissions(u.id)
+                              }
+                            }}
+                            className={cn(
+                              "flex items-center justify-center h-7 w-7 rounded transition-colors",
+                              editingPermissions === u.id 
+                                ? "text-primary bg-primary/10" 
+                                : "text-muted-foreground hover:text-foreground hover:bg-secondary/50"
+                            )}
+                            title="Modifier les permissions"
+                          >
+                            <Settings2 className="h-3.5 w-3.5" />
+                          </button>
+                        )}
                         <button
                           onClick={() => handleDelete(u.id)}
                           disabled={deleting === u.id}
@@ -350,6 +562,7 @@ export function UserManagement() {
                     </button>
                   </div>
                 </div>
+                {/* Change password panel */}
                 {changingPassword === u.id && (
                   <div className="flex items-center gap-2 border-t border-border/30 px-3 py-2 bg-muted/20">
                     <Input
@@ -371,6 +584,24 @@ export function UserManagement() {
                     >
                       Enregistrer
                     </Button>
+                  </div>
+                )}
+                {/* Edit permissions panel */}
+                {editingPermissions === u.id && u.role !== "admin" && (
+                  <div className="border-t border-border/30 px-3 py-3 bg-muted/20 flex flex-col gap-3">
+                    <PermissionEditor
+                      permissions={editPerms}
+                      onChange={setEditPerms}
+                      onApplyPreset={(preset) => applyPreset(preset, true)}
+                    />
+                    <div className="flex justify-end gap-2">
+                      <Button size="sm" variant="ghost" onClick={() => setEditingPermissions(null)}>
+                        Annuler
+                      </Button>
+                      <Button size="sm" onClick={() => handleSavePermissions(u.id)}>
+                        Enregistrer
+                      </Button>
+                    </div>
                   </div>
                 )}
               </div>

@@ -1,17 +1,21 @@
 "use client"
 
 import { createContext, useContext, useEffect, useState, useCallback, type ReactNode } from "react"
+import { type UserPermissions, PERMISSION_PRESETS, DEFAULT_PERMISSIONS } from "@/lib/types"
 
 interface User {
   id: number
   username: string
   role: "admin" | "viewer"
+  permissions?: UserPermissions
 }
 
 interface AuthContextType {
   user: User | null
   isAdmin: boolean
   isLoading: boolean
+  permissions: UserPermissions
+  hasPermission: (permission: keyof UserPermissions) => boolean
   login: (username: string, password: string) => Promise<void>
   logout: () => Promise<void>
   refresh: () => Promise<void>
@@ -95,11 +99,25 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setUser(null)
   }, [])
 
+  // Compute effective permissions based on user role and custom permissions
+  const permissions: UserPermissions = user?.permissions 
+    ?? (user?.role === "admin" ? PERMISSION_PRESETS.admin.permissions : DEFAULT_PERMISSIONS)
+
+  const hasPermission = useCallback((permission: keyof UserPermissions): boolean => {
+    if (!user) return false
+    // Admin role always has all permissions
+    if (user.role === "admin" && !user.permissions) return true
+    const perms = user.permissions ?? (user.role === "admin" ? PERMISSION_PRESETS.admin.permissions : DEFAULT_PERMISSIONS)
+    return perms[permission] ?? false
+  }, [user])
+
   return (
     <AuthContext.Provider value={{
       user,
       isAdmin: user?.role === "admin",
       isLoading,
+      permissions,
+      hasPermission,
       login,
       logout,
       refresh,
