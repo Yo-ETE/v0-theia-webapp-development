@@ -346,7 +346,7 @@ async def hotspot_start(body: dict = None):
     try:
         def _start():
             iface = _get_wifi_interface()
-            logger.info(f"[THEIA] Hotspot: starting on interface {iface}")
+            print(f"[THEIA] Hotspot: starting on interface {iface}", flush=True)
             if not iface:
                 return {"status": "error", "message": "Aucune interface WiFi trouvee"}
             
@@ -356,7 +356,7 @@ async def hotspot_start(body: dict = None):
                 return {"status": "error", "message": "hostapd n'est pas installe. Installez avec: sudo apt install hostapd"}
             
             # Step 1: Disconnect and clean up
-            logger.info(f"[THEIA] Hotspot: disconnecting {iface} and killing existing processes")
+            print(f"[THEIA] Hotspot: disconnecting {iface} and killing existing processes", flush=True)
             subprocess.run(["sudo", "nmcli", "device", "disconnect", iface], capture_output=True, timeout=10)
             time.sleep(0.5)
             subprocess.run(["sudo", "pkill", "-f", "create_ap"], capture_output=True, timeout=5)
@@ -365,12 +365,12 @@ async def hotspot_start(body: dict = None):
             time.sleep(1)
             
             # Step 2: Try nmcli hotspot first (simplest, if it works)
-            logger.info(f"[THEIA] Hotspot: trying nmcli hotspot on {iface}")
+            print(f"[THEIA] Hotspot: trying nmcli hotspot on {iface}", flush=True)
             result = subprocess.run(
                 ["sudo", "nmcli", "device", "wifi", "hotspot", "ifname", iface, "ssid", ssid, "password", password],
                 capture_output=True, text=True, timeout=30
             )
-            logger.info(f"[THEIA] Hotspot: nmcli returned {result.returncode}, stdout={result.stdout[:200] if result.stdout else ''}, stderr={result.stderr[:200] if result.stderr else ''}")
+            print(f"[THEIA] Hotspot: nmcli returned {result.returncode}, stdout={result.stdout[:200] if result.stdout else ''}, stderr={result.stderr[:200] if result.stderr else ''}", flush=True)
             if result.returncode == 0:
                 time.sleep(2)
                 # Verify hotspot is actually running by checking connection status
@@ -378,14 +378,14 @@ async def hotspot_start(body: dict = None):
                     ["nmcli", "-t", "-f", "NAME,TYPE", "connection", "show", "--active"],
                     capture_output=True, text=True, timeout=5
                 )
-                logger.info(f"[THEIA] Hotspot: active connections: {conn_check.stdout}")
+                print(f"[THEIA] Hotspot: active connections: {conn_check.stdout}", flush=True)
                 if "Hotspot" in conn_check.stdout or "hotspot" in conn_check.stdout.lower():
                     return {"status": "success", "message": f"Hotspot '{ssid}' demarre sur {iface} (nmcli)"}
                 # nmcli said OK but hotspot not actually running, continue to fallback
-                logger.warning(f"[THEIA] Hotspot: nmcli returned 0 but no Hotspot connection active, trying hostapd")
+                print(f"[THEIA] Hotspot: nmcli returned 0 but no Hotspot connection active, trying hostapd", flush=True)
             
             # Step 3: Configure interface
-            logger.info(f"[THEIA] Hotspot: configuring interface {iface} for AP mode")
+            print(f"[THEIA] Hotspot: configuring interface {iface} for AP mode", flush=True)
             subprocess.run(["sudo", "ip", "link", "set", iface, "down"], capture_output=True, timeout=5)
             time.sleep(0.5)
             subprocess.run(["sudo", "ip", "addr", "flush", "dev", iface], capture_output=True, timeout=5)
@@ -407,7 +407,7 @@ bind-interfaces
                 ["sudo", "dnsmasq", "-C", dnsmasq_path],
                 capture_output=True, text=True, timeout=5
             )
-            logger.info(f"[THEIA] Hotspot: dnsmasq returned {dnsmasq_result.returncode}")
+            print(f"[THEIA] Hotspot: dnsmasq returned {dnsmasq_result.returncode}", flush=True)
             time.sleep(1)
             
             # Step 5: Try hostapd with multiple drivers
@@ -435,12 +435,12 @@ rsn_pairwise=CCMP
                     f.write(hostapd_conf)
                 
                 # Start hostapd in background (-B flag)
-                logger.info(f"[THEIA] Hotspot: trying hostapd with driver {driver}")
+                print(f"[THEIA] Hotspot: trying hostapd with driver {driver}", flush=True)
                 hostapd_result = subprocess.run(
                     ["sudo", "hostapd", "-B", conf_path],
                     capture_output=True, text=True, timeout=10
                 )
-                logger.info(f"[THEIA] Hotspot: hostapd {driver} returned {hostapd_result.returncode}, stderr={hostapd_result.stderr[:300] if hostapd_result.stderr else ''}")
+                print(f"[THEIA] Hotspot: hostapd {driver} returned {hostapd_result.returncode}, stderr={hostapd_result.stderr[:300] if hostapd_result.stderr else ''}", flush=True)
                 
                 time.sleep(1)
                 
@@ -452,11 +452,11 @@ rsn_pairwise=CCMP
                 
                 if ps_check.returncode == 0 and "hostapd" in ps_check.stdout:
                     hostapd_started = True
-                    logger.info(f"[THEIA] Hotspot: hostapd started with driver {driver}")
+                    print(f"[THEIA] Hotspot: hostapd started with driver {driver}", flush=True)
                     break
                 else:
                     last_error = hostapd_result.stderr.strip() or hostapd_result.stdout.strip() or f"Driver {driver} failed"
-                    logger.warning(f"[THEIA] Hotspot: driver {driver} failed - {last_error}")
+                    print(f"[THEIA] Hotspot: driver {driver} failed - {last_error}", flush=True)
                     subprocess.run(["sudo", "pkill", "hostapd"], capture_output=True, timeout=5)
             
             if hostapd_started:
@@ -472,7 +472,7 @@ rsn_pairwise=CCMP
         data = await asyncio.get_event_loop().run_in_executor(None, _start)
         return data
     except Exception as e:
-        logger.exception(f"[THEIA] Hotspot: exception during start")
+        print(f"[THEIA] Hotspot: exception during start: {e}", flush=True)
         return {"status": "error", "message": str(e)}
 
 
