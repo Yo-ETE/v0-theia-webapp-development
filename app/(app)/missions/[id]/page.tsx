@@ -300,8 +300,14 @@ export default function MissionDetailPage() {
     if (initialLoadDoneRef.current || !events || events.length === 0) return
     initialLoadDoneRef.current = true
     
-    // Get the most recent event from DB as a reference
-    const latestEvent = events[0]
+    // Sort events by timestamp descending to get the most recent one
+    const sortedEvents = [...events].sort((a, b) => {
+      const tsA = new Date(a.timestamp ?? 0).getTime()
+      const tsB = new Date(b.timestamp ?? 0).getTime()
+      return tsB - tsA // Most recent first
+    })
+    
+    const latestEvent = sortedEvents[0]
     if (!latestEvent) return
     
     const ev = latestEvent as DetectionEvent & Record<string, unknown>
