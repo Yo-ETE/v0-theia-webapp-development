@@ -46,6 +46,67 @@ def _get_wifi_interface():
     return "wlan0"  # Default fallback
 
 
+def _get_ap_capable_interface():
+    """Find a WiFi interface that supports AP mode for hotspot."""
+    import os
+    
+    # Get all WiFi interfaces
+    wifi_interfaces = []
+    try:
+        for iface in os.listdir("/sys/class/net"):
+            wireless_path = f"/sys/class/net/{iface}/wireless"
+            if os.path.isdir(wireless_path):
+                wifi_interfaces.append(iface)
+    except Exception:
+        wifi_interfaces = ["wlan0", "wlan1"]
+    
+    # Check each interface for AP mode support using iw
+    for iface in wifi_interfaces:
+        try:
+            # Get the phy for this interface
+            phy_result = subprocess.run(
+                ["iw", "dev", iface, "info"],
+                capture_output=True, text=True, timeout=5
+            )
+            if phy_result.returncode != 0:
+                continue
+            
+            # Extract phy name (like phy0, phy1)
+            phy_name = None
+            for line in phy_result.stdout.split('\n'):
+                if 'wiphy' in line:
+                    try:
+                        phy_num = line.split()[-1]
+                        phy_name = f"phy{phy_num}"
+                    except:
+                        pass
+            
+            if not phy_name:
+                # Try alternate method
+                phy_path = f"/sys/class/net/{iface}/phy80211/name"
+                if os.path.exists(phy_path):
+                    with open(phy_path) as f:
+                        phy_name = f.read().strip()
+            
+            if not phy_name:
+                continue
+                
+            # Check if this phy supports AP mode
+            iw_list = subprocess.run(
+                ["iw", phy_name, "info"],
+                capture_output=True, text=True, timeout=5
+            )
+            if "* AP" in iw_list.stdout:
+                print(f"[THEIA] Found AP-capable interface: {iface} on {phy_name}", flush=True)
+                return iface
+        except Exception as e:
+            print(f"[THEIA] Error checking {iface}: {e}", flush=True)
+            continue
+    
+    # Fallback: return first interface and let nmcli fail with clear error
+    return wifi_interfaces[0] if wifi_interfaces else "wlan0"
+
+
 # ── WiFi ──────────────────────────────────────────────────────────
 
 @router.get("/wifi/status")
@@ -345,7 +406,8 @@ async def hotspot_start(body: dict = None):
     password = (body or {}).get("password", "theia1234")
     try:
         def _start():
-            iface = _get_wifi_interface()
+            # Use AP-capable interface instead of just any WiFi interface
+            iface = _get_ap_capable_interface()
             print(f"[THEIA] Hotspot: starting on interface {iface}", flush=True)
             if not iface:
                 return {"status": "error", "message": "Aucune interface WiFi trouvee"}
