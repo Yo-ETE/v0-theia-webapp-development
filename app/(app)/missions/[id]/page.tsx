@@ -317,6 +317,9 @@ export default function MissionDetailPage() {
       return tsB - tsA // Most recent first
     })
     
+    // Debug: log the sorting results
+    console.log("[v0] Initial load - first 3 events after sort:", sortedEvents.slice(0, 3).map(e => ({ ts: e.timestamp, parsed: parseTs(e.timestamp) })))
+    
     const latestEvent = sortedEvents[0]
     if (!latestEvent) return
     
