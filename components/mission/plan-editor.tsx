@@ -1238,48 +1238,55 @@ export function PlanEditor({
         </div>
       )}
 
-      {/* Editing mode toolbar (like Habitation) */}
-      {editingZoneId && editingPolygon && (
-        <div className="absolute bottom-4 left-1/2 -translate-x-1/2 z-30 flex items-center gap-2 bg-card/95 backdrop-blur border border-border rounded-xl px-3 py-2 shadow-xl">
-          <button
-            onClick={onStopEditing}
-            className="flex items-center gap-1.5 px-4 py-2 rounded-lg bg-cyan-600 text-white text-xs font-semibold hover:bg-cyan-500 active:bg-cyan-700 transition-colors min-h-[40px]"
-          >
-            <svg className="w-4 h-4" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" /></svg>
-            Deplacer
-          </button>
-          <button
-            onClick={() => {
-              if (!editingPolygon || editingPolygon.length < 3) return
-              // Add a point in the middle of the first edge
-              const midRow = (editingPolygon[0][0] + editingPolygon[1][0]) / 2
-              const midCol = (editingPolygon[0][1] + editingPolygon[1][1]) / 2
-              const newPoly: [number, number][] = [editingPolygon[0], [midRow, midCol], ...editingPolygon.slice(1)]
-              onZonePolygonUpdate?.(editingZoneId, newPoly)
-            }}
-            className="flex items-center gap-1.5 px-3 py-2 rounded-lg bg-card text-foreground text-xs font-medium border border-border hover:bg-muted active:bg-muted/70 transition-colors min-h-[40px]"
-          >
-            <svg className="w-4 h-4" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" d="M12 4v16m8-8H4" /></svg>
-            Ajouter
-          </button>
-          <button
-            onClick={() => {
-              if (!editingPolygon || editingPolygon.length <= 3) return
-              // Remove the last point
-              const newPoly = editingPolygon.slice(0, -1)
-              onZonePolygonUpdate?.(editingZoneId, newPoly)
-            }}
-            disabled={!editingPolygon || editingPolygon.length <= 3}
-            className="flex items-center gap-1.5 px-3 py-2 rounded-lg bg-card text-destructive text-xs font-medium border border-border hover:bg-destructive/10 active:bg-destructive/20 transition-colors min-h-[40px] disabled:opacity-50 disabled:cursor-not-allowed"
-          >
-            <svg className="w-4 h-4" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" /></svg>
-            Supprimer
-          </button>
-          <span className="text-xs text-muted-foreground ml-2 font-mono">
-            {editingPolygon.length}pts {formatArea(polygonAreaPx(editingPolygon), planScale)}
-          </span>
-        </div>
-      )}
+      {/* Editing mode toolbar (exactly like Habitation) */}
+      {editingZoneId && editingPolygon && (() => {
+        const tools = [
+          { id: "move", label: "Deplacer", icon: "M7 10l5-5 5 5M7 14l5 5 5-5", color: "#f59e0b" },
+          { id: "add", label: "Ajouter", icon: "M12 5v14M5 12h14", color: "#22c55e" },
+          { id: "delete", label: "Supprimer", icon: "M18 6L6 18M6 6l12 12", color: "#ef4444" },
+        ]
+        const areaStr = formatArea(polygonAreaPx(editingPolygon), planScale)
+        return (
+          <div className="absolute bottom-10 left-1/2 -translate-x-1/2 z-[500] flex flex-col items-center gap-1.5">
+            <div className="rounded-xl bg-card/95 backdrop-blur border border-amber-500/30 shadow-lg px-1.5 py-1 flex items-center gap-0.5">
+              {tools.map((t) => (
+                <button
+                  key={t.id}
+                  onClick={() => {
+                    if (t.id === "move") {
+                      onStopEditing?.()
+                    } else if (t.id === "add" && editingPolygon.length >= 3) {
+                      const midRow = (editingPolygon[0][0] + editingPolygon[1][0]) / 2
+                      const midCol = (editingPolygon[0][1] + editingPolygon[1][1]) / 2
+                      const newPoly: [number, number][] = [editingPolygon[0], [midRow, midCol], ...editingPolygon.slice(1)]
+                      onZonePolygonUpdate?.(editingZoneId, newPoly)
+                    } else if (t.id === "delete" && editingPolygon.length > 3) {
+                      const newPoly = editingPolygon.slice(0, -1)
+                      onZonePolygonUpdate?.(editingZoneId, newPoly)
+                    }
+                  }}
+                  disabled={t.id === "delete" && editingPolygon.length <= 3}
+                  className={cn(
+                    "flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-[11px] font-semibold transition-all min-h-[34px]",
+                    t.id === "move"
+                      ? "text-white shadow-sm"
+                      : "text-muted-foreground hover:text-foreground bg-transparent disabled:opacity-50 disabled:cursor-not-allowed"
+                  )}
+                  style={t.id === "move" ? { background: t.color } : {}}
+                >
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none"
+                    stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                    <path d={t.icon} />
+                  </svg>
+                  {t.label}
+                </button>
+              ))}
+              <div className="w-px h-5 bg-border/50 mx-0.5" />
+              <span className="text-[9px] font-mono text-amber-500/80 px-1">{editingPolygon.length}pts {areaStr}</span>
+            </div>
+          </div>
+        )
+      })()}
 
       {/* Editing vertices (HTML overlay for drag support) */}
       {editingZoneId && editingPolygon && editingPolygon.map((pt, i) => {
@@ -1287,7 +1294,7 @@ export function PlanEditor({
         return (
           <div
             key={`edit-vertex-html-${i}`}
-            className="absolute z-25 cursor-grab active:cursor-grabbing touch-none select-none"
+            className="absolute z-[400] cursor-grab active:cursor-grabbing touch-none select-none"
             style={{
               left: x - 14,
               top: y - 14,
