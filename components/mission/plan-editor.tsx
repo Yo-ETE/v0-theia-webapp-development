@@ -1063,8 +1063,11 @@ export function PlanEditor({
             })()}
             {/* Edge labels in badge style: "A: 15.2m" */}
             {drawPoints.map((p, i) => {
+              // For facades (2 points), only show label for edge 0->1
+              // For polygons (3+ points), show all edges except the closing one (rendered separately)
+              if (drawPoints.length === 2 && i === 1) return null
+              if (drawPoints.length >= 3 && i === drawPoints.length - 1) return null
               const nextIdx = (i + 1) % drawPoints.length
-              if (i === drawPoints.length - 1 && drawPoints.length < 3) return null
               const nextP = drawPoints[nextIdx]
               const [x1, y1] = toSvg(p)
               const [x2, y2] = toSvg(nextP)
