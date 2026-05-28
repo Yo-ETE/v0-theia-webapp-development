@@ -636,6 +636,18 @@ export function PlanEditor({
     ? zones.map(z => z.id === editingZoneId ? { ...z, polygon: editPoly } : z)
     : zones
 
+  // Combined drag handler - MUST be before ALL conditional returns!
+  const isDragging = draggingDrawVertex !== null || draggingEditVertex !== null
+  const handleDrag = useCallback((e: React.MouseEvent | React.TouchEvent) => {
+    if (draggingDrawVertex !== null) handleDrawVertexDrag(e)
+    else if (draggingEditVertex !== null) handleEditVertexDrag(e)
+  }, [draggingDrawVertex, draggingEditVertex, handleDrawVertexDrag, handleEditVertexDrag])
+
+  const handleDragEnd = useCallback(() => {
+    handleDrawVertexDragEnd()
+    handleEditVertexDragEnd()
+  }, [handleDrawVertexDragEnd, handleEditVertexDragEnd])
+
   // Loading / error states (no image URL yet, or still loading)
   if (!resolvedImage || imgLoading) {
     return (
@@ -647,18 +659,6 @@ export function PlanEditor({
       </div>
     )
   }
-
-  // Combined drag handler - MUST be before conditional returns!
-  const isDragging = draggingDrawVertex !== null || draggingEditVertex !== null
-  const handleDrag = useCallback((e: React.MouseEvent | React.TouchEvent) => {
-    if (draggingDrawVertex !== null) handleDrawVertexDrag(e)
-    else if (draggingEditVertex !== null) handleEditVertexDrag(e)
-  }, [draggingDrawVertex, draggingEditVertex, handleDrawVertexDrag, handleEditVertexDrag])
-
-  const handleDragEnd = useCallback(() => {
-    handleDrawVertexDragEnd()
-    handleEditVertexDragEnd()
-  }, [handleDrawVertexDragEnd, handleEditVertexDragEnd])
 
   if (imgError) {
     return (
