@@ -958,19 +958,46 @@ export default function MissionDetailPage() {
   })
   // Merge: SSE events first (newest), then DB events not already in SSE list
   // Filter out detections from muted devices
-  // Note: Floor filtering for Detection Feed uses device assignment, not zone
+  // Detection Feed is now PURELY real-time (SSE only) - no DB detections
+  // After 5 min of inactivity, only the last detection is shown as reference
   const mutedDeviceIds = new Set(missionDevices.filter(d => d.muted).map(d => d.id))
   const floorDeviceIdsForFeed = floorLevels.length > 1 
     ? new Set(floorFilteredDevices.map(d => d.id))
     : null
-  const sseTimestamps = new Set(liveDetections.map(d => d.timestamp))
-  const displayDetections: LiveDetection[] = [
-    ...liveDetections,
-    ...dbDetections.filter(d => !sseTimestamps.has(d.timestamp)),
-  ].filter(d => !mutedDeviceIds.has(d.device_id))
-   .filter(d => feedDeviceFilter === "all" || d.device_id === feedDeviceFilter)
-   .filter(d => !floorDeviceIdsForFeed || floorDeviceIdsForFeed.has(d.device_id)) // Floor filter by device
-   .slice(0, 50)
+  
+  // Track last activity time for TTL
+  const [lastActivityTime, setLastActivityTime] = useState<number>(() => Date.now())
+  const [feedExpired, setFeedExpired] = useState(false)
+  const FEED_TTL_MS = 5 * 60 * 1000 // 5 minutes
+  
+  // Update last activity time when new detections arrive
+  useEffect(() => {
+    if (liveDetections.length > 0) {
+      setLastActivityTime(Date.now())
+      setFeedExpired(false)
+    }
+  }, [liveDetections.length])
+  
+  // Check TTL expiration every 30s
+  useEffect(() => {
+    const interval = setInterval(() => {
+      if (Date.now() - lastActivityTime > FEED_TTL_MS && liveDetections.length > 0) {
+        setFeedExpired(true)
+      }
+    }, 30000)
+    return () => clearInterval(interval)
+  }, [lastActivityTime, liveDetections.length])
+  
+  // Build display detections - SSE only, with TTL logic
+  const allSseDetections = liveDetections
+    .filter(d => !mutedDeviceIds.has(d.device_id))
+    .filter(d => feedDeviceFilter === "all" || d.device_id === feedDeviceFilter)
+    .filter(d => !floorDeviceIdsForFeed || floorDeviceIdsForFeed.has(d.device_id))
+  
+  // If expired, only show last detection; otherwise show up to 50
+  const displayDetections: LiveDetection[] = feedExpired && allSseDetections.length > 0
+    ? [allSseDetections[0]] // Only the most recent
+    : allSseDetections.slice(0, 50)
 
   // Auto-switch floor when detection arrives from a different floor (Live mode only)
   const lastDetectionRef = useRef<string | null>(null)
@@ -1998,6 +2025,15 @@ export default function MissionDetailPage() {
                       <CardTitle className="text-xs flex items-center gap-1.5">
                         <Zap className="h-3 w-3 text-warning" />
                         Detection Feed
+                        {feedExpired && displayDetections.length > 0 && (
+                          <span className="text-[9px] text-muted-foreground font-normal ml-1">(derniere detection)</span>
+                        )}
+                        {!feedExpired && displayDetections.length > 0 && (
+                          <span className="relative flex h-2 w-2 ml-1">
+                            <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-primary opacity-75"></span>
+                            <span className="relative inline-flex rounded-full h-2 w-2 bg-primary"></span>
+                          </span>
+                        )}
                       </CardTitle>
                       <div className="flex items-center gap-2 flex-wrap">
                         {missionDevices.length > 1 && (
@@ -2079,7 +2115,11 @@ export default function MissionDetailPage() {
                   </CardHeader>
                   <CardContent ref={feedRef} className="flex flex-col gap-1 max-h-64 overflow-y-auto">
                     {displayDetections.length === 0 ? (
-                      <p className="text-xs text-muted-foreground py-2 text-center">No detections yet</p>
+                      <p className="text-xs text-muted-foreground py-2 text-center">
+                        En attente de detections...
+                        <br />
+                        <span className="text-[10px]">Les detections apparaitront ici en temps reel</span>
+                      </p>
                     ) : displayDetections.map((det, i) => {
                       // Check if this presence-only detection is triangulated with a distance-based detection
                       const isTriangulated = det.sensor_type === "gravity_mw" && det.presence && displayDetections.some((other, j) => {
