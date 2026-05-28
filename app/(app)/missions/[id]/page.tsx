@@ -260,9 +260,6 @@ export default function MissionDetailPage() {
     const d = event.data as unknown as LiveDetection
     if (d.mission_id !== id) return
 
-    // Debug: log incoming SSE detections to understand data source
-    console.log("[v0] SSE detection received:", d.timestamp, d.tx_id, d.zone_label)
-
     // Skip muted devices -- no feed, no map markers, no state update
     if (d.device_id && mutedIdsRef.current.has(d.device_id)) return
 
@@ -295,9 +292,45 @@ export default function MissionDetailPage() {
 
   useSSE(handleSSE)
 
-  // Detection Feed is now PURELY SSE-based.
-  // No DB events are loaded into the feed - history is available in the History tab.
-  // When user leaves and returns, feed starts empty until new SSE detections arrive.
+  // Detection Feed: SSE-based with last DB detection as initial reference.
+  // When user enters the mission, load the most recent DB detection to show context.
+  // New SSE detections will be added on top.
+  const initialLoadDoneRef = useRef(false)
+  useEffect(() => {
+    if (initialLoadDoneRef.current || !events || events.length === 0) return
+    initialLoadDoneRef.current = true
+    
+    // Get the most recent event from DB as a reference
+    const latestEvent = events[0]
+    if (!latestEvent) return
+    
+    const ev = latestEvent as DetectionEvent & Record<string, unknown>
+    const p = (typeof ev.payload === "string" ? (() => { try { return JSON.parse(ev.payload as string) } catch { return {} } })() : (ev.payload ?? {})) as Record<string, unknown>
+    
+    const lastDetection: LiveDetection = {
+      device_id: ev.device_id ?? "",
+      device_name: (p.device_name ?? ev.device_name ?? ev.device_id ?? "") as string,
+      tx_id: (p.tx_id ?? (ev as Record<string, unknown>).tx_id ?? "") as string | null,
+      sensor_type: (p.sensor_type ?? "ld2450") as string,
+      mission_id: ev.mission_id ?? "",
+      zone_id: ev.zone_id ?? "",
+      zone_label: (p.zone_label ?? (ev as Record<string, unknown>).zone_label ?? "") as string,
+      side: ((ev as Record<string, unknown>).side ?? "") as string,
+      presence: true,
+      distance: Number(p.distance ?? 0),
+      speed: Number(p.speed ?? 0),
+      angle: Number(p.angle ?? 0),
+      direction: (p.direction ?? "C") as string,
+      vbatt_tx: null,
+      rssi: ev.rssi ?? null,
+      timestamp: ev.timestamp ?? new Date().toISOString(),
+    }
+    
+    // Only set if feed is empty (no SSE detections yet)
+    setLiveDetections(prev => prev.length === 0 ? [lastDetection] : prev)
+    // Mark as expired immediately so it shows as "derniere detection"
+    setFeedExpired(true)
+  }, [events])
 
   // ─── Bearing grouping: segments facing the same direction share the same face label ──
   // Uses FULL 0-360 bearing so north-facing (0) and south-facing (180) are DIFFERENT faces.
@@ -2100,6 +2133,9 @@ export default function MissionDetailPage() {
                       })
                       // Get TX name from device or tx_id, fallback to zone_label
                       const txName = det.tx_id ? `TX-${det.tx_id}` : (det.device_name || det.zone_label || "Unknown")
+                      // Show relative time for expired feed (last detection reference)
+                      const showRelativeTime = feedExpired && i === 0
+                      const relativeTime = showRelativeTime ? formatRelativeLocal(det.timestamp) : null
                       return (
                       <div
                         key={`det-${det.timestamp}-${i}`}
@@ -2125,7 +2161,7 @@ export default function MissionDetailPage() {
                               </span>
                             )}
                             <span className="text-[9px] text-muted-foreground font-mono ml-auto shrink-0">
-                              {formatTimeLocal(det.timestamp)}
+                              {showRelativeTime ? relativeTime : formatTimeLocal(det.timestamp)}
                             </span>
                           </div>
                           <div className="flex items-center gap-2 mt-0.5 flex-wrap">
