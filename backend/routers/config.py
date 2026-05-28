@@ -107,6 +107,39 @@ def _get_ap_capable_interface():
     return wifi_interfaces[0] if wifi_interfaces else "wlan0"
 
 
+def _get_scan_capable_interface():
+    """Find a WiFi interface that can scan (not in AP mode)."""
+    import os
+    
+    # Get all WiFi interfaces
+    wifi_interfaces = []
+    try:
+        for iface in os.listdir("/sys/class/net"):
+            wireless_path = f"/sys/class/net/{iface}/wireless"
+            if os.path.isdir(wireless_path):
+                wifi_interfaces.append(iface)
+    except Exception:
+        wifi_interfaces = ["wlan0", "wlan1"]
+    
+    # Find an interface NOT in AP mode
+    for iface in wifi_interfaces:
+        try:
+            iw_check = subprocess.run(
+                ["iw", "dev", iface, "info"],
+                capture_output=True, text=True, timeout=5
+            )
+            if iw_check.returncode == 0:
+                # Check if this interface is in AP mode
+                if "type AP" not in iw_check.stdout:
+                    # This interface can scan
+                    return iface
+        except Exception:
+            continue
+    
+    # Fallback: return first interface even if it's in AP mode
+    return wifi_interfaces[0] if wifi_interfaces else "wlan0"
+
+
 # ── WiFi ──────────────────────────────────────────────────────────
 
 @router.get("/wifi/status")
@@ -183,7 +216,9 @@ async def wifi_scan():
     """Scan available WiFi networks."""
     try:
         def _scan():
-            iface = _get_wifi_interface()
+            # Use an interface that's not in AP mode for scanning
+            iface = _get_scan_capable_interface()
+            print(f"[THEIA] WiFi scan using interface: {iface}", flush=True)
             result = subprocess.run(
                 ["sudo", "iwlist", iface, "scan"],
                 capture_output=True, text=True, timeout=15
