@@ -363,6 +363,17 @@ export function PlanEditor({
 
   // Edit zone vertex dragging
   const [draggingEditVertex, setDraggingEditVertex] = useState<number | null>(null)
+  
+  // Store refs for values that change frequently to avoid dependency issues
+  const editingPolygonRef = useRef(editingPolygon)
+  const editingZoneIdRef = useRef(editingZoneId)
+  const onZonePolygonUpdateRef = useRef(onZonePolygonUpdate)
+  
+  useEffect(() => {
+    editingPolygonRef.current = editingPolygon
+    editingZoneIdRef.current = editingZoneId
+    onZonePolygonUpdateRef.current = onZonePolygonUpdate
+  }, [editingPolygon, editingZoneId, onZonePolygonUpdate])
 
   const handleEditVertexDragStart = useCallback((index: number, e: React.MouseEvent | React.TouchEvent) => {
     e.preventDefault()
@@ -371,15 +382,15 @@ export function PlanEditor({
   }, [])
 
   const handleEditVertexDrag = useCallback((e: React.MouseEvent | React.TouchEvent) => {
-    if (draggingEditVertex === null || !editingZoneId || !editingPolygon) return
+    if (draggingEditVertex === null || !editingZoneIdRef.current || !editingPolygonRef.current) return
     e.preventDefault()
     const clientX = "touches" in e ? e.touches[0].clientX : e.clientX
     const clientY = "touches" in e ? e.touches[0].clientY : e.clientY
     const pt = toImgCoords(clientX, clientY)
-    const newPoly = [...editingPolygon]
+    const newPoly = [...editingPolygonRef.current]
     newPoly[draggingEditVertex] = pt
-    onZonePolygonUpdate?.(editingZoneId, newPoly)
-  }, [draggingEditVertex, editingZoneId, editingPolygon, toImgCoords, onZonePolygonUpdate])
+    onZonePolygonUpdateRef.current?.(editingZoneIdRef.current, newPoly)
+  }, [draggingEditVertex, toImgCoords])
 
   const handleEditVertexDragEnd = useCallback(() => {
     setDraggingEditVertex(null)
@@ -652,7 +663,7 @@ export function PlanEditor({
   const isDragging = draggingDrawVertex !== null || draggingEditVertex !== null
   const handleDrag = useCallback((e: React.MouseEvent | React.TouchEvent) => {
     if (draggingDrawVertex !== null) handleDrawVertexDrag(e)
-    if (draggingEditVertex !== null) handleEditVertexDrag(e)
+    else if (draggingEditVertex !== null) handleEditVertexDrag(e)
   }, [draggingDrawVertex, draggingEditVertex, handleDrawVertexDrag, handleEditVertexDrag])
 
   const handleDragEnd = useCallback(() => {
