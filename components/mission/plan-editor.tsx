@@ -361,9 +361,6 @@ export function PlanEditor({
     setDraggingDrawVertex(null)
   }, [])
 
-  // Edit zone vertex dragging
-  const [draggingEditVertex, setDraggingEditVertex] = useState<number | null>(null)
-  
   // Store refs for values that change frequently to avoid dependency issues
   const editingPolygonRef = useRef(editingPolygon)
   const editingZoneIdRef = useRef(editingZoneId)
@@ -374,6 +371,9 @@ export function PlanEditor({
     editingZoneIdRef.current = editingZoneId
     onZonePolygonUpdateRef.current = onZonePolygonUpdate
   }, [editingPolygon, editingZoneId, onZonePolygonUpdate])
+
+  // Edit zone vertex dragging
+  const [draggingEditVertex, setDraggingEditVertex] = useState<number | null>(null)
 
   const handleEditVertexDragStart = useCallback((index: number, e: React.MouseEvent | React.TouchEvent) => {
     e.preventDefault()
@@ -648,18 +648,7 @@ export function PlanEditor({
     )
   }
 
-  if (imgError) {
-    return (
-      <div ref={containerRef} className={cn("flex items-center justify-center rounded-lg bg-muted/10 min-h-[300px] border-2 border-dashed border-border/50", className)}>
-        <div className="flex flex-col items-center gap-2 text-muted-foreground">
-          <p className="text-sm font-medium">Image du plan introuvable</p>
-          <p className="text-xs">Importez un plan via le bouton ci-dessous</p>
-        </div>
-      </div>
-    )
-  }
-
-  // Combined drag handler
+  // Combined drag handler - MUST be before conditional returns!
   const isDragging = draggingDrawVertex !== null || draggingEditVertex !== null
   const handleDrag = useCallback((e: React.MouseEvent | React.TouchEvent) => {
     if (draggingDrawVertex !== null) handleDrawVertexDrag(e)
@@ -670,6 +659,17 @@ export function PlanEditor({
     handleDrawVertexDragEnd()
     handleEditVertexDragEnd()
   }, [handleDrawVertexDragEnd, handleEditVertexDragEnd])
+
+  if (imgError) {
+    return (
+      <div ref={containerRef} className={cn("flex items-center justify-center rounded-lg bg-muted/10 min-h-[300px] border-2 border-dashed border-border/50", className)}>
+        <div className="flex flex-col items-center gap-2 text-muted-foreground">
+          <p className="text-sm font-medium">Image du plan introuvable</p>
+          <p className="text-xs">Importez un plan via le bouton ci-dessous</p>
+        </div>
+      </div>
+    )
+  }
 
   return (
     <div
