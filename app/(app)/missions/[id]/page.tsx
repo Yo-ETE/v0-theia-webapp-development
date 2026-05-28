@@ -1237,16 +1237,17 @@ export default function MissionDetailPage() {
               drawingMode={drawingMode}
               sensorPlaceMode={sensorPlaceMode}
               onZoneCreated={handlePolygonDrawn}
+              onDrawingCancel={() => setDrawingMode(false)}
               onSensorPlace={(zoneId, side, t) => {
                 handleSensorPlace(zoneId, side, t)
               }}
               onZonePolygonUpdate={updateZonePolygon}
-  showFov={showFov}
-  calibrationMode={calibrationMode}
-  onCalibrationDone={handleCalibrationDone}
-  planScale={mission?.plan_scale ?? null}
-  visualConfig={visualConfig}
-  className="rounded-lg overflow-hidden border border-border/50 h-[calc(100vh-310px)]"
+              showFov={showFov}
+              calibrationMode={calibrationMode}
+              onCalibrationDone={handleCalibrationDone}
+              planScale={mission?.plan_scale ?? null}
+              visualConfig={visualConfig}
+              className="rounded-lg overflow-hidden border border-border/50 h-[calc(100vh-310px)]"
             />
           ) : (
           /* Full-height map */
@@ -1544,6 +1545,7 @@ export default function MissionDetailPage() {
                       drawingMode={drawingMode}
                       sensorPlaceMode={sensorPlaceMode}
                       onZoneCreated={handlePolygonDrawn}
+                      onDrawingCancel={() => setDrawingMode(false)}
                       onSensorPlace={(zoneId, side, t) => {
                         handleSensorPlace(zoneId, side, t)
                       }}

@@ -49,6 +49,8 @@ interface PlanEditorProps {
   onPolygonDrawn?: (polygon: [number, number][]) => void
   /** Alias: same as onPolygonDrawn, called with (polygon) */
   onZoneCreated?: (polygon: [number, number][]) => void
+  /** Called when drawing is cancelled */
+  onDrawingCancel?: () => void
   onZoneClick?: (zoneId: string) => void
   sensorPlaceMode?: SensorPlaceMode | null
   onSensorPlace?: (zoneId: string, side: string, position: number) => void
@@ -64,6 +66,8 @@ interface PlanEditorProps {
   planScale?: number | null
   /** Visual configuration (colors, opacities) from per-mission settings */
   visualConfig?: VisualConfig | null
+  /** Show measurements (side lengths, area) on zones */
+  showMeasurements?: boolean
 }
 
 /** Group polygon edges by bearing -- simplified for pixel coords */
@@ -75,6 +79,42 @@ function groupSidesByBearing(polygon: [number, number][]): Record<number, string
     sides[i] = String.fromCharCode(65 + i)
   }
   return sides
+}
+
+/** Calculate polygon area in square pixels */
+function polygonAreaPx(polygon: [number, number][]): number {
+  if (polygon.length < 3) return 0
+  let area = 0
+  for (let i = 0; i < polygon.length; i++) {
+    const j = (i + 1) % polygon.length
+    // polygon is [row, col] format
+    area += polygon[i][1] * polygon[j][0]
+    area -= polygon[j][1] * polygon[i][0]
+  }
+  return Math.abs(area) / 2
+}
+
+/** Calculate edge length in pixels */
+function edgeLengthPx(p1: [number, number], p2: [number, number]): number {
+  const dr = p2[0] - p1[0]
+  const dc = p2[1] - p1[1]
+  return Math.sqrt(dr * dr + dc * dc)
+}
+
+/** Format distance for display */
+function formatDistance(px: number, scale: number | null): string {
+  if (!scale || scale <= 0) return `${Math.round(px)}px`
+  const meters = px / scale
+  if (meters < 1) return `${Math.round(meters * 100)}cm`
+  return `${meters.toFixed(1)}m`
+}
+
+/** Format area for display */
+function formatArea(pxArea: number, scale: number | null): string {
+  if (!scale || scale <= 0) return `${Math.round(pxArea)}px2`
+  const m2 = pxArea / (scale * scale)
+  if (m2 < 1) return `${Math.round(m2 * 10000)}cm2`
+  return `${m2.toFixed(1)}m2`
 }
 
 /** Get a point along a polygon edge at parameter t (0..1) */
@@ -102,6 +142,7 @@ export function PlanEditor({
   drawingMode = false,
   onPolygonDrawn,
   onZoneCreated,
+  onDrawingCancel,
   onZoneClick,
   sensorPlaceMode,
   onSensorPlace,
@@ -113,6 +154,7 @@ export function PlanEditor({
   onCalibrationDone,
   planScale,
   visualConfig,
+  showMeasurements = true,
 }: PlanEditorProps) {
   // Use provided visual config or fall back to defaults
   const vc: VisualConfig = useMemo(() => visualConfig ?? {
@@ -252,6 +294,43 @@ export function PlanEditor({
     handlePolygonDone(drawPoints)
     setDrawPoints([])
   }, [drawingMode, handlePolygonDone, drawPoints])
+
+  // Undo last point
+  const undoLastPoint = useCallback(() => {
+    setDrawPoints(prev => prev.slice(0, -1))
+  }, [])
+
+  // Cancel drawing
+  const cancelDrawing = useCallback(() => {
+    setDrawPoints([])
+    onDrawingCancel?.()
+  }, [onDrawingCancel])
+
+  // Finish drawing (validate)
+  const finishDrawing = useCallback(() => {
+    if (drawPoints.length >= 3 && handlePolygonDone) {
+      handlePolygonDone(drawPoints)
+      setDrawPoints([])
+    }
+  }, [drawPoints, handlePolygonDone])
+
+  // Calculate drawing stats
+  const drawingPerimeter = useMemo(() => {
+    if (drawPoints.length < 2) return 0
+    let total = 0
+    for (let i = 0; i < drawPoints.length - 1; i++) {
+      total += edgeLengthPx(drawPoints[i], drawPoints[i + 1])
+    }
+    if (drawPoints.length >= 3) {
+      total += edgeLengthPx(drawPoints[drawPoints.length - 1], drawPoints[0])
+    }
+    return total
+  }, [drawPoints])
+
+  const drawingArea = useMemo(() => {
+    if (drawPoints.length < 3) return 0
+    return polygonAreaPx(drawPoints)
+  }, [drawPoints])
 
   // Sensor placement click -- find closest edge
   const handlePlaceClick = useCallback((e: React.MouseEvent | React.TouchEvent) => {
@@ -549,6 +628,9 @@ export function PlanEditor({
           // If user set a custom zone_fill_color (different from default), use it for ALL zones
           const isCustomZoneColor = vc.zone_fill_color !== "#3b82f6"
           const zoneColor = isCustomZoneColor ? vc.zone_fill_color : (zone.color || vc.zone_fill_color)
+          
+          // Calculate zone area
+          const zoneAreaPx = polygonAreaPx(zone.polygon)
 
           return (
             <g key={zone.id} onClick={(e) => { e.stopPropagation(); onZoneClick?.(zone.id) }} className="cursor-pointer">
@@ -561,41 +643,99 @@ export function PlanEditor({
                 strokeWidth={2}
                 strokeOpacity={vc.zone_stroke_opacity}
               />
-              {/* Side labels */}
+              {/* Vertex labels (circles with letters at corners) */}
+              {zone.polygon.map((pt, i) => {
+                const [sx, sy] = toSvg(pt)
+                const label = String.fromCharCode(65 + i)
+                return (
+                  <g key={`vertex-label-${zone.id}-${i}`}>
+                    <circle
+                      cx={sx}
+                      cy={sy}
+                      r={10}
+                      fill={zoneColor}
+                      stroke="hsl(var(--background))"
+                      strokeWidth={2}
+                      className="pointer-events-none"
+                    />
+                    <text
+                      x={sx}
+                      y={sy}
+                      textAnchor="middle"
+                      dominantBaseline="central"
+                      className="text-[9px] font-mono font-bold pointer-events-none"
+                      style={{ fill: "#ffffff" }}
+                    >
+                      {label}
+                    </text>
+                  </g>
+                )
+              })}
+              {/* Side labels with measurements */}
               {zone.polygon.map((pt, i) => {
                 const nextPt = zone.polygon[(i + 1) % zone.polygon.length]
                 const mid = toSvg([(pt[0] + nextPt[0]) / 2, (pt[1] + nextPt[1]) / 2] as [number, number])
                 const label = sides[i] ?? String.fromCharCode(65 + i)
+                const lengthPx = edgeLengthPx(pt, nextPt)
+                const lengthStr = showMeasurements ? formatDistance(lengthPx, planScale) : ""
                 return (
-                  <text
-                    key={`side-${zone.id}-${i}`}
-                    x={mid[0]}
-                    y={mid[1]}
-                    textAnchor="middle"
-                    dominantBaseline="central"
-                    className="text-[10px] font-mono font-bold pointer-events-none"
-                    style={{ fill: "#ffffff", paintOrder: "stroke", stroke: "hsl(var(--background))", strokeWidth: 4 }}
-                  >
-                    {label}
-                  </text>
+                  <g key={`side-${zone.id}-${i}`}>
+                    <text
+                      x={mid[0]}
+                      y={mid[1] - (showMeasurements ? 8 : 0)}
+                      textAnchor="middle"
+                      dominantBaseline="central"
+                      className="text-[10px] font-mono font-bold pointer-events-none"
+                      style={{ fill: "#ffffff", paintOrder: "stroke", stroke: "hsl(var(--background))", strokeWidth: 4 }}
+                    >
+                      {label}
+                    </text>
+                    {showMeasurements && lengthStr && (
+                      <text
+                        x={mid[0]}
+                        y={mid[1] + 8}
+                        textAnchor="middle"
+                        dominantBaseline="central"
+                        className="text-[8px] font-mono pointer-events-none"
+                        style={{ fill: zoneColor, paintOrder: "stroke", stroke: "hsl(var(--background))", strokeWidth: 3 }}
+                      >
+                        ({lengthStr})
+                      </text>
+                    )}
+                  </g>
                 )
               })}
-              {/* Zone name */}
+              {/* Zone name + area */}
               {(() => {
                 const cx = zone.polygon.reduce((s, p) => s + p[1], 0) / zone.polygon.length
                 const cy = zone.polygon.reduce((s, p) => s + p[0], 0) / zone.polygon.length
                 const [sx, sy] = toSvg([cy, cx] as [number, number])
+                const areaStr = showMeasurements ? formatArea(zoneAreaPx, planScale) : ""
                 return (
-                  <text
-                    x={sx}
-                    y={sy}
-                    textAnchor="middle"
-                    dominantBaseline="central"
-                    className="text-[12px] font-bold pointer-events-none"
-                    style={{ fill: zoneColor, paintOrder: "stroke", stroke: "hsl(var(--background))", strokeWidth: 5 }}
-                  >
-                    {zone.name || zone.label}
-                  </text>
+                  <g>
+                    <text
+                      x={sx}
+                      y={sy - (showMeasurements ? 8 : 0)}
+                      textAnchor="middle"
+                      dominantBaseline="central"
+                      className="text-[12px] font-bold pointer-events-none"
+                      style={{ fill: zoneColor, paintOrder: "stroke", stroke: "hsl(var(--background))", strokeWidth: 5 }}
+                    >
+                      {zone.name || zone.label}
+                    </text>
+                    {showMeasurements && areaStr && (
+                      <text
+                        x={sx}
+                        y={sy + 10}
+                        textAnchor="middle"
+                        dominantBaseline="central"
+                        className="text-[10px] font-mono pointer-events-none"
+                        style={{ fill: zoneColor, paintOrder: "stroke", stroke: "hsl(var(--background))", strokeWidth: 3, opacity: 0.9 }}
+                      >
+                        {areaStr}
+                      </text>
+                    )}
+                  </g>
                 )
               })()}
               {/* Vertex handles when editing */}
@@ -606,9 +746,9 @@ export function PlanEditor({
                     key={`vertex-${i}`}
                     cx={sx}
                     cy={sy}
-                    r={8}
+                    r={12}
                     className="fill-primary stroke-background cursor-grab active:cursor-grabbing"
-                    strokeWidth={2}
+                    strokeWidth={3}
                     onMouseDown={(e) => handleVertexDragStart(i, e)}
                     onTouchStart={(e) => handleVertexDragStart(i, e)}
                   />
@@ -810,37 +950,126 @@ export function PlanEditor({
         {/* Drawing mode: in-progress polygon */}
         {drawingMode && drawPoints.length > 0 && (
           <g>
-            <polyline
-              points={drawPoints.map(p => { const [x, y] = toSvg(p); return `${x},${y}` }).join(" ")}
-              fill="none"
-              stroke={vc.fov_overlay_color}
-              strokeWidth={2}
-              strokeDasharray="6 3"
-            />
+            {/* Polygon fill preview */}
+            {drawPoints.length >= 3 && (
+              <polygon
+                points={drawPoints.map(p => { const [x, y] = toSvg(p); return `${x},${y}` }).join(" ")}
+                fill={vc.fov_overlay_color}
+                fillOpacity={0.15}
+                stroke="none"
+              />
+            )}
+            {/* Edges with measurements */}
             {drawPoints.map((p, i) => {
-              const [x, y] = toSvg(p)
+              if (i === drawPoints.length - 1 && drawPoints.length < 3) return null
+              const nextP = i === drawPoints.length - 1 ? drawPoints[0] : drawPoints[i + 1]
+              const [x1, y1] = toSvg(p)
+              const [x2, y2] = toSvg(nextP)
+              const midX = (x1 + x2) / 2
+              const midY = (y1 + y2) / 2
+              const lengthPx = edgeLengthPx(p, nextP)
+              const lengthStr = formatDistance(lengthPx, planScale)
               return (
-                <circle
-                  key={i}
-                  cx={x} cy={y} r={5}
-                  className="fill-cyan-400 stroke-background"
-                  strokeWidth={2}
-                />
+                <g key={`draw-edge-${i}`}>
+                  <line
+                    x1={x1} y1={y1} x2={x2} y2={y2}
+                    stroke={vc.fov_overlay_color}
+                    strokeWidth={2}
+                    strokeDasharray={i === drawPoints.length - 1 ? "4 4" : "none"}
+                  />
+                  <text
+                    x={midX}
+                    y={midY - 8}
+                    textAnchor="middle"
+                    className="text-[9px] font-mono pointer-events-none"
+                    style={{ fill: vc.fov_overlay_color, paintOrder: "stroke", stroke: "hsl(var(--background))", strokeWidth: 3 }}
+                  >
+                    {lengthStr}
+                  </text>
+                </g>
               )
             })}
-            {drawPoints.length >= 3 && (
-              <text
-                x={toSvg(drawPoints[drawPoints.length - 1])[0]}
-                y={toSvg(drawPoints[drawPoints.length - 1])[1] - 14}
-                textAnchor="middle"
-                className="fill-cyan-300 text-[9px] font-mono pointer-events-none"
-              >
-                double-clic pour fermer
-              </text>
-            )}
+            {/* Closing edge dashed line */}
+            {drawPoints.length >= 3 && (() => {
+              const first = drawPoints[0]
+              const last = drawPoints[drawPoints.length - 1]
+              const [x1, y1] = toSvg(last)
+              const [x2, y2] = toSvg(first)
+              return (
+                <line
+                  x1={x1} y1={y1} x2={x2} y2={y2}
+                  stroke={vc.fov_overlay_color}
+                  strokeWidth={2}
+                  strokeDasharray="4 4"
+                  strokeOpacity={0.6}
+                />
+              )
+            })()}
+            {/* Vertex circles with labels */}
+            {drawPoints.map((p, i) => {
+              const [x, y] = toSvg(p)
+              const label = String.fromCharCode(65 + i)
+              return (
+                <g key={`draw-vertex-${i}`}>
+                  <circle
+                    cx={x} cy={y} r={12}
+                    fill={vc.fov_overlay_color}
+                    stroke="hsl(var(--background))"
+                    strokeWidth={2}
+                  />
+                  <text
+                    x={x}
+                    y={y}
+                    textAnchor="middle"
+                    dominantBaseline="central"
+                    className="text-[10px] font-mono font-bold pointer-events-none"
+                    style={{ fill: "#ffffff" }}
+                  >
+                    {label}
+                  </text>
+                </g>
+              )
+            })}
           </g>
         )}
       </svg>
+
+      {/* Drawing mode overlay (HTML) */}
+      {drawingMode && (
+        <div className="absolute top-2 left-2 right-2 z-20 flex flex-col gap-2">
+          <div className="flex items-center justify-between gap-2 bg-cyan-950/90 backdrop-blur rounded-lg px-3 py-2.5 border border-cyan-500/40 shadow-lg">
+            <span className="text-xs text-cyan-300 font-medium">
+              DRAW-- touchez pour placer les points
+              {drawPoints.length >= 2 && ` | P: ${formatDistance(drawingPerimeter, planScale)}`}
+              {drawPoints.length >= 3 && ` | ${formatArea(drawingArea, planScale)}`}
+            </span>
+          </div>
+          {drawPoints.length > 0 && (
+            <div className="flex items-center gap-2 justify-end">
+              <button
+                onClick={undoLastPoint}
+                className="rounded-lg bg-card/95 backdrop-blur px-4 py-2.5 text-xs font-medium text-foreground active:bg-muted border border-border shadow-sm transition-colors min-h-[44px]"
+              >
+                Undo
+              </button>
+              <button
+                onClick={cancelDrawing}
+                className="rounded-lg bg-card/95 backdrop-blur px-4 py-2.5 text-xs font-medium text-destructive active:bg-destructive/10 border border-border shadow-sm transition-colors min-h-[44px]"
+              >
+                Cancel
+              </button>
+              {drawPoints.length >= 3 && (
+                <button
+                  onClick={finishDrawing}
+                  className="rounded-lg bg-cyan-600 px-5 py-2.5 text-xs font-semibold text-white active:bg-cyan-500 shadow-lg transition-colors min-h-[44px] flex-1"
+                >
+                  Validate ({drawPoints.length} pts)
+                </button>
+              )}
+            </div>
+          )}
+        </div>
+      )}
 
       {/* Calibration distance input (HTML overlay) */}
       {calibrationMode && calPoints.length === 2 && (
