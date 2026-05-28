@@ -61,7 +61,15 @@ install_system_packages() {
         curl wget git \
         build-essential \
         sqlite3 \
+        hostapd dnsmasq \
         2>/dev/null
+    
+    # Disable hostapd and dnsmasq services (we manage them manually for hotspot)
+    systemctl stop hostapd 2>/dev/null || true
+    systemctl disable hostapd 2>/dev/null || true
+    systemctl unmask hostapd 2>/dev/null || true
+    systemctl stop dnsmasq 2>/dev/null || true
+    systemctl disable dnsmasq 2>/dev/null || true
 
     ok "System packages installed"
 }

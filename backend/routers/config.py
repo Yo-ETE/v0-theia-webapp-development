@@ -379,6 +379,10 @@ async def hotspot_start(body: dict = None):
                     capture_output=True, text=True, timeout=5
                 )
                 print(f"[THEIA] Hotspot: active connections: {conn_check.stdout}", flush=True)
+                # Check if the SSID or "Hotspot" appears in active wireless connections
+                # nmcli names the connection with the SSID, so check for that too
+                if ssid in conn_check.stdout and "802-11-wireless" in conn_check.stdout:
+                    return {"status": "success", "message": f"Hotspot '{ssid}' demarre sur {iface} (nmcli)"}
                 if "Hotspot" in conn_check.stdout or "hotspot" in conn_check.stdout.lower():
                     return {"status": "success", "message": f"Hotspot '{ssid}' demarre sur {iface} (nmcli)"}
                 # nmcli said OK but hotspot not actually running, continue to fallback
