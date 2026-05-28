@@ -293,73 +293,9 @@ export default function MissionDetailPage() {
 
   useSSE(handleSSE)
 
-  // Detection Feed: SSE-based with last DB detection as initial reference.
-  // When user enters the mission, load the most recent DB detection to show context.
-  // New SSE detections will be added on top.
-  const initialLoadDoneRef = useRef(false)
-  useEffect(() => {
-    if (initialLoadDoneRef.current || !events || events.length === 0) return
-    initialLoadDoneRef.current = true
-    
-    // Helper to parse timestamps (handles both "YYYY-MM-DD HH:mm:ss" and ISO formats)
-    // Timestamps from DB are in LOCAL time (Paris), not UTC
-    const parseTs = (ts: string | null | undefined): number => {
-      if (!ts) return 0
-      // If already ISO format with T, parse directly
-      if (ts.includes("T")) {
-        const d = new Date(ts)
-        return isNaN(d.getTime()) ? 0 : d.getTime()
-      }
-      // DB format "YYYY-MM-DD HH:mm:ss" is local time - parse without adding Z
-      const d = new Date(ts.replace(" ", "T"))
-      return isNaN(d.getTime()) ? 0 : d.getTime()
-    }
-    
-    // Filter out events older than 24 hours (only load recent events from today)
-    const now = Date.now()
-    const oneDayAgo = now - 24 * 60 * 60 * 1000
-    const recentEvents = events.filter(e => parseTs(e.timestamp) > oneDayAgo)
-    
-    // If no recent events, don't load anything - wait for SSE
-    if (recentEvents.length === 0) return
-    
-    // Sort events by timestamp descending to get the most recent one
-    const sortedEvents = [...recentEvents].sort((a, b) => {
-      const tsA = parseTs(a.timestamp)
-      const tsB = parseTs(b.timestamp)
-      return tsB - tsA // Most recent first
-    })
-    
-    const latestEvent = sortedEvents[0]
-    if (!latestEvent) return
-    
-    const ev = latestEvent as DetectionEvent & Record<string, unknown>
-    const p = (typeof ev.payload === "string" ? (() => { try { return JSON.parse(ev.payload as string) } catch { return {} } })() : (ev.payload ?? {})) as Record<string, unknown>
-    
-    const lastDetection: LiveDetection = {
-      device_id: ev.device_id ?? "",
-      device_name: (p.device_name ?? ev.device_name ?? ev.device_id ?? "") as string,
-      tx_id: (p.tx_id ?? (ev as Record<string, unknown>).tx_id ?? "") as string | null,
-      sensor_type: (p.sensor_type ?? "ld2450") as string,
-      mission_id: ev.mission_id ?? "",
-      zone_id: ev.zone_id ?? "",
-      zone_label: (p.zone_label ?? (ev as Record<string, unknown>).zone_label ?? "") as string,
-      side: ((ev as Record<string, unknown>).side ?? "") as string,
-      presence: true,
-      distance: Number(p.distance ?? 0),
-      speed: Number(p.speed ?? 0),
-      angle: Number(p.angle ?? 0),
-      direction: (p.direction ?? "C") as string,
-      vbatt_tx: null,
-      rssi: ev.rssi ?? null,
-      timestamp: ev.timestamp ?? new Date().toISOString(),
-    }
-    
-    // Only set if feed is empty (no SSE detections yet)
-    setLiveDetections(prev => prev.length === 0 ? [lastDetection] : prev)
-    // Mark as expired immediately so it shows as "derniere detection"
-    setFeedExpired(true)
-  }, [events])
+  // Detection Feed: purely SSE-based
+  // Don't load historical DB detections - only show real-time SSE detections
+  // When user enters mission, feed starts empty and fills as detections arrive via SSE
 
   // ─── Bearing grouping: segments facing the same direction share the same face label ─��
   // Uses FULL 0-360 bearing so north-facing (0) and south-facing (180) are DIFFERENT faces.
