@@ -1241,7 +1241,10 @@ export default function MissionDetailPage() {
               onSensorPlace={(zoneId, side, t) => {
                 handleSensorPlace(zoneId, side, t)
               }}
+              editingZoneId={editingZoneId}
+              editingPolygon={editingPolygon}
               onZonePolygonUpdate={updateZonePolygon}
+              onStopEditing={stopEditingZone}
               showFov={showFov}
               calibrationMode={calibrationMode}
               onCalibrationDone={handleCalibrationDone}
@@ -1549,7 +1552,10 @@ export default function MissionDetailPage() {
                       onSensorPlace={(zoneId, side, t) => {
                         handleSensorPlace(zoneId, side, t)
                       }}
+                      editingZoneId={editingZoneId}
+                      editingPolygon={editingPolygon}
                       onZonePolygonUpdate={updateZonePolygon}
+                      onStopEditing={stopEditingZone}
                       showFov={showFov}
                       calibrationMode={calibrationMode}
                       onCalibrationDone={handleCalibrationDone}

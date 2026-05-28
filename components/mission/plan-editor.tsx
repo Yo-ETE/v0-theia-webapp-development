@@ -57,6 +57,8 @@ interface PlanEditorProps {
   editingZoneId?: string | null
   editingPolygon?: [number, number][] | null
   onZonePolygonUpdate?: (zoneId: string, polygon: [number, number][]) => void
+  /** Called when editing is finished (Deplacer button clicked) */
+  onStopEditing?: () => void
   showFov?: boolean
   replayMode?: boolean
   /** Calibration mode: user clicks 2 points to set scale */
@@ -149,6 +151,7 @@ export function PlanEditor({
   editingZoneId,
   editingPolygon,
   onZonePolygonUpdate,
+  onStopEditing,
   showFov = false,
   calibrationMode = false,
   onCalibrationDone,
@@ -356,6 +359,30 @@ export function PlanEditor({
 
   const handleDrawVertexDragEnd = useCallback(() => {
     setDraggingDrawVertex(null)
+  }, [])
+
+  // Edit zone vertex dragging
+  const [draggingEditVertex, setDraggingEditVertex] = useState<number | null>(null)
+
+  const handleEditVertexDragStart = useCallback((index: number, e: React.MouseEvent | React.TouchEvent) => {
+    e.preventDefault()
+    e.stopPropagation()
+    setDraggingEditVertex(index)
+  }, [])
+
+  const handleEditVertexDrag = useCallback((e: React.MouseEvent | React.TouchEvent) => {
+    if (draggingEditVertex === null || !editingZoneId || !editingPolygon) return
+    e.preventDefault()
+    const clientX = "touches" in e ? e.touches[0].clientX : e.clientX
+    const clientY = "touches" in e ? e.touches[0].clientY : e.clientY
+    const pt = toImgCoords(clientX, clientY)
+    const newPoly = [...editingPolygon]
+    newPoly[draggingEditVertex] = pt
+    onZonePolygonUpdate?.(editingZoneId, newPoly)
+  }, [draggingEditVertex, editingZoneId, editingPolygon, toImgCoords, onZonePolygonUpdate])
+
+  const handleEditVertexDragEnd = useCallback(() => {
+    setDraggingEditVertex(null)
   }, [])
 
   // Sensor placement click -- find closest edge
@@ -621,16 +648,28 @@ export function PlanEditor({
     )
   }
 
+  // Combined drag handler
+  const isDragging = draggingDrawVertex !== null || draggingEditVertex !== null
+  const handleDrag = useCallback((e: React.MouseEvent | React.TouchEvent) => {
+    if (draggingDrawVertex !== null) handleDrawVertexDrag(e)
+    if (draggingEditVertex !== null) handleEditVertexDrag(e)
+  }, [draggingDrawVertex, draggingEditVertex, handleDrawVertexDrag, handleEditVertexDrag])
+
+  const handleDragEnd = useCallback(() => {
+    handleDrawVertexDragEnd()
+    handleEditVertexDragEnd()
+  }, [handleDrawVertexDragEnd, handleEditVertexDragEnd])
+
   return (
     <div
       ref={containerRef}
       className={cn("relative select-none overflow-hidden rounded-lg bg-muted/10", className)}
       style={{ height: displayH || "auto" }}
-      onMouseMove={draggingDrawVertex !== null ? handleDrawVertexDrag : undefined}
-      onMouseUp={draggingDrawVertex !== null ? handleDrawVertexDragEnd : undefined}
-      onMouseLeave={draggingDrawVertex !== null ? handleDrawVertexDragEnd : undefined}
-      onTouchMove={draggingDrawVertex !== null ? handleDrawVertexDrag : undefined}
-      onTouchEnd={draggingDrawVertex !== null ? handleDrawVertexDragEnd : undefined}
+      onMouseMove={isDragging ? handleDrag : undefined}
+      onMouseUp={isDragging ? handleDragEnd : undefined}
+      onMouseLeave={isDragging ? handleDragEnd : undefined}
+      onTouchMove={isDragging ? handleDrag : undefined}
+      onTouchEnd={isDragging ? handleDragEnd : undefined}
     >
       {/* Background image */}
       <img
@@ -1187,6 +1226,78 @@ export function PlanEditor({
           </button>
         </div>
       )}
+
+      {/* Editing mode toolbar (like Habitation) */}
+      {editingZoneId && editingPolygon && (
+        <div className="absolute bottom-4 left-1/2 -translate-x-1/2 z-30 flex items-center gap-2 bg-card/95 backdrop-blur border border-border rounded-xl px-3 py-2 shadow-xl">
+          <button
+            onClick={onStopEditing}
+            className="flex items-center gap-1.5 px-4 py-2 rounded-lg bg-cyan-600 text-white text-xs font-semibold hover:bg-cyan-500 active:bg-cyan-700 transition-colors min-h-[40px]"
+          >
+            <svg className="w-4 h-4" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" /></svg>
+            Deplacer
+          </button>
+          <button
+            onClick={() => {
+              if (!editingPolygon || editingPolygon.length < 3) return
+              // Add a point in the middle of the first edge
+              const midRow = (editingPolygon[0][0] + editingPolygon[1][0]) / 2
+              const midCol = (editingPolygon[0][1] + editingPolygon[1][1]) / 2
+              const newPoly: [number, number][] = [editingPolygon[0], [midRow, midCol], ...editingPolygon.slice(1)]
+              onZonePolygonUpdate?.(editingZoneId, newPoly)
+            }}
+            className="flex items-center gap-1.5 px-3 py-2 rounded-lg bg-card text-foreground text-xs font-medium border border-border hover:bg-muted active:bg-muted/70 transition-colors min-h-[40px]"
+          >
+            <svg className="w-4 h-4" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" d="M12 4v16m8-8H4" /></svg>
+            Ajouter
+          </button>
+          <button
+            onClick={() => {
+              if (!editingPolygon || editingPolygon.length <= 3) return
+              // Remove the last point
+              const newPoly = editingPolygon.slice(0, -1)
+              onZonePolygonUpdate?.(editingZoneId, newPoly)
+            }}
+            disabled={!editingPolygon || editingPolygon.length <= 3}
+            className="flex items-center gap-1.5 px-3 py-2 rounded-lg bg-card text-destructive text-xs font-medium border border-border hover:bg-destructive/10 active:bg-destructive/20 transition-colors min-h-[40px] disabled:opacity-50 disabled:cursor-not-allowed"
+          >
+            <svg className="w-4 h-4" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" /></svg>
+            Supprimer
+          </button>
+          <span className="text-xs text-muted-foreground ml-2 font-mono">
+            {editingPolygon.length}pts {formatArea(polygonAreaPx(editingPolygon), planScale)}
+          </span>
+        </div>
+      )}
+
+      {/* Editing vertices (HTML overlay for drag support) */}
+      {editingZoneId && editingPolygon && editingPolygon.map((pt, i) => {
+        const [x, y] = toSvg(pt)
+        return (
+          <div
+            key={`edit-vertex-html-${i}`}
+            className="absolute z-25 cursor-grab active:cursor-grabbing touch-none select-none"
+            style={{
+              left: x - 14,
+              top: y - 14,
+              width: 28,
+              height: 28,
+            }}
+            onMouseDown={(e) => handleEditVertexDragStart(i, e)}
+            onTouchStart={(e) => handleEditVertexDragStart(i, e)}
+          >
+            <div
+              className="w-full h-full rounded-full flex items-center justify-center text-[11px] font-bold text-white shadow-lg"
+              style={{
+                background: "#f59e0b",
+                border: "3px solid white",
+              }}
+            >
+              {i + 1}
+            </div>
+          </div>
+        )
+      })}
     </div>
   )
 }
