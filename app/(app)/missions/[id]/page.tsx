@@ -260,6 +260,9 @@ export default function MissionDetailPage() {
     const d = event.data as unknown as LiveDetection
     if (d.mission_id !== id) return
 
+    // Debug: log incoming SSE detections to understand data source
+    console.log("[v0] SSE detection received:", d.timestamp, d.tx_id, d.zone_label)
+
     // Skip muted devices -- no feed, no map markers, no state update
     if (d.device_id && mutedIdsRef.current.has(d.device_id)) return
 
@@ -2095,6 +2098,8 @@ export default function MissionDetailPage() {
                         const otherTs = new Date(other.timestamp).getTime()
                         return Math.abs(detTs - otherTs) <= 1000 // Within 1 second
                       })
+                      // Get TX name from device or tx_id, fallback to zone_label
+                      const txName = det.tx_id ? `TX-${det.tx_id}` : (det.device_name || det.zone_label || "Unknown")
                       return (
                       <div
                         key={`det-${det.timestamp}-${i}`}
@@ -2112,7 +2117,7 @@ export default function MissionDetailPage() {
                         <div className="flex-1 min-w-0">
                           <div className="flex items-center gap-1.5">
                             <span className="text-[10px] font-semibold text-foreground">
-                              {det.zone_label || det.device_name || "Unknown"}
+                              {txName}
                             </span>
                             {det.side && (
                               <span className="text-[9px] font-mono font-bold text-primary">
@@ -2163,7 +2168,7 @@ export default function MissionDetailPage() {
                               </span>
                             )}
                           </div>
-                          <span className="text-[9px] text-muted-foreground/60">{det.device_name}</span>
+                          <span className="text-[9px] text-muted-foreground/60">{det.zone_label || det.device_name}</span>
                         </div>
                       </div>
                     )})}
