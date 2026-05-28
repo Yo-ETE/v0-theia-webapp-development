@@ -269,7 +269,12 @@ export default function MissionDetailPage() {
     if (d.presence && (d.distance > 0 || d.sensor_type === "c4001" || d.sensor_type === "gravity_mw")) {
       setLiveDetections(prev => {
         const next = [d, ...prev]
-        return next.slice(0, 50)
+        const limited = next.slice(0, 50)
+        // Persist last 10 detections to localStorage for this mission
+        try {
+          localStorage.setItem(`theia-detections-${id}`, JSON.stringify(limited.slice(0, 10)))
+        } catch { /* ignore storage errors */ }
+        return limited
       })
       // Play detection sound (throttled to 1x / 2s)
       playDetection()
@@ -293,7 +298,27 @@ export default function MissionDetailPage() {
 
   useSSE(handleSSE)
 
-  // Detection Feed: purely SSE-based
+  // Load cached detections from localStorage on mount
+  // This shows the last known detections when returning to the mission
+  useEffect(() => {
+    try {
+      const cached = localStorage.getItem(`theia-detections-${id}`)
+      if (cached) {
+        const parsed = JSON.parse(cached) as LiveDetection[]
+        if (Array.isArray(parsed) && parsed.length > 0) {
+          // Check if cache is less than 1 hour old
+          const mostRecent = new Date(parsed[0]?.timestamp ?? 0).getTime()
+          const oneHourAgo = Date.now() - 60 * 60 * 1000
+          if (mostRecent > oneHourAgo) {
+            setLiveDetections(parsed)
+            setFeedExpired(true) // Mark as "derniere detection"
+          }
+        }
+      }
+    } catch { /* ignore parse errors */ }
+  }, [id])
+
+  // Detection Feed: SSE-based with localStorage cache
   // Don't load historical DB detections - only show real-time SSE detections
   // When user enters mission, feed starts empty and fills as detections arrive via SSE
 
