@@ -332,6 +332,32 @@ export function PlanEditor({
     return polygonAreaPx(drawPoints)
   }, [drawPoints])
 
+  // Drag drawing vertex
+  const [draggingDrawVertex, setDraggingDrawVertex] = useState<number | null>(null)
+
+  const handleDrawVertexDragStart = useCallback((index: number, e: React.MouseEvent | React.TouchEvent) => {
+    e.preventDefault()
+    e.stopPropagation()
+    setDraggingDrawVertex(index)
+  }, [])
+
+  const handleDrawVertexDrag = useCallback((e: React.MouseEvent | React.TouchEvent) => {
+    if (draggingDrawVertex === null) return
+    e.preventDefault()
+    const clientX = "touches" in e ? e.touches[0].clientX : e.clientX
+    const clientY = "touches" in e ? e.touches[0].clientY : e.clientY
+    const pt = toImgCoords(clientX, clientY)
+    setDrawPoints(prev => {
+      const next = [...prev]
+      next[draggingDrawVertex] = pt
+      return next
+    })
+  }, [draggingDrawVertex, toImgCoords])
+
+  const handleDrawVertexDragEnd = useCallback(() => {
+    setDraggingDrawVertex(null)
+  }, [])
+
   // Sensor placement click -- find closest edge
   const handlePlaceClick = useCallback((e: React.MouseEvent | React.TouchEvent) => {
     if (!sensorPlaceMode || !onSensorPlace) return
@@ -600,6 +626,11 @@ export function PlanEditor({
       ref={containerRef}
       className={cn("relative select-none overflow-hidden rounded-lg bg-muted/10", className)}
       style={{ height: displayH || "auto" }}
+      onMouseMove={draggingDrawVertex !== null ? handleDrawVertexDrag : undefined}
+      onMouseUp={draggingDrawVertex !== null ? handleDrawVertexDragEnd : undefined}
+      onMouseLeave={draggingDrawVertex !== null ? handleDrawVertexDragEnd : undefined}
+      onTouchMove={draggingDrawVertex !== null ? handleDrawVertexDrag : undefined}
+      onTouchEnd={draggingDrawVertex !== null ? handleDrawVertexDragEnd : undefined}
     >
       {/* Background image */}
       <img
@@ -954,98 +985,152 @@ export function PlanEditor({
             {drawPoints.length >= 3 && (
               <polygon
                 points={drawPoints.map(p => { const [x, y] = toSvg(p); return `${x},${y}` }).join(" ")}
-                fill={vc.fov_overlay_color}
-                fillOpacity={0.15}
+                fill="#0891b2"
+                fillOpacity={0.1}
                 stroke="none"
               />
             )}
-            {/* Edges with measurements */}
+            {/* Drawing polyline with dashes */}
+            <polyline
+              points={drawPoints.map(p => { const [x, y] = toSvg(p); return `${x},${y}` }).join(" ")}
+              fill="none"
+              stroke="#0891b2"
+              strokeWidth={2}
+              strokeDasharray="6 4"
+            />
+            {/* Closing line if >= 3 points */}
+            {drawPoints.length >= 3 && (() => {
+              const [x1, y1] = toSvg(drawPoints[drawPoints.length - 1])
+              const [x2, y2] = toSvg(drawPoints[0])
+              return (
+                <line
+                  x1={x1} y1={y1} x2={x2} y2={y2}
+                  stroke="#0891b2"
+                  strokeWidth={2}
+                  strokeDasharray="6 4"
+                />
+              )
+            })()}
+            {/* Edge labels in badge style: "A: 15.2m" */}
             {drawPoints.map((p, i) => {
+              const nextIdx = (i + 1) % drawPoints.length
               if (i === drawPoints.length - 1 && drawPoints.length < 3) return null
-              const nextP = i === drawPoints.length - 1 ? drawPoints[0] : drawPoints[i + 1]
+              const nextP = drawPoints[nextIdx]
               const [x1, y1] = toSvg(p)
               const [x2, y2] = toSvg(nextP)
               const midX = (x1 + x2) / 2
               const midY = (y1 + y2) / 2
               const lengthPx = edgeLengthPx(p, nextP)
               const lengthStr = formatDistance(lengthPx, planScale)
+              const label = String.fromCharCode(65 + i)
               return (
-                <g key={`draw-edge-${i}`}>
-                  <line
-                    x1={x1} y1={y1} x2={x2} y2={y2}
-                    stroke={vc.fov_overlay_color}
-                    strokeWidth={2}
-                    strokeDasharray={i === drawPoints.length - 1 ? "4 4" : "none"}
+                <g key={`draw-edge-label-${i}`}>
+                  <rect
+                    x={midX - 28}
+                    y={midY - 10}
+                    width={56}
+                    height={20}
+                    rx={3}
+                    fill="rgba(255,255,255,0.95)"
+                    stroke="#0891b2"
+                    strokeWidth={1}
                   />
                   <text
                     x={midX}
-                    y={midY - 8}
-                    textAnchor="middle"
-                    className="text-[9px] font-mono pointer-events-none"
-                    style={{ fill: vc.fov_overlay_color, paintOrder: "stroke", stroke: "hsl(var(--background))", strokeWidth: 3 }}
-                  >
-                    {lengthStr}
-                  </text>
-                </g>
-              )
-            })}
-            {/* Closing edge dashed line */}
-            {drawPoints.length >= 3 && (() => {
-              const first = drawPoints[0]
-              const last = drawPoints[drawPoints.length - 1]
-              const [x1, y1] = toSvg(last)
-              const [x2, y2] = toSvg(first)
-              return (
-                <line
-                  x1={x1} y1={y1} x2={x2} y2={y2}
-                  stroke={vc.fov_overlay_color}
-                  strokeWidth={2}
-                  strokeDasharray="4 4"
-                  strokeOpacity={0.6}
-                />
-              )
-            })()}
-            {/* Vertex circles with labels */}
-            {drawPoints.map((p, i) => {
-              const [x, y] = toSvg(p)
-              const label = String.fromCharCode(65 + i)
-              return (
-                <g key={`draw-vertex-${i}`}>
-                  <circle
-                    cx={x} cy={y} r={12}
-                    fill={vc.fov_overlay_color}
-                    stroke="hsl(var(--background))"
-                    strokeWidth={2}
-                  />
-                  <text
-                    x={x}
-                    y={y}
+                    y={midY}
                     textAnchor="middle"
                     dominantBaseline="central"
                     className="text-[10px] font-mono font-bold pointer-events-none"
-                    style={{ fill: "#ffffff" }}
+                    style={{ fill: "#0891b2" }}
                   >
-                    {label}
+                    {label}: {lengthStr}
                   </text>
                 </g>
               )
             })}
+            {/* Central info badge: area + perimeter */}
+            {drawPoints.length >= 3 && (() => {
+              const cx = drawPoints.reduce((s, p) => s + p[1], 0) / drawPoints.length
+              const cy = drawPoints.reduce((s, p) => s + p[0], 0) / drawPoints.length
+              const [sx, sy] = toSvg([cy, cx] as [number, number])
+              const areaStr = formatArea(drawingArea, planScale)
+              const perimStr = formatDistance(drawingPerimeter, planScale)
+              return (
+                <g>
+                  <rect
+                    x={sx - 55}
+                    y={sy - 10}
+                    width={110}
+                    height={20}
+                    rx={3}
+                    fill="rgba(255,255,255,0.95)"
+                    stroke="#0891b2"
+                    strokeWidth={1}
+                  />
+                  <text
+                    x={sx}
+                    y={sy}
+                    textAnchor="middle"
+                    dominantBaseline="central"
+                    className="text-[10px] font-mono font-bold pointer-events-none"
+                    style={{ fill: "#0891b2" }}
+                  >
+                    {areaStr} | P: {perimStr}
+                  </text>
+                </g>
+              )
+            })()}
           </g>
         )}
       </svg>
 
-      {/* Drawing mode overlay (HTML) */}
+      {/* Drawing vertices - HTML overlay for drag support */}
+      {drawingMode && drawPoints.map((p, i) => {
+        const [x, y] = toSvg(p)
+        return (
+          <div
+            key={`draw-vertex-html-${i}`}
+            className="absolute z-30 cursor-grab active:cursor-grabbing touch-none select-none"
+            style={{
+              left: x - 12,
+              top: y - 12,
+              width: 24,
+              height: 24,
+            }}
+            onMouseDown={(e) => handleDrawVertexDragStart(i, e)}
+            onTouchStart={(e) => handleDrawVertexDragStart(i, e)}
+          >
+            <div
+              className="w-full h-full rounded-full flex items-center justify-center text-[10px] font-bold text-white shadow-md"
+              style={{
+                background: "#0891b2",
+                border: "2px solid white",
+              }}
+            >
+              {i + 1}
+            </div>
+            <div
+              className="absolute -top-5 left-1/2 -translate-x-1/2 px-1.5 py-0.5 rounded text-[9px] font-semibold whitespace-nowrap"
+              style={{ color: "#0891b2" }}
+            >
+              P{i + 1}
+            </div>
+          </div>
+        )
+      })}
+
+      {/* Drawing mode toolbar (HTML) */}
       {drawingMode && (
         <div className="absolute top-2 left-2 right-2 z-20 flex flex-col gap-2">
-          <div className="flex items-center justify-between gap-2 bg-cyan-950/90 backdrop-blur rounded-lg px-3 py-2.5 border border-cyan-500/40 shadow-lg">
-            <span className="text-xs text-cyan-300 font-medium">
-              DRAW-- touchez pour placer les points
+          <div className="rounded-lg bg-card/95 backdrop-blur px-3 py-2 border border-cyan-600/40 shadow-lg">
+            <span className="text-xs font-mono text-cyan-700 font-semibold">
+              DRAW {drawPoints.length > 0 ? `-- ${drawPoints.length} pts` : "-- touchez pour placer les points"}
               {drawPoints.length >= 2 && ` | P: ${formatDistance(drawingPerimeter, planScale)}`}
               {drawPoints.length >= 3 && ` | ${formatArea(drawingArea, planScale)}`}
             </span>
           </div>
           {drawPoints.length > 0 && (
-            <div className="flex items-center gap-2 justify-end">
+            <div className="flex items-center gap-2">
               <button
                 onClick={undoLastPoint}
                 className="rounded-lg bg-card/95 backdrop-blur px-4 py-2.5 text-xs font-medium text-foreground active:bg-muted border border-border shadow-sm transition-colors min-h-[44px]"
