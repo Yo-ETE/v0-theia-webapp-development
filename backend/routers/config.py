@@ -346,6 +346,11 @@ async def hotspot_start(body: dict = None):
             if not iface:
                 return {"status": "error", "message": "Aucune interface WiFi trouvee"}
             
+            # Check if hostapd is installed
+            hostapd_check = subprocess.run(["which", "hostapd"], capture_output=True, timeout=5)
+            if hostapd_check.returncode != 0:
+                return {"status": "error", "message": "hostapd n'est pas installe. Installez avec: sudo apt install hostapd"}
+            
             # Step 1: Disconnect existing WiFi connection
             subprocess.run(["sudo", "nmcli", "device", "disconnect", iface], capture_output=True, timeout=10)
             time.sleep(1)
@@ -353,7 +358,7 @@ async def hotspot_start(body: dict = None):
             # Step 2: Kill any existing AP processes
             subprocess.run(["sudo", "pkill", "-f", "create_ap"], capture_output=True, timeout=5)
             subprocess.run(["sudo", "pkill", "hostapd"], capture_output=True, timeout=5)
-            subprocess.run(["sudo", "pkill", "dnsmasq"], capture_output=True, timeout=5)
+            subprocess.run(["sudo", "pkill", "-f", "theia_dnsmasq"], capture_output=True, timeout=5)
             time.sleep(1)
             
             # Step 3: Try nmcli hotspot (should work now interface is disconnected)
@@ -363,11 +368,25 @@ async def hotspot_start(body: dict = None):
             )
             if result.returncode == 0 or "activated" in result.stdout.lower() or "activate" in result.stdout.lower():
                 time.sleep(2)
-                return {"status": "success", "message": f"Hotspot '{ssid}' demarre sur {iface}"}
+                return {"status": "success", "message": f"Hotspot '{ssid}' demarre sur {iface} (nmcli)"}
             
-            # Step 4: Fallback to hostapd + dnsmasq
-            hostapd_conf = f"""interface={iface}
-driver=nl80211
+            # Step 4: Check if adapter supports AP mode
+            iw_check = subprocess.run(
+                ["iw", "list"], capture_output=True, text=True, timeout=10
+            )
+            supports_ap = "* AP" in iw_check.stdout
+            if not supports_ap:
+                return {"status": "error", "message": f"L'adaptateur WiFi {iface} ne supporte pas le mode AP (hotspot)"}
+            
+            # Step 5: Fallback to hostapd + dnsmasq
+            # Try different drivers for USB WiFi adapters
+            drivers = ["nl80211", "rtl871xdrv", "wext"]
+            hostapd_started = False
+            hostapd_error = ""
+            
+            for driver in drivers:
+                hostapd_conf = f"""interface={iface}
+driver={driver}
 ssid={ssid}
 hw_mode=g
 channel=6
@@ -380,19 +399,43 @@ wpa_passphrase={password}
 wpa_key_mgmt=WPA-PSK
 rsn_pairwise=CCMP
 """
-            conf_path = "/tmp/theia_hostapd.conf"
-            with open(conf_path, "w") as f:
-                f.write(hostapd_conf)
+                conf_path = "/tmp/theia_hostapd.conf"
+                with open(conf_path, "w") as f:
+                    f.write(hostapd_conf)
+                
+                # Configure interface
+                subprocess.run(["sudo", "ip", "link", "set", iface, "down"], capture_output=True, timeout=5)
+                time.sleep(0.5)
+                subprocess.run(["sudo", "ip", "addr", "flush", "dev", iface], capture_output=True, timeout=5)
+                subprocess.run(["sudo", "ip", "addr", "add", "192.168.4.1/24", "dev", iface], capture_output=True, timeout=5)
+                subprocess.run(["sudo", "ip", "link", "set", iface, "up"], capture_output=True, timeout=5)
+                time.sleep(1)
+                
+                # Try to start hostapd with this driver
+                hostapd_result = subprocess.run(
+                    ["sudo", "hostapd", "-B", conf_path],
+                    capture_output=True, text=True, timeout=10
+                )
+                
+                time.sleep(2)
+                
+                # Check if hostapd is running
+                ps_check = subprocess.run(
+                    ["pgrep", "-f", "hostapd.*theia_hostapd"],
+                    capture_output=True, timeout=5
+                )
+                
+                if ps_check.returncode == 0:
+                    hostapd_started = True
+                    break
+                else:
+                    hostapd_error = hostapd_result.stderr.strip() or hostapd_result.stdout.strip()
+                    subprocess.run(["sudo", "pkill", "hostapd"], capture_output=True, timeout=5)
             
-            # Configure interface
-            subprocess.run(["sudo", "ip", "link", "set", iface, "down"], capture_output=True, timeout=5)
-            time.sleep(0.5)
-            subprocess.run(["sudo", "ip", "addr", "flush", "dev", iface], capture_output=True, timeout=5)
-            subprocess.run(["sudo", "ip", "addr", "add", "192.168.4.1/24", "dev", iface], capture_output=True, timeout=5)
-            subprocess.run(["sudo", "ip", "link", "set", iface, "up"], capture_output=True, timeout=5)
-            time.sleep(1)
+            if not hostapd_started:
+                return {"status": "error", "message": f"Echec hostapd: {hostapd_error or 'Adaptateur non compatible avec le mode AP'}"}
             
-            # Start dnsmasq
+            # Start dnsmasq for DHCP
             dnsmasq_conf = f"""interface={iface}
 dhcp-range=192.168.4.2,192.168.4.254,255.255.255.0,24h
 no-resolv
@@ -401,21 +444,11 @@ no-resolv
             with open(dnsmasq_path, "w") as f:
                 f.write(dnsmasq_conf)
             
-            subprocess.Popen(
+            subprocess.run(
                 ["sudo", "dnsmasq", "-C", dnsmasq_path],
-                stdout=subprocess.DEVNULL,
-                stderr=subprocess.DEVNULL
+                capture_output=True, timeout=5
             )
             time.sleep(1)
-            
-            # Start hostapd
-            subprocess.Popen(
-                ["sudo", "hostapd", conf_path],
-                stdout=subprocess.DEVNULL,
-                stderr=subprocess.DEVNULL,
-                start_new_session=True
-            )
-            time.sleep(2)
             
             return {"status": "success", "message": f"Hotspot '{ssid}' demarre sur {iface} (192.168.4.1)"}
         
@@ -921,7 +954,7 @@ async def git_update(body: dict = None):
     return StreamingResponse(event_generator(), media_type="text/event-stream")
 
 
-# ── Git Version Info ──────────────────────────────────────────────
+# ── Git Version Info ──────────────────────────────────���───────────
 
 @router.get("/git/version")
 async def git_version():
