@@ -455,9 +455,9 @@ export default function MissionDetailPage() {
         console.warn("[THEIA] Failed to unassign device from zone:", err)
       }
     }
-    const zones = (mission.zones ?? []).filter((z) => z.id !== zoneId)
+    const updatedZones = (mission.zones ?? []).filter((z) => z.id !== zoneId)
     try {
-      const updated = await updateMission(id, { zones })
+      const updated = await updateMission(id, { zones: updatedZones })
       mutate(updated, false)
     } catch (err) {
       console.warn("[THEIA] Failed to update mission:", err)
