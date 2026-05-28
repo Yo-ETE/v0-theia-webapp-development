@@ -9,7 +9,7 @@ import {
   Activity, Eye, EyeOff, Zap, Timer, Download, Signal, Battery, Wifi, Unlink,
   Flame, Crosshair, ArrowDownLeft, ArrowUpRight, Bell, BellOff,
   Maximize2, Minimize2, FileImage, Ruler, Palette, RotateCw,
-  Volume2, VolumeX, Grid3X3,
+  Volume2, VolumeX, Grid3X3, ArrowLeftRight,
 } from "lucide-react"
 import { TopHeader } from "@/components/top-header"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
@@ -178,6 +178,7 @@ export default function MissionDetailPage() {
   const [editingZoneId, setEditingZoneId] = useState<string | null>(null)
   const [editingPolygon, setEditingPolygon] = useState<[number, number][] | null>(null)
   const [selectedFloor, setSelectedFloor] = useState<number>(0) // 0 = RDC, 1 = 1er, etc.
+  const [autoSwitchFloor, setAutoSwitchFloor] = useState(true) // Auto-switch floor on detection from different floor
   const [errorMsg, setErrorMsg] = useState<string | null>(null)
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const [replayDetections, setReplayDetections] = useState<Record<string, any>>({})
@@ -336,7 +337,7 @@ export default function MissionDetailPage() {
     })
   }, [events])
 
-  // ��������������������─ Bearing grouping: segments facing the same direction share the same face label ──
+  // ���������������������─ Bearing grouping: segments facing the same direction share the same face label ──
   // Uses FULL 0-360 bearing so north-facing (0) and south-facing (180) are DIFFERENT faces.
   // Returns e.g. { A: [0,3], B: [1,4], C: [2,5] } meaning polygon edges 0&3 are "A", etc.
   // Helper: convert segment index (A, B, C...) to facade group letter using a zone's polygon
@@ -970,6 +971,30 @@ export default function MissionDetailPage() {
    .filter(d => feedDeviceFilter === "all" || d.device_id === feedDeviceFilter)
    .filter(d => !floorDeviceIdsForFeed || floorDeviceIdsForFeed.has(d.device_id)) // Floor filter by device
    .slice(0, 50)
+
+  // Auto-switch floor when detection arrives from a different floor (Live mode only)
+  const lastDetectionRef = useRef<string | null>(null)
+  useEffect(() => {
+    if (!autoSwitchFloor || activeTab !== "live" || floorLevels.length <= 1) return
+    if (liveDetections.length === 0) return
+    
+    const latestDetection = liveDetections[0]
+    // Skip if we already processed this detection
+    if (lastDetectionRef.current === latestDetection.timestamp) return
+    lastDetectionRef.current = latestDetection.timestamp
+    
+    // Find which floor this detection belongs to (via device -> zone -> floor)
+    const device = missionDevices.find(d => d.id === latestDetection.device_id)
+    if (!device?.zone_id) return
+    
+    const zone = zones.find(z => z.id === device.zone_id)
+    if (!zone) return
+    
+    const detectionFloor = zone.floor ?? 0
+    if (detectionFloor !== selectedFloor) {
+      setSelectedFloor(detectionFloor)
+    }
+  }, [liveDetections, autoSwitchFloor, activeTab, floorLevels.length, missionDevices, zones, selectedFloor])
 
   return (
     <>
@@ -1676,6 +1701,20 @@ export default function MissionDetailPage() {
                       title="Ajouter un etage"
                     >
                       +
+                    </button>
+                    <div className="flex-1" />
+                    <button
+                      onClick={() => setAutoSwitchFloor(!autoSwitchFloor)}
+                      className={cn(
+                        "px-2 py-1 text-[10px] rounded transition-colors flex items-center gap-1",
+                        autoSwitchFloor 
+                          ? "bg-primary/20 text-primary" 
+                          : "bg-muted/30 text-muted-foreground hover:bg-muted"
+                      )}
+                      title={autoSwitchFloor ? "Basculement auto actif" : "Basculement auto desactive"}
+                    >
+                      <ArrowLeftRight className="h-3 w-3" />
+                      Auto
                     </button>
                   </div>
                 )}
