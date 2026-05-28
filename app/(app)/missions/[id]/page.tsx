@@ -769,6 +769,47 @@ export default function MissionDetailPage() {
     return eventList.filter(e => !e.zone_id || floorZoneIds.has(e.zone_id))
   }, [eventList, filteredZones, floorLevels.length])
 
+  // TTL useEffect - Update last activity time when new detections arrive (must be before conditional return)
+  useEffect(() => {
+    if (liveDetections.length > 0) {
+      setLastActivityTime(Date.now())
+      setFeedExpired(false)
+    }
+  }, [liveDetections.length])
+  
+  // TTL useEffect - Check expiration every 30s (must be before conditional return)
+  useEffect(() => {
+    const interval = setInterval(() => {
+      if (Date.now() - lastActivityTime > FEED_TTL_MS && liveDetections.length > 0) {
+        setFeedExpired(true)
+      }
+    }, 30000)
+    return () => clearInterval(interval)
+  }, [lastActivityTime, liveDetections.length, FEED_TTL_MS])
+
+  // Auto-switch floor useEffect (must be before conditional return)
+  useEffect(() => {
+    if (!autoSwitchFloor || activeTab !== "live" || floorLevels.length <= 1) return
+    if (liveDetections.length === 0) return
+    if (!mission) return // Guard for when mission not loaded
+    
+    const latestDetection = liveDetections[0]
+    if (lastDetectionRef.current === latestDetection.timestamp) return
+    lastDetectionRef.current = latestDetection.timestamp
+    
+    // Find device and zone to determine floor
+    const device = allDevices?.find(d => d.id === latestDetection.device_id)
+    if (!device?.zone_id) return
+    
+    const zone = zones.find(z => z.id === device.zone_id)
+    if (!zone) return
+    
+    const detectionFloor = zone.floor ?? 0
+    if (detectionFloor !== selectedFloor) {
+      setSelectedFloor(detectionFloor)
+    }
+  }, [liveDetections, autoSwitchFloor, activeTab, floorLevels.length, allDevices, zones, selectedFloor, mission])
+
   if (isLoading || !mission) {
     return (
       <>
@@ -971,24 +1012,6 @@ export default function MissionDetailPage() {
     ? new Set(floorFilteredDevices.map(d => d.id))
     : null
   
-  // Update last activity time when new detections arrive
-  useEffect(() => {
-    if (liveDetections.length > 0) {
-      setLastActivityTime(Date.now())
-      setFeedExpired(false)
-    }
-  }, [liveDetections.length])
-  
-  // Check TTL expiration every 30s
-  useEffect(() => {
-    const interval = setInterval(() => {
-      if (Date.now() - lastActivityTime > FEED_TTL_MS && liveDetections.length > 0) {
-        setFeedExpired(true)
-      }
-    }, 30000)
-    return () => clearInterval(interval)
-  }, [lastActivityTime, liveDetections.length])
-  
   // Build display detections - SSE only, with TTL logic
   const allSseDetections = liveDetections
     .filter(d => !mutedDeviceIds.has(d.device_id))
@@ -999,29 +1022,6 @@ export default function MissionDetailPage() {
   const displayDetections: LiveDetection[] = feedExpired && allSseDetections.length > 0
     ? [allSseDetections[0]] // Only the most recent
     : allSseDetections.slice(0, 50)
-
-  // Auto-switch floor when detection arrives from a different floor (Live mode only)
-  useEffect(() => {
-    if (!autoSwitchFloor || activeTab !== "live" || floorLevels.length <= 1) return
-    if (liveDetections.length === 0) return
-    
-    const latestDetection = liveDetections[0]
-    // Skip if we already processed this detection
-    if (lastDetectionRef.current === latestDetection.timestamp) return
-    lastDetectionRef.current = latestDetection.timestamp
-    
-    // Find which floor this detection belongs to (via device -> zone -> floor)
-    const device = missionDevices.find(d => d.id === latestDetection.device_id)
-    if (!device?.zone_id) return
-    
-    const zone = zones.find(z => z.id === device.zone_id)
-    if (!zone) return
-    
-    const detectionFloor = zone.floor ?? 0
-    if (detectionFloor !== selectedFloor) {
-      setSelectedFloor(detectionFloor)
-    }
-  }, [liveDetections, autoSwitchFloor, activeTab, floorLevels.length, missionDevices, zones, selectedFloor])
 
   return (
     <>
