@@ -701,14 +701,88 @@ export function PlanEditor({
       >
         {/* Zone polygons */}
         {activeZones.map(zone => {
-          if (!zone.polygon?.length || zone.polygon.length < 3) return null
+          if (!zone.polygon?.length || zone.polygon.length < 2) return null
           const pts = zone.polygon.map(p => toSvg(p))
-          const polyStr = pts.map(p => `${p[0]},${p[1]}`).join(" ")
-          const sides = groupSidesByBearing(zone.polygon)
-
+          
           // If user set a custom zone_fill_color (different from default), use it for ALL zones
           const isCustomZoneColor = vc.zone_fill_color !== "#3b82f6"
           const zoneColor = isCustomZoneColor ? vc.zone_fill_color : (zone.color || vc.zone_fill_color)
+          
+          // Facade (2 points) - render as a line
+          if (zone.polygon.length === 2) {
+            const [x1, y1] = pts[0]
+            const [x2, y2] = pts[1]
+            const lengthPx = edgeLengthPx(zone.polygon[0], zone.polygon[1])
+            const lengthStr = showMeasurements ? formatDistance(lengthPx, planScale) : ""
+            const midX = (x1 + x2) / 2
+            const midY = (y1 + y2) / 2
+            return (
+              <g key={zone.id} onClick={(e) => { e.stopPropagation(); onZoneClick?.(zone.id) }} className="cursor-pointer">
+                {/* Facade line */}
+                <line
+                  x1={x1} y1={y1} x2={x2} y2={y2}
+                  stroke={zoneColor}
+                  strokeWidth={3}
+                  strokeOpacity={vc.zone_stroke_opacity}
+                />
+                {/* Vertex labels A, B */}
+                {zone.polygon.map((pt, i) => {
+                  const [sx, sy] = toSvg(pt)
+                  const label = String.fromCharCode(65 + i)
+                  return (
+                    <g key={`vertex-label-${zone.id}-${i}`}>
+                      <circle
+                        cx={sx}
+                        cy={sy}
+                        r={10}
+                        fill={zoneColor}
+                        stroke="hsl(var(--background))"
+                        strokeWidth={2}
+                        className="pointer-events-none"
+                      />
+                      <text
+                        x={sx}
+                        y={sy}
+                        textAnchor="middle"
+                        dominantBaseline="central"
+                        className="text-[9px] font-mono font-bold pointer-events-none"
+                        style={{ fill: "#ffffff" }}
+                      >
+                        {label}
+                      </text>
+                    </g>
+                  )
+                })}
+                {/* Facade name + length at center */}
+                <text
+                  x={midX}
+                  y={midY - 10}
+                  textAnchor="middle"
+                  dominantBaseline="central"
+                  className="text-[11px] font-medium pointer-events-none"
+                  style={{ fill: "#ffffff", paintOrder: "stroke", stroke: "hsl(var(--background))", strokeWidth: 4 }}
+                >
+                  {zone.name}
+                </text>
+                {showMeasurements && lengthStr && (
+                  <text
+                    x={midX}
+                    y={midY + 6}
+                    textAnchor="middle"
+                    dominantBaseline="central"
+                    className="text-[9px] font-mono pointer-events-none"
+                    style={{ fill: zoneColor, paintOrder: "stroke", stroke: "hsl(var(--background))", strokeWidth: 3 }}
+                  >
+                    {lengthStr}
+                  </text>
+                )}
+              </g>
+            )
+          }
+          
+          // Polygon (3+ points)
+          const polyStr = pts.map(p => `${p[0]},${p[1]}`).join(" ")
+          const sides = groupSidesByBearing(zone.polygon)
           
           // Calculate zone area
           const zoneAreaPx = polygonAreaPx(zone.polygon)
