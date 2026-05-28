@@ -302,11 +302,16 @@ export default function MissionDetailPage() {
     initialLoadDoneRef.current = true
     
     // Helper to parse timestamps (handles both "YYYY-MM-DD HH:mm:ss" and ISO formats)
+    // Timestamps from DB are in LOCAL time (Paris), not UTC
     const parseTs = (ts: string | null | undefined): number => {
       if (!ts) return 0
-      // Replace space with T for ISO compatibility, handle timezone
-      const normalized = ts.includes("T") ? ts : ts.replace(" ", "T") + "Z"
-      const d = new Date(normalized)
+      // If already ISO format with T, parse directly
+      if (ts.includes("T")) {
+        const d = new Date(ts)
+        return isNaN(d.getTime()) ? 0 : d.getTime()
+      }
+      // DB format "YYYY-MM-DD HH:mm:ss" is local time - parse without adding Z
+      const d = new Date(ts.replace(" ", "T"))
       return isNaN(d.getTime()) ? 0 : d.getTime()
     }
     
