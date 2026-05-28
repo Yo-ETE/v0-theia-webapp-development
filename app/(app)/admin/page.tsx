@@ -31,7 +31,6 @@ import {
   Smartphone,
   Router,
   Monitor,
-  Smartphone,
   Laptop,
   Server,
   Copy,
