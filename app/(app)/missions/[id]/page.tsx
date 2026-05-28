@@ -292,66 +292,11 @@ export default function MissionDetailPage() {
 
   useSSE(handleSSE)
 
-  // Merge DB events into the detection feed whenever events change.
-  // This ensures the feed survives page navigation (DB events are persistent).
-  const lastEventCountRef = useRef(0)
-  useEffect(() => {
-    if (!events || events.length === 0) return
-    // Only re-seed if events changed (avoid overwriting live SSE data with stale DB data)
-    if (events.length === lastEventCountRef.current) return
-    lastEventCountRef.current = events.length
+  // Detection Feed is now PURELY SSE-based.
+  // No DB events are loaded into the feed - history is available in the History tab.
+  // When user leaves and returns, feed starts empty until new SSE detections arrive.
 
-  // Filter out events before detection_reset_at (normalize timestamp format for comparison)
-  const ra = mission?.detection_reset_at ?? null
-  const normTs = (ts: string) => {
-    const isUTC = ts.includes("Z") || (ts.includes("T") && !ts.includes(" "))
-    if (isUTC) {
-      const d = new Date(ts)
-      if (!isNaN(d.getTime())) {
-        const pad = (n: number) => String(n).padStart(2, "0")
-        return `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`
-      }
-    }
-    return ts.replace("T", " ").replace("Z", "").replace(/\.\d+$/, "").split("+")[0]
-  }
-  const raNorm = ra ? normTs(ra) : null
-  const filteredEvents = raNorm ? events.filter((e) => !e.timestamp || normTs(e.timestamp) > raNorm) : events
-
-    const dbDetections: LiveDetection[] = filteredEvents.slice(0, 30).map((e) => {
-      const ev = e as DetectionEvent & Record<string, unknown>
-      const p = (typeof ev.payload === "string" ? (() => { try { return JSON.parse(ev.payload as string) } catch { return {} } })() : (ev.payload ?? {})) as Record<string, unknown>
-      return {
-        device_id: ev.device_id ?? "",
-        device_name: (p.device_name ?? ev.device_name ?? ev.device_id ?? "") as string,
-        tx_id: (p.tx_id ?? (ev as Record<string, unknown>).tx_id ?? "") as string | null,
-        sensor_type: (p.sensor_type ?? "ld2450") as string,
-        mission_id: ev.mission_id ?? "",
-        zone_id: ev.zone_id ?? "",
-        zone_label: (p.zone_label ?? (ev as Record<string, unknown>).zone_label ?? "") as string,
-        side: ((ev as Record<string, unknown>).side ?? "") as string,
-        presence: true,
-        distance: Number(p.distance ?? 0),
-        speed: Number(p.speed ?? 0),
-        angle: Number(p.angle ?? 0),
-        direction: (p.direction ?? "C") as string,
-        vbatt_tx: null,
-        rssi: ev.rssi ?? null,
-        timestamp: ev.timestamp ?? new Date().toISOString(),
-      } satisfies LiveDetection
-    })
-    // Merge: keep existing live SSE detections on top, add DB ones below
-    setLiveDetections(prev => {
-      // If we have live SSE data, keep it and append DB events not already present
-      if (prev.length > 0) {
-        const existingTs = new Set(prev.map(d => d.timestamp))
-        const newFromDb = dbDetections.filter(d => !existingTs.has(d.timestamp))
-        return [...prev, ...newFromDb].slice(0, 50)
-      }
-      return dbDetections
-    })
-  }, [events])
-
-  // ���������������������─ Bearing grouping: segments facing the same direction share the same face label ──
+  // ─── Bearing grouping: segments facing the same direction share the same face label ──
   // Uses FULL 0-360 bearing so north-facing (0) and south-facing (180) are DIFFERENT faces.
   // Returns e.g. { A: [0,3], B: [1,4], C: [2,5] } meaning polygon edges 0&3 are "A", etc.
   // Helper: convert segment index (A, B, C...) to facade group letter using a zone's polygon
