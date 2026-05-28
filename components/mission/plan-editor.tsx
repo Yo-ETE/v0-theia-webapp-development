@@ -309,9 +309,9 @@ export function PlanEditor({
     onDrawingCancel?.()
   }, [onDrawingCancel])
 
-  // Finish drawing (validate)
+  // Finish drawing (validate) - allow 2 points for facades
   const finishDrawing = useCallback(() => {
-    if (drawPoints.length >= 3 && handlePolygonDone) {
+    if (drawPoints.length >= 2 && handlePolygonDone) {
       handlePolygonDone(drawPoints)
       setDrawPoints([])
     }
@@ -1193,7 +1193,7 @@ export function PlanEditor({
               >
                 Cancel
               </button>
-              {drawPoints.length >= 3 && (
+              {drawPoints.length >= 2 && (
                 <button
                   onClick={finishDrawing}
                   className="rounded-lg bg-cyan-600 px-5 py-2.5 text-xs font-semibold text-white active:bg-cyan-500 shadow-lg transition-colors min-h-[44px] flex-1"
