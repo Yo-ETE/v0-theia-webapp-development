@@ -342,47 +342,35 @@ async def hotspot_start(body: dict = None):
     password = (body or {}).get("password", "theia1234")
     try:
         def _start():
-            import os
-            
-            # Find WiFi interface
             iface = _get_wifi_interface()
             if not iface:
                 return {"status": "error", "message": "Aucune interface WiFi trouvee"}
             
-            # Try nmcli first (NetworkManager)
-            result = subprocess.run(
-                ["which", "nmcli"], capture_output=True, timeout=5
-            )
-            if result.returncode == 0:
-                result = subprocess.run(
-                    ["sudo", "nmcli", "device", "wifi", "hotspot", "ifname", iface, "ssid", ssid, "password", password],
-                    capture_output=True, text=True, timeout=30
-                )
-                if result.returncode == 0:
-                    return {"status": "success", "message": f"Hotspot '{ssid}' demarre sur {iface}"}
+            # Step 1: Disconnect existing WiFi connection
+            subprocess.run(["sudo", "nmcli", "device", "disconnect", iface], capture_output=True, timeout=10)
+            time.sleep(1)
             
-            # Fallback: try create_ap if available
-            result = subprocess.run(
-                ["which", "create_ap"], capture_output=True, timeout=5
-            )
-            if result.returncode == 0:
-                # Stop any existing create_ap
-                subprocess.run(["sudo", "pkill", "-f", "create_ap"], timeout=5)
-                # Start create_ap in background
-                result = subprocess.run(
-                    ["sudo", "create_ap", "--no-virt", "-n", iface, ssid, password],
-                    capture_output=True, text=True, timeout=10,
-                    start_new_session=True
-                )
-                if "AP-ENABLED" in result.stdout or result.returncode == 0:
-                    return {"status": "success", "message": f"Hotspot '{ssid}' demarre sur {iface}"}
+            # Step 2: Kill any existing AP processes
+            subprocess.run(["sudo", "pkill", "-f", "create_ap"], capture_output=True, timeout=5)
+            subprocess.run(["sudo", "pkill", "hostapd"], capture_output=True, timeout=5)
+            subprocess.run(["sudo", "pkill", "dnsmasq"], capture_output=True, timeout=5)
+            time.sleep(1)
             
-            # Manual hostapd setup as last resort
+            # Step 3: Try nmcli hotspot (should work now interface is disconnected)
+            result = subprocess.run(
+                ["sudo", "nmcli", "device", "wifi", "hotspot", "ifname", iface, "ssid", ssid, "password", password],
+                capture_output=True, text=True, timeout=30
+            )
+            if result.returncode == 0 or "activated" in result.stdout.lower() or "activate" in result.stdout.lower():
+                time.sleep(2)
+                return {"status": "success", "message": f"Hotspot '{ssid}' demarre sur {iface}"}
+            
+            # Step 4: Fallback to hostapd + dnsmasq
             hostapd_conf = f"""interface={iface}
 driver=nl80211
 ssid={ssid}
 hw_mode=g
-channel=7
+channel=6
 wmm_enabled=0
 macaddr_acl=0
 auth_algs=1
@@ -396,28 +384,41 @@ rsn_pairwise=CCMP
             with open(conf_path, "w") as f:
                 f.write(hostapd_conf)
             
-            # Stop any existing hostapd
-            subprocess.run(["sudo", "pkill", "hostapd"], timeout=5)
-            
             # Configure interface
-            subprocess.run(["sudo", "ip", "link", "set", iface, "down"], timeout=5)
-            subprocess.run(["sudo", "ip", "addr", "flush", "dev", iface], timeout=5)
-            subprocess.run(["sudo", "ip", "addr", "add", "192.168.4.1/24", "dev", iface], timeout=5)
-            subprocess.run(["sudo", "ip", "link", "set", iface, "up"], timeout=5)
+            subprocess.run(["sudo", "ip", "link", "set", iface, "down"], capture_output=True, timeout=5)
+            time.sleep(0.5)
+            subprocess.run(["sudo", "ip", "addr", "flush", "dev", iface], capture_output=True, timeout=5)
+            subprocess.run(["sudo", "ip", "addr", "add", "192.168.4.1/24", "dev", iface], capture_output=True, timeout=5)
+            subprocess.run(["sudo", "ip", "link", "set", iface, "up"], capture_output=True, timeout=5)
+            time.sleep(1)
+            
+            # Start dnsmasq
+            dnsmasq_conf = f"""interface={iface}
+dhcp-range=192.168.4.2,192.168.4.254,255.255.255.0,24h
+no-resolv
+"""
+            dnsmasq_path = "/tmp/theia_dnsmasq.conf"
+            with open(dnsmasq_path, "w") as f:
+                f.write(dnsmasq_conf)
+            
+            subprocess.Popen(
+                ["sudo", "dnsmasq", "-C", dnsmasq_path],
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL
+            )
+            time.sleep(1)
             
             # Start hostapd
-            result = subprocess.Popen(
+            subprocess.Popen(
                 ["sudo", "hostapd", conf_path],
-                stdout=subprocess.PIPE, stderr=subprocess.PIPE
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
+                start_new_session=True
             )
-            
-            # Wait a bit and check if running
-            import time
             time.sleep(2)
-            if result.poll() is None:
-                return {"status": "success", "message": f"Hotspot '{ssid}' demarre sur {iface} (192.168.4.1)"}
             
-            return {"status": "error", "message": "Echec du demarrage du hotspot"}
+            return {"status": "success", "message": f"Hotspot '{ssid}' demarre sur {iface} (192.168.4.1)"}
+        
         data = await asyncio.get_event_loop().run_in_executor(None, _start)
         return data
     except Exception as e:
