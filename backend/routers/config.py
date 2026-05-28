@@ -16,6 +16,33 @@ from fastapi.responses import JSONResponse
 router = APIRouter(prefix="/api/config")
 
 
+# ── Helper: Get active WiFi interface ────────────────────────────────
+def _get_wifi_interface():
+    """Find the first available WiFi interface (wlan0, wlan1, wlp*, etc)."""
+    import psutil
+    # Check interfaces with iwconfig to find WiFi-capable ones
+    for iface in psutil.net_if_addrs().keys():
+        if iface.startswith(("wlan", "wlp")):
+            try:
+                result = subprocess.run(
+                    ["iwconfig", iface], capture_output=True, text=True, timeout=3
+                )
+                if result.returncode == 0 and "IEEE 802.11" in result.stdout:
+                    return iface
+            except Exception:
+                pass
+    # Fallback: scan /sys/class/net for wireless devices
+    try:
+        import os
+        for iface in os.listdir("/sys/class/net"):
+            wireless_path = f"/sys/class/net/{iface}/wireless"
+            if os.path.isdir(wireless_path):
+                return iface
+    except Exception:
+        pass
+    return "wlan0"  # Default fallback
+
+
 # ── WiFi ──────────────────────────────────────────────────────────
 
 @router.get("/wifi/status")
@@ -23,8 +50,9 @@ async def wifi_status():
     """Get current WiFi connection status."""
     try:
         def _get():
+            iface = _get_wifi_interface()
             result = subprocess.run(
-                ["iwconfig", "wlan0"], capture_output=True, text=True, timeout=5
+                ["iwconfig", iface], capture_output=True, text=True, timeout=5
             )
             connected = False
             ssid = ""
@@ -70,19 +98,20 @@ async def wifi_status():
             except Exception:
                 pass
 
-            return {
-                "connected": connected,
-                "ssid": ssid,
-                "signal": signal,
-                "txRate": tx_rate,
-                "ipLocal": ip_local,
-                "hasInternet": has_internet,
-                "pingMs": ping_ms,
-            }
+                return {
+                    "connected": connected,
+                    "ssid": ssid,
+                    "signal": signal,
+                    "txRate": tx_rate,
+                    "ipLocal": ip_local,
+                    "hasInternet": has_internet,
+                    "pingMs": ping_ms,
+                    "interface": iface,
+                }
         data = await asyncio.get_event_loop().run_in_executor(None, _get)
         return data
     except Exception as e:
-        return {"connected": False, "ssid": "", "signal": 0, "error": str(e)}
+        return {"connected": False, "ssid": "", "signal": 0, "interface": "", "error": str(e)}
 
 
 @router.get("/wifi/scan")
@@ -90,8 +119,9 @@ async def wifi_scan():
     """Scan available WiFi networks."""
     try:
         def _scan():
+            iface = _get_wifi_interface()
             result = subprocess.run(
-                ["sudo", "iwlist", "wlan0", "scan"],
+                ["sudo", "iwlist", iface, "scan"],
                 capture_output=True, text=True, timeout=15
             )
             networks = []
@@ -205,6 +235,205 @@ async def ethernet_status():
         return data
     except Exception:
         return {"connected": False, "ipLocal": ""}
+
+
+# ── USB Modem ────────────────────────────────────────────────────────
+
+@router.get("/usb-modem/status")
+async def usb_modem_status():
+    """Get USB modem/cellular connection status."""
+    try:
+        def _get():
+            import psutil
+            addrs = psutil.net_if_addrs()
+            connected = False
+            ip = ""
+            interface = ""
+            modem_type = "USB Modem"
+            
+            # Check for common USB modem interfaces
+            prefixes = ["usb", "wwan", "ppp", "bnep", "cdc", "enx"]
+            for iface_name in addrs.keys():
+                if any(iface_name.startswith(p) for p in prefixes):
+                    for a in addrs[iface_name]:
+                        if a.family.name == "AF_INET" and not a.address.startswith("127."):
+                            connected = True
+                            ip = a.address
+                            interface = iface_name
+                            # Detect modem type from interface name
+                            if "wwan" in iface_name:
+                                modem_type = "4G/LTE Modem"
+                            elif "ppp" in iface_name:
+                                modem_type = "PPP Modem"
+                            break
+                    if connected:
+                        break
+            
+            return {
+                "connected": connected,
+                "ipLocal": ip,
+                "interface": interface,
+                "type": modem_type,
+            }
+        data = await asyncio.get_event_loop().run_in_executor(None, _get)
+        return data
+    except Exception:
+        return {"connected": False, "ipLocal": "", "interface": "", "type": "USB Modem"}
+
+
+# ── WiFi Hotspot (AP Mode) ───────────────────────────────────────────
+
+@router.get("/hotspot/status")
+async def hotspot_status():
+    """Get WiFi hotspot (AP) status."""
+    try:
+        def _get():
+            # Check if hostapd is running
+            result = subprocess.run(
+                ["systemctl", "is-active", "hostapd"],
+                capture_output=True, text=True, timeout=5
+            )
+            active = result.stdout.strip() == "active"
+            
+            # Get hotspot config
+            ssid = "THEIA"
+            interface = ""
+            clients = 0
+            
+            if active:
+                # Try to read hostapd.conf for SSID
+                try:
+                    with open("/etc/hostapd/hostapd.conf", "r") as f:
+                        for line in f:
+                            if line.startswith("ssid="):
+                                ssid = line.strip().split("=", 1)[1]
+                            elif line.startswith("interface="):
+                                interface = line.strip().split("=", 1)[1]
+                except Exception:
+                    pass
+                
+                # Count connected clients (from /var/lib/misc/dnsmasq.leases or hostapd_cli)
+                try:
+                    result = subprocess.run(
+                        ["hostapd_cli", "all_sta"],
+                        capture_output=True, text=True, timeout=5
+                    )
+                    if result.returncode == 0:
+                        clients = result.stdout.count("dot11RSNAStatsSTAAddress")
+                except Exception:
+                    pass
+            
+            return {
+                "active": active,
+                "ssid": ssid,
+                "interface": interface,
+                "clients": clients,
+            }
+        data = await asyncio.get_event_loop().run_in_executor(None, _get)
+        return data
+    except Exception:
+        return {"active": False, "ssid": "", "interface": "", "clients": 0}
+
+
+@router.post("/hotspot/start")
+async def hotspot_start(body: dict = None):
+    """Start WiFi hotspot."""
+    ssid = (body or {}).get("ssid", "THEIA")
+    password = (body or {}).get("password", "theia1234")
+    try:
+        def _start():
+            # Use nmcli to create a hotspot (simpler than hostapd)
+            result = subprocess.run(
+                ["sudo", "nmcli", "device", "wifi", "hotspot", "ssid", ssid, "password", password],
+                capture_output=True, text=True, timeout=30
+            )
+            if result.returncode == 0:
+                return {"status": "success", "message": f"Hotspot '{ssid}' demarre"}
+            return {"status": "error", "message": result.stderr.strip() or "Echec du demarrage"}
+        data = await asyncio.get_event_loop().run_in_executor(None, _start)
+        return data
+    except Exception as e:
+        return {"status": "error", "message": str(e)}
+
+
+@router.post("/hotspot/stop")
+async def hotspot_stop():
+    """Stop WiFi hotspot."""
+    try:
+        def _stop():
+            # Find and disconnect the hotspot connection
+            result = subprocess.run(
+                ["nmcli", "-t", "-f", "NAME,TYPE", "connection", "show", "--active"],
+                capture_output=True, text=True, timeout=5
+            )
+            hotspot_name = None
+            for line in result.stdout.strip().split("\n"):
+                if ":802-11-wireless" in line and "Hotspot" in line:
+                    hotspot_name = line.split(":")[0]
+                    break
+            
+            if hotspot_name:
+                result = subprocess.run(
+                    ["sudo", "nmcli", "connection", "down", hotspot_name],
+                    capture_output=True, text=True, timeout=10
+                )
+                if result.returncode == 0:
+                    return {"status": "success", "message": "Hotspot arrete"}
+                return {"status": "error", "message": result.stderr.strip()}
+            return {"status": "success", "message": "Aucun hotspot actif"}
+        data = await asyncio.get_event_loop().run_in_executor(None, _stop)
+        return data
+    except Exception as e:
+        return {"status": "error", "message": str(e)}
+
+
+# ── Network Interfaces List ──────────────────────────────────────────
+
+@router.get("/network/interfaces")
+async def network_interfaces():
+    """List all network interfaces with their status."""
+    try:
+        def _get():
+            import psutil
+            addrs = psutil.net_if_addrs()
+            stats = psutil.net_if_stats()
+            interfaces = []
+            
+            for iface, addr_list in addrs.items():
+                if iface == "lo":
+                    continue
+                
+                iface_info = {
+                    "name": iface,
+                    "type": "unknown",
+                    "up": stats.get(iface, type('', (), {'isup': False})).isup,
+                    "ip": "",
+                    "mac": "",
+                }
+                
+                # Determine type
+                if iface.startswith(("wlan", "wlp")):
+                    iface_info["type"] = "wifi"
+                elif iface.startswith(("eth", "enp", "eno")):
+                    iface_info["type"] = "ethernet"
+                elif iface.startswith(("usb", "wwan", "ppp", "cdc", "enx")):
+                    iface_info["type"] = "usb_modem"
+                elif iface.startswith("tailscale"):
+                    iface_info["type"] = "vpn"
+                
+                for addr in addr_list:
+                    if addr.family.name == "AF_INET" and not addr.address.startswith("127."):
+                        iface_info["ip"] = addr.address
+                    elif addr.family.name == "AF_PACKET":
+                        iface_info["mac"] = addr.address
+                
+                interfaces.append(iface_info)
+            
+            return {"interfaces": interfaces}
+        data = await asyncio.get_event_loop().run_in_executor(None, _get)
+        return data
+    except Exception:
+        return {"interfaces": []}
 
 
 # ── Tailscale ─────────────────────────────────────────────────────

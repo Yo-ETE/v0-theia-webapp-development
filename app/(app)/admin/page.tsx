@@ -28,6 +28,8 @@ import {
   ShieldCheck,
   ShieldOff,
   ExternalLink,
+  Smartphone,
+  Router,
   Monitor,
   Smartphone,
   Laptop,
@@ -221,6 +223,13 @@ export default function AdminPage() {
   const [tsAction, setTsAction] = useState<string | null>(null)
   const [tsMessage, setTsMessage] = useState<{ type: "success" | "error" | "auth"; text: string; url?: string } | null>(null)
 
+  // USB Modem
+  const [usbModemStatus, setUsbModemStatus] = useState<{ connected: boolean; ipLocal: string; interface: string; type: string } | null>(null)
+
+  // Hotspot
+  const [hotspotStatus, setHotspotStatus] = useState<{ active: boolean; ssid: string; clients: number } | null>(null)
+  const [isTogglingHotspot, setIsTogglingHotspot] = useState(false)
+
   // Git / Version
   const [versionInfo, setVersionInfo] = useState<VersionInfo | null>(null)
   const [isCheckingVersion, setIsCheckingVersion] = useState(false)
@@ -260,12 +269,16 @@ export default function AdminPage() {
 
   const fetchConnectionStatus = useCallback(async () => {
     try {
-      const [wifi, eth] = await Promise.all([
+      const [wifi, eth, modem, hotspot] = await Promise.all([
         api.get("wifi/status"),
         api.get("ethernet/status"),
+        api.get("usb-modem/status").catch(() => null),
+        api.get("hotspot/status").catch(() => null),
       ])
       setWifiStatus(wifi)
       setEthernetStatus(eth)
+      if (modem) setUsbModemStatus(modem)
+      if (hotspot) setHotspotStatus(hotspot)
     } catch { /* ignore */ }
   }, [])
 
@@ -748,6 +761,96 @@ export default function AdminPage() {
                   </div>
                 ) : (
                   <p className="pl-6 text-xs text-muted-foreground">Non connecte</p>
+                )}
+              </div>
+
+              <div className="border-t border-border/50" />
+
+              {/* USB Modem */}
+              <div className="flex flex-col gap-2">
+                <div className="flex items-center gap-2">
+                  <Smartphone className={cn("h-4 w-4", usbModemStatus?.connected ? "text-success" : "text-muted-foreground")} />
+                  <span className="text-sm font-medium text-foreground">USB Modem</span>
+                  {usbModemStatus?.connected && <span className="ml-auto text-xs text-success">Connecte</span>}
+                </div>
+                {usbModemStatus?.connected ? (
+                  <div className="grid grid-cols-2 gap-2 pl-6">
+                    <div>
+                      <p className="text-[10px] text-muted-foreground">Type</p>
+                      <p className="text-xs font-medium text-foreground">{usbModemStatus.type}</p>
+                    </div>
+                    <div>
+                      <p className="text-[10px] text-muted-foreground">Interface</p>
+                      <p className="text-xs font-mono text-foreground">{usbModemStatus.interface}</p>
+                    </div>
+                    <div className="col-span-2">
+                      <p className="text-[10px] text-muted-foreground">IP Locale</p>
+                      <p className="text-xs font-mono text-foreground">{usbModemStatus.ipLocal}</p>
+                    </div>
+                  </div>
+                ) : (
+                  <p className="pl-6 text-xs text-muted-foreground">Non connecte</p>
+                )}
+              </div>
+
+              <div className="border-t border-border/50" />
+
+              {/* Hotspot */}
+              <div className="flex flex-col gap-2">
+                <div className="flex items-center gap-2">
+                  <Router className={cn("h-4 w-4", hotspotStatus?.active ? "text-success" : "text-muted-foreground")} />
+                  <span className="text-sm font-medium text-foreground">Hotspot WiFi</span>
+                  {hotspotStatus?.active && (
+                    <span className="ml-auto text-xs text-success">
+                      Actif ({hotspotStatus.clients} client{hotspotStatus.clients !== 1 ? "s" : ""})
+                    </span>
+                  )}
+                </div>
+                {hotspotStatus?.active ? (
+                  <div className="pl-6 flex items-center justify-between">
+                    <div>
+                      <p className="text-[10px] text-muted-foreground">SSID</p>
+                      <p className="text-xs font-medium text-foreground">{hotspotStatus.ssid}</p>
+                    </div>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={async () => {
+                        setIsTogglingHotspot(true)
+                        try {
+                          await api.post("hotspot/stop")
+                          await fetchConnectionStatus()
+                        } finally {
+                          setIsTogglingHotspot(false)
+                        }
+                      }}
+                      disabled={isTogglingHotspot}
+                      className="text-xs h-7"
+                    >
+                      {isTogglingHotspot ? "Arret..." : "Arreter"}
+                    </Button>
+                  </div>
+                ) : (
+                  <div className="pl-6 flex items-center justify-between">
+                    <p className="text-xs text-muted-foreground">Inactif</p>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={async () => {
+                        setIsTogglingHotspot(true)
+                        try {
+                          await api.post("hotspot/start", { ssid: "THEIA", password: "theia1234" })
+                          await fetchConnectionStatus()
+                        } finally {
+                          setIsTogglingHotspot(false)
+                        }
+                      }}
+                      disabled={isTogglingHotspot}
+                      className="text-xs h-7"
+                    >
+                      {isTogglingHotspot ? "Demarrage..." : "Demarrer"}
+                    </Button>
+                  </div>
                 )}
               </div>
             </CardContent>
