@@ -352,38 +352,69 @@ async def hotspot_status():
     """Get WiFi hotspot (AP) status."""
     try:
         def _get():
-            # Check if hostapd is running
-            result = subprocess.run(
-                ["systemctl", "is-active", "hostapd"],
-                capture_output=True, text=True, timeout=5
-            )
-            active = result.stdout.strip() == "active"
-            
-            # Get hotspot config
-            ssid = "THEIA"
+            active = False
+            ssid = ""
             interface = ""
             clients = 0
             
-            if active:
-                # Try to read hostapd.conf for SSID
+            # Method 1: Check nmcli for active Hotspot connection
+            try:
+                conn_check = subprocess.run(
+                    ["nmcli", "-t", "-f", "NAME,TYPE,DEVICE", "connection", "show", "--active"],
+                    capture_output=True, text=True, timeout=5
+                )
+                for line in conn_check.stdout.strip().split('\n'):
+                    if line and "802-11-wireless" in line:
+                        parts = line.split(':')
+                        if len(parts) >= 3:
+                            conn_name = parts[0]
+                            # Check if this is a hotspot by checking interface mode
+                            iface = parts[2] if len(parts) > 2 else ""
+                            if iface:
+                                iw_check = subprocess.run(
+                                    ["iw", "dev", iface, "info"],
+                                    capture_output=True, text=True, timeout=5
+                                )
+                                if "type AP" in iw_check.stdout:
+                                    active = True
+                                    interface = iface
+                                    # Extract SSID from iw output
+                                    for iw_line in iw_check.stdout.split('\n'):
+                                        if 'ssid' in iw_line.lower():
+                                            ssid = iw_line.split()[-1] if iw_line.split() else ""
+                                    break
+            except Exception:
+                pass
+            
+            # Method 2: Check hostapd service (fallback)
+            if not active:
+                result = subprocess.run(
+                    ["systemctl", "is-active", "hostapd"],
+                    capture_output=True, text=True, timeout=5
+                )
+                if result.stdout.strip() == "active":
+                    active = True
+                    # Try to read hostapd.conf for SSID
+                    try:
+                        with open("/etc/hostapd/hostapd.conf", "r") as f:
+                            for line in f:
+                                if line.startswith("ssid="):
+                                    ssid = line.strip().split("=", 1)[1]
+                                elif line.startswith("interface="):
+                                    interface = line.strip().split("=", 1)[1]
+                    except Exception:
+                        pass
+            
+            # Count connected clients
+            if active and interface:
                 try:
-                    with open("/etc/hostapd/hostapd.conf", "r") as f:
-                        for line in f:
-                            if line.startswith("ssid="):
-                                ssid = line.strip().split("=", 1)[1]
-                            elif line.startswith("interface="):
-                                interface = line.strip().split("=", 1)[1]
-                except Exception:
-                    pass
-                
-                # Count connected clients (from /var/lib/misc/dnsmasq.leases or hostapd_cli)
-                try:
+                    # Try iw station dump for client count
                     result = subprocess.run(
-                        ["hostapd_cli", "all_sta"],
+                        ["iw", "dev", interface, "station", "dump"],
                         capture_output=True, text=True, timeout=5
                     )
                     if result.returncode == 0:
-                        clients = result.stdout.count("dot11RSNAStatsSTAAddress")
+                        clients = result.stdout.count("Station")
                 except Exception:
                     pass
             
