@@ -179,6 +179,12 @@ export default function MissionDetailPage() {
   const [editingPolygon, setEditingPolygon] = useState<[number, number][] | null>(null)
   const [selectedFloor, setSelectedFloor] = useState<number>(0) // 0 = RDC, 1 = 1er, etc.
   const [autoSwitchFloor, setAutoSwitchFloor] = useState(true) // Auto-switch floor on detection from different floor
+  
+  // Detection Feed TTL states - must be before conditional return (Rules of Hooks)
+  const [lastActivityTime, setLastActivityTime] = useState<number>(() => Date.now())
+  const [feedExpired, setFeedExpired] = useState(false)
+  const FEED_TTL_MS = 5 * 60 * 1000 // 5 minutes
+  const lastDetectionRef = useRef<string | null>(null)
   const [errorMsg, setErrorMsg] = useState<string | null>(null)
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const [replayDetections, setReplayDetections] = useState<Record<string, any>>({})
@@ -965,11 +971,6 @@ export default function MissionDetailPage() {
     ? new Set(floorFilteredDevices.map(d => d.id))
     : null
   
-  // Track last activity time for TTL
-  const [lastActivityTime, setLastActivityTime] = useState<number>(() => Date.now())
-  const [feedExpired, setFeedExpired] = useState(false)
-  const FEED_TTL_MS = 5 * 60 * 1000 // 5 minutes
-  
   // Update last activity time when new detections arrive
   useEffect(() => {
     if (liveDetections.length > 0) {
@@ -1000,7 +1001,6 @@ export default function MissionDetailPage() {
     : allSseDetections.slice(0, 50)
 
   // Auto-switch floor when detection arrives from a different floor (Live mode only)
-  const lastDetectionRef = useRef<string | null>(null)
   useEffect(() => {
     if (!autoSwitchFloor || activeTab !== "live" || floorLevels.length <= 1) return
     if (liveDetections.length === 0) return
