@@ -364,27 +364,40 @@ async def hotspot_start(body: dict = None):
             subprocess.run(["sudo", "pkill", "dnsmasq"], capture_output=True, timeout=5)
             time.sleep(1)
             
-            # Step 2: Try nmcli hotspot first (simplest, if it works)
+            # Step 2: Try nmcli hotspot with explicit band/channel for better compatibility
             print(f"[THEIA] Hotspot: trying nmcli hotspot on {iface}", flush=True)
+            # Use band=bg (2.4GHz) and channel 6 for maximum compatibility
             result = subprocess.run(
-                ["sudo", "nmcli", "device", "wifi", "hotspot", "ifname", iface, "ssid", ssid, "password", password],
+                ["sudo", "nmcli", "device", "wifi", "hotspot", "ifname", iface, "ssid", ssid, "password", password, "band", "bg", "channel", "6"],
                 capture_output=True, text=True, timeout=30
             )
             print(f"[THEIA] Hotspot: nmcli returned {result.returncode}, stdout={result.stdout[:200] if result.stdout else ''}, stderr={result.stderr[:200] if result.stderr else ''}", flush=True)
             if result.returncode == 0:
-                time.sleep(2)
-                # Verify hotspot is actually running by checking connection status
+                time.sleep(3)  # Give more time for AP to initialize
+                # Verify hotspot is actually running and visible
                 conn_check = subprocess.run(
                     ["nmcli", "-t", "-f", "NAME,TYPE", "connection", "show", "--active"],
                     capture_output=True, text=True, timeout=5
                 )
                 print(f"[THEIA] Hotspot: active connections: {conn_check.stdout}", flush=True)
+                
+                # Check interface mode with iw
+                iw_check = subprocess.run(
+                    ["iw", "dev", iface, "info"],
+                    capture_output=True, text=True, timeout=5
+                )
+                print(f"[THEIA] Hotspot: iw info: {iw_check.stdout}", flush=True)
+                is_ap_mode = "type AP" in iw_check.stdout
+                
                 # Check if the SSID or "Hotspot" appears in active wireless connections
-                # nmcli names the connection with the SSID, so check for that too
-                if ssid in conn_check.stdout and "802-11-wireless" in conn_check.stdout:
-                    return {"status": "success", "message": f"Hotspot '{ssid}' demarre sur {iface} (nmcli)"}
-                if "Hotspot" in conn_check.stdout or "hotspot" in conn_check.stdout.lower():
-                    return {"status": "success", "message": f"Hotspot '{ssid}' demarre sur {iface} (nmcli)"}
+                if (ssid in conn_check.stdout or "Hotspot" in conn_check.stdout) and "802-11-wireless" in conn_check.stdout:
+                    if is_ap_mode:
+                        return {"status": "success", "message": f"Hotspot '{ssid}' demarre sur {iface} (nmcli)"}
+                    else:
+                        print(f"[THEIA] Hotspot: WARNING - connection active but interface not in AP mode", flush=True)
+                        # Try to continue anyway, maybe it will work
+                        return {"status": "warning", "message": f"Hotspot '{ssid}' cree mais mode AP non confirme sur {iface}"}
+                
                 # nmcli said OK but hotspot not actually running, continue to fallback
                 print(f"[THEIA] Hotspot: nmcli returned 0 but no Hotspot connection active, trying hostapd", flush=True)
             
@@ -527,7 +540,7 @@ async def hotspot_stop():
         return {"status": "error", "message": str(e)}
 
 
-# ── Network Interfaces List ──────────────────────────────────────────
+# ── Network Interfaces List ───────────────────────────────────��──────
 
 @router.get("/network/interfaces")
 async def network_interfaces():
@@ -1074,7 +1087,7 @@ async def git_version():
         }
 
 
-# ── Timezone ──────────────────────────────────────────────────────
+# ── Timezone ��─────────────────────────────────────────────────────
 
 @router.get("/timezone")
 async def get_timezone():
