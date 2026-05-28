@@ -310,15 +310,20 @@ export default function MissionDetailPage() {
       return isNaN(d.getTime()) ? 0 : d.getTime()
     }
     
+    // Filter out events older than 24 hours (only load recent events from today)
+    const now = Date.now()
+    const oneDayAgo = now - 24 * 60 * 60 * 1000
+    const recentEvents = events.filter(e => parseTs(e.timestamp) > oneDayAgo)
+    
+    // If no recent events, don't load anything - wait for SSE
+    if (recentEvents.length === 0) return
+    
     // Sort events by timestamp descending to get the most recent one
-    const sortedEvents = [...events].sort((a, b) => {
+    const sortedEvents = [...recentEvents].sort((a, b) => {
       const tsA = parseTs(a.timestamp)
       const tsB = parseTs(b.timestamp)
       return tsB - tsA // Most recent first
     })
-    
-    // Debug: log the sorting results
-    console.log("[v0] Initial load - first 3 events after sort:", sortedEvents.slice(0, 3).map(e => ({ ts: e.timestamp, parsed: parseTs(e.timestamp) })))
     
     const latestEvent = sortedEvents[0]
     if (!latestEvent) return
