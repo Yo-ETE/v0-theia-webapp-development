@@ -1756,7 +1756,7 @@ export default function MissionDetailPage() {
                       +
                     </button>
                     {/* Duplicate floor zones button */}
-                    {canEdit && currentFloorZones.length > 0 && (
+                    {canEdit && zones.filter(z => (z.floor ?? 0) === selectedFloor).length > 0 && (
                       <button
                         onClick={() => {
                           const nextFloor = Math.max(...floorLevels) + 1
@@ -2717,7 +2717,7 @@ export default function MissionDetailPage() {
           </DialogHeader>
           <div className="text-xs text-muted-foreground py-2">
             {duplicateFloorDialog && (
-              <p>{currentFloorZones.length} zone(s) seront copiees. Les capteurs ne seront pas copies.</p>
+              <p>{zones.filter(z => (z.floor ?? 0) === (duplicateFloorDialog?.sourceFloor ?? 0)).length} zone(s) seront copiees. Les capteurs ne seront pas copies.</p>
             )}
           </div>
           <DialogFooter className="gap-2">
