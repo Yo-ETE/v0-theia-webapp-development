@@ -9,7 +9,7 @@ import {
   Activity, Eye, EyeOff, Zap, Timer, Download, Signal, Battery, Wifi, Unlink,
   Flame, Crosshair, ArrowDownLeft, ArrowUpRight, Bell, BellOff,
   Maximize2, Minimize2, FileImage, Ruler, Palette, RotateCw,
-  Volume2, VolumeX, Grid3X3, ArrowLeftRight,
+  Volume2, VolumeX, Grid3X3, ArrowLeftRight, Copy,
 } from "lucide-react"
 import { TopHeader } from "@/components/top-header"
 import { useAuth } from "@/lib/auth-context"
@@ -187,6 +187,7 @@ export default function MissionDetailPage() {
   const [editingPolygon, setEditingPolygon] = useState<[number, number][] | null>(null)
   const [selectedFloor, setSelectedFloor] = useState<number>(0) // 0 = RDC, 1 = 1er, etc.
   const [autoSwitchFloor, setAutoSwitchFloor] = useState(true) // Auto-switch floor on detection from different floor
+  const [duplicateFloorDialog, setDuplicateFloorDialog] = useState<{ sourceFloor: number; targetFloor: number } | null>(null)
   
   // Detection Feed TTL states - must be before conditional return (Rules of Hooks)
   const [lastActivityTime, setLastActivityTime] = useState<number>(() => Date.now())
@@ -300,10 +301,19 @@ export default function MissionDetailPage() {
     if (initialLoadDoneRef.current || !events || events.length === 0) return
     initialLoadDoneRef.current = true
     
+    // Helper to parse timestamps (handles both "YYYY-MM-DD HH:mm:ss" and ISO formats)
+    const parseTs = (ts: string | null | undefined): number => {
+      if (!ts) return 0
+      // Replace space with T for ISO compatibility, handle timezone
+      const normalized = ts.includes("T") ? ts : ts.replace(" ", "T") + "Z"
+      const d = new Date(normalized)
+      return isNaN(d.getTime()) ? 0 : d.getTime()
+    }
+    
     // Sort events by timestamp descending to get the most recent one
     const sortedEvents = [...events].sort((a, b) => {
-      const tsA = new Date(a.timestamp ?? 0).getTime()
-      const tsB = new Date(b.timestamp ?? 0).getTime()
+      const tsA = parseTs(a.timestamp)
+      const tsB = parseTs(b.timestamp)
       return tsB - tsA // Most recent first
     })
     
@@ -338,7 +348,7 @@ export default function MissionDetailPage() {
     setFeedExpired(true)
   }, [events])
 
-  // ─── Bearing grouping: segments facing the same direction share the same face label ──
+  // ─── Bearing grouping: segments facing the same direction share the same face label ─��
   // Uses FULL 0-360 bearing so north-facing (0) and south-facing (180) are DIFFERENT faces.
   // Returns e.g. { A: [0,3], B: [1,4], C: [2,5] } meaning polygon edges 0&3 are "A", etc.
   // Helper: convert segment index (A, B, C...) to facade group letter using a zone's polygon
@@ -415,6 +425,23 @@ export default function MissionDetailPage() {
     setZoneDialog(false)
     setPendingPolygon(null)
   }, [mission, pendingPolygon, zoneName, zoneType, sideLabels, sideGrouping, id, mutate])
+
+  // Duplicate zones from one floor to another
+  const duplicateFloorZones = useCallback(async (sourceFloor: number, targetFloor: number) => {
+    if (!mission) return
+    const sourceZones = zones.filter(z => (z.floor ?? 0) === sourceFloor)
+    if (sourceZones.length === 0) return
+    
+    const newZones: Zone[] = sourceZones.map(z => ({
+      ...z,
+      id: `zone-${Date.now()}-${Math.random().toString(36).slice(2, 5)}`,
+      floor: targetFloor,
+      devices: [], // Don't copy device assignments
+    }))
+    
+    const updated = await updateMission(id, { zones: [...zones, ...newZones] })
+    mutate(updated, false)
+  }, [mission, zones, id, mutate])
 
   const deleteZone = useCallback(async (zoneId: string) => {
     if (!mission) return
@@ -1728,6 +1755,19 @@ export default function MissionDetailPage() {
                     >
                       +
                     </button>
+                    {/* Duplicate floor zones button */}
+                    {canEdit && currentFloorZones.length > 0 && (
+                      <button
+                        onClick={() => {
+                          const nextFloor = Math.max(...floorLevels) + 1
+                          setDuplicateFloorDialog({ sourceFloor: selectedFloor, targetFloor: nextFloor })
+                        }}
+                        className="px-2 py-1 text-[10px] rounded bg-muted/30 text-muted-foreground hover:bg-muted flex items-center gap-1"
+                        title={`Dupliquer les zones de ${floorLabels[selectedFloor] ?? `Niveau ${selectedFloor}`} vers un nouvel etage`}
+                      >
+                        <Copy className="h-3 w-3" />
+                      </button>
+                    )}
                     <div className="flex-1" />
                     <button
                       onClick={() => setAutoSwitchFloor(!autoSwitchFloor)}
@@ -2030,21 +2070,24 @@ export default function MissionDetailPage() {
               {activeTab === "live" && (
                 <Card className="border-border/50 bg-card flex-1">
                   <CardHeader className="pb-2">
-                    <div className="flex items-center justify-between">
-                      <CardTitle className="text-xs flex items-center gap-1.5">
+                    <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                      <CardTitle className="text-xs flex items-center gap-1.5 shrink-0">
                         <Zap className="h-3 w-3 text-warning" />
                         Detection Feed
                         {feedExpired && displayDetections.length > 0 && (
                           <span className="text-[9px] text-muted-foreground font-normal ml-1">(derniere detection)</span>
                         )}
+                      </CardTitle>
+                      <div className="flex items-center gap-2 flex-wrap">
                         {!feedExpired && displayDetections.length > 0 && (
-                          <span className="relative flex h-2 w-2 ml-1">
+                          <span className="relative flex h-2 w-2 shrink-0">
                             <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-primary opacity-75"></span>
                             <span className="relative inline-flex rounded-full h-2 w-2 bg-primary"></span>
                           </span>
                         )}
-                      </CardTitle>
-                      <div className="flex items-center gap-2 flex-wrap">
+                        {!feedExpired && displayDetections.length > 0 && (
+                          <span className="text-[9px] text-primary font-medium uppercase tracking-wider">LIVE</span>
+                        )}
                         {missionDevices.length > 1 && (
                           <select
                             value={feedDeviceFilter}
@@ -2662,6 +2705,41 @@ export default function MissionDetailPage() {
           )}
         </div>
       </main>
+
+      {/* Floor duplication confirmation dialog */}
+      <Dialog open={!!duplicateFloorDialog} onOpenChange={() => setDuplicateFloorDialog(null)}>
+        <DialogContent className="sm:max-w-sm z-[10000]">
+          <DialogHeader>
+            <DialogTitle className="text-sm">Dupliquer les zones</DialogTitle>
+            <DialogDescription className="text-xs text-muted-foreground">
+              Copier toutes les zones de {duplicateFloorDialog && (floorLabels[duplicateFloorDialog.sourceFloor] ?? `Niveau ${duplicateFloorDialog.sourceFloor}`)} vers {duplicateFloorDialog && (floorLabels[duplicateFloorDialog.targetFloor] ?? `Niveau ${duplicateFloorDialog.targetFloor}`)}.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="text-xs text-muted-foreground py-2">
+            {duplicateFloorDialog && (
+              <p>{currentFloorZones.length} zone(s) seront copiees. Les capteurs ne seront pas copies.</p>
+            )}
+          </div>
+          <DialogFooter className="gap-2">
+            <Button variant="outline" size="sm" onClick={() => setDuplicateFloorDialog(null)}>
+              Annuler
+            </Button>
+            <Button
+              size="sm"
+              onClick={async () => {
+                if (duplicateFloorDialog) {
+                  await duplicateFloorZones(duplicateFloorDialog.sourceFloor, duplicateFloorDialog.targetFloor)
+                  setSelectedFloor(duplicateFloorDialog.targetFloor)
+                  setDuplicateFloorDialog(null)
+                }
+              }}
+            >
+              <Copy className="h-3.5 w-3.5 mr-1" />
+              Dupliquer
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       {/* Zone creation dialog */}
       <Dialog open={zoneDialog} onOpenChange={setZoneDialog}>
