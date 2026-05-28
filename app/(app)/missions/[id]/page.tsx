@@ -394,7 +394,7 @@ export default function MissionDetailPage() {
 
   const saveZone = useCallback(async () => {
     if (!mission || !pendingPolygon || !zoneName.trim()) return
-    const zones = mission.zones ?? []
+    const existingZones = mission.zones ?? []
     const newZone: Zone = {
       id: `zone-${Date.now()}-${Math.random().toString(36).slice(2, 5)}`,
       mission_id: id,
@@ -402,7 +402,7 @@ export default function MissionDetailPage() {
       label: zoneName.trim(),
       type: zoneType as Zone["type"],
       polygon: pendingPolygon,
-      color: ZONE_COLORS[zones.length % ZONE_COLORS.length],
+      color: ZONE_COLORS[existingZones.length % ZONE_COLORS.length],
       floor: selectedFloor, // Associate zone with selected floor
       devices: [],
       // Build sides map: key = segment letter (A,B,C...), value = display label
@@ -420,7 +420,7 @@ export default function MissionDetailPage() {
         return s
       })(),
     }
-    const updated = await updateMission(id, { zones: [...zones, newZone] })
+    const updated = await updateMission(id, { zones: [...existingZones, newZone] })
     mutate(updated, false)
     setZoneDialog(false)
     setPendingPolygon(null)
@@ -490,7 +490,7 @@ export default function MissionDetailPage() {
     } catch (err) {
       console.warn("[THEIA] Failed to update device during assign:", err)
     }
-    const zones = (mission.zones ?? []).map((z) =>
+    const updatedZonesAssign = (mission.zones ?? []).map((z) =>
       z.id === zoneId && !z.devices.includes(deviceId)
         ? { ...z, devices: [...z.devices, deviceId] }
         : z
@@ -515,7 +515,7 @@ export default function MissionDetailPage() {
       },
     }
     try {
-      const updated = await updateMission(id, { zones, device_placements: updatedPlacements })
+      const updated = await updateMission(id, { zones: updatedZonesAssign, device_placements: updatedPlacements })
       mutate(updated, false)
     } catch (err) {
       console.warn("[THEIA] Failed to update mission during assign:", err)
@@ -679,7 +679,7 @@ export default function MissionDetailPage() {
 
   const saveEditZone = useCallback(async () => {
     if (!mission || !editZoneDialog || !editZoneName.trim()) return
-    const zones = (mission.zones ?? []).map((z) => {
+    const updatedZonesEdit = (mission.zones ?? []).map((z) => {
       if (z.id !== editZoneDialog) return z
       // Build per-segment sides map from grouped labels
       const sides: Record<string, string> = {}
@@ -697,7 +697,7 @@ export default function MissionDetailPage() {
       }
     })
     try {
-      const updated = await updateMission(id, { zones })
+      const updated = await updateMission(id, { zones: updatedZonesEdit })
       mutate(updated, false)
     } catch (err) {
       console.warn("[THEIA] Failed to update zone:", err)
