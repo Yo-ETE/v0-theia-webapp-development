@@ -366,7 +366,19 @@ async def hotspot_start(body: dict = None):
             )
             if result.returncode == 0:
                 time.sleep(2)
-                return {"status": "success", "message": f"Hotspot '{ssid}' demarre sur {iface} (nmcli)"}
+                # Verify hotspot is actually running by checking connection status
+                verify = subprocess.run(
+                    ["nmcli", "-t", "-f", "GENERAL.STATE", "device", "show", iface],
+                    capture_output=True, text=True, timeout=5
+                )
+                # Also check if there's a Hotspot connection active
+                conn_check = subprocess.run(
+                    ["nmcli", "-t", "-f", "NAME,TYPE", "connection", "show", "--active"],
+                    capture_output=True, text=True, timeout=5
+                )
+                if "Hotspot" in conn_check.stdout or "hotspot" in conn_check.stdout.lower():
+                    return {"status": "success", "message": f"Hotspot '{ssid}' demarre sur {iface} (nmcli)"}
+                # nmcli said OK but hotspot not actually running, continue to fallback
             
             # Step 3: Configure interface
             subprocess.run(["sudo", "ip", "link", "set", iface, "down"], capture_output=True, timeout=5)
