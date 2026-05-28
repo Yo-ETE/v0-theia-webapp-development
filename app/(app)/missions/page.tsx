@@ -27,6 +27,7 @@ import { useMissions } from "@/hooks/use-api"
 import { deleteMission, updateMission } from "@/lib/api-client"
 import { missionStatusConfig, formatDate, formatRelative } from "@/lib/format"
 import { cn } from "@/lib/utils"
+import { useAuth } from "@/lib/auth-context"
 import type { Mission } from "@/lib/types"
 
 const STATUS_ORDER = ["active", "paused", "draft", "completed"] as const
@@ -43,13 +44,18 @@ type MissionAction =
 
 function MissionCard({ 
   mission, 
-  onAction 
+  onAction,
+  canEdit,
+  canDelete,
 }: { 
   mission: Mission
-  onAction: (action: MissionAction) => void 
+  onAction: (action: MissionAction) => void
+  canEdit: boolean
+  canDelete: boolean
 }) {
   const statusCfg = missionStatusConfig[mission.status] ?? missionStatusConfig.draft
   const isArchived = mission.status === "archived"
+  const showMenu = canEdit || canDelete
   
   return (
     <Card className={cn(
@@ -72,50 +78,58 @@ function MissionCard({
               <Badge variant="outline" className={cn("text-[9px] px-1.5 py-0", statusCfg.className)}>
                 {statusCfg.label}
               </Badge>
-              <DropdownMenu>
-                <DropdownMenuTrigger asChild onClick={(e) => e.preventDefault()}>
-                  <button className="opacity-100 sm:opacity-0 sm:group-hover:opacity-100 transition-opacity rounded p-1 hover:bg-muted text-muted-foreground">
-                    <MoreHorizontal className="h-4 w-4" />
-                  </button>
-                </DropdownMenuTrigger>
-                <DropdownMenuContent align="end" className="w-40">
-                  <DropdownMenuItem onClick={(e) => {
-                    e.preventDefault()
-                    onAction({ type: "rename", mission: { id: mission.id, name: mission.name } })
-                  }}>
-                    <Pencil className="mr-2 h-3.5 w-3.5" />
-                    Renommer
-                  </DropdownMenuItem>
-                  {isArchived ? (
-                    <DropdownMenuItem onClick={(e) => {
-                      e.preventDefault()
-                      onAction({ type: "unarchive", mission: { id: mission.id, name: mission.name } })
-                    }}>
-                      <ArchiveRestore className="mr-2 h-3.5 w-3.5" />
-                      Restaurer
-                    </DropdownMenuItem>
-                  ) : (
-                    <DropdownMenuItem onClick={(e) => {
-                      e.preventDefault()
-                      onAction({ type: "archive", mission: { id: mission.id, name: mission.name } })
-                    }}>
-                      <Archive className="mr-2 h-3.5 w-3.5" />
-                      Archiver
-                    </DropdownMenuItem>
-                  )}
-                  <DropdownMenuSeparator />
-                  <DropdownMenuItem 
-                    className="text-destructive focus:text-destructive"
-                    onClick={(e) => {
-                      e.preventDefault()
-                      onAction({ type: "delete", mission: { id: mission.id, name: mission.name } })
-                    }}
-                  >
-                    <Trash2 className="mr-2 h-3.5 w-3.5" />
-                    Supprimer
-                  </DropdownMenuItem>
-                </DropdownMenuContent>
-              </DropdownMenu>
+              {showMenu && (
+                <DropdownMenu>
+                  <DropdownMenuTrigger asChild onClick={(e) => e.preventDefault()}>
+                    <button className="opacity-100 sm:opacity-0 sm:group-hover:opacity-100 transition-opacity rounded p-1 hover:bg-muted text-muted-foreground">
+                      <MoreHorizontal className="h-4 w-4" />
+                    </button>
+                  </DropdownMenuTrigger>
+                  <DropdownMenuContent align="end" className="w-40">
+                    {canEdit && (
+                      <DropdownMenuItem onClick={(e) => {
+                        e.preventDefault()
+                        onAction({ type: "rename", mission: { id: mission.id, name: mission.name } })
+                      }}>
+                        <Pencil className="mr-2 h-3.5 w-3.5" />
+                        Renommer
+                      </DropdownMenuItem>
+                    )}
+                    {canEdit && (isArchived ? (
+                      <DropdownMenuItem onClick={(e) => {
+                        e.preventDefault()
+                        onAction({ type: "unarchive", mission: { id: mission.id, name: mission.name } })
+                      }}>
+                        <ArchiveRestore className="mr-2 h-3.5 w-3.5" />
+                        Restaurer
+                      </DropdownMenuItem>
+                    ) : (
+                      <DropdownMenuItem onClick={(e) => {
+                        e.preventDefault()
+                        onAction({ type: "archive", mission: { id: mission.id, name: mission.name } })
+                      }}>
+                        <Archive className="mr-2 h-3.5 w-3.5" />
+                        Archiver
+                      </DropdownMenuItem>
+                    ))}
+                    {canDelete && (
+                      <>
+                        <DropdownMenuSeparator />
+                        <DropdownMenuItem 
+                          className="text-destructive focus:text-destructive"
+                          onClick={(e) => {
+                            e.preventDefault()
+                            onAction({ type: "delete", mission: { id: mission.id, name: mission.name } })
+                          }}
+                        >
+                          <Trash2 className="mr-2 h-3.5 w-3.5" />
+                          Supprimer
+                        </DropdownMenuItem>
+                      </>
+                    )}
+                  </DropdownMenuContent>
+                </DropdownMenu>
+              )}
             </div>
           </div>
         </CardHeader>
@@ -143,7 +157,7 @@ function MissionCard({
   )
 }
 
-function MissionGroups({ missions, onAction }: { missions: Mission[]; onAction: (action: MissionAction) => void }) {
+function MissionGroups({ missions, onAction, canEdit, canDelete }: { missions: Mission[]; onAction: (action: MissionAction) => void; canEdit: boolean; canDelete: boolean }) {
   const grouped = useMemo(() =>
     STATUS_ORDER.map(status => ({
       status,
@@ -168,7 +182,7 @@ function MissionGroups({ missions, onAction }: { missions: Mission[]; onAction: 
           </div>
           <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
             {group.items.map((mission) => (
-              <MissionCard key={mission.id} mission={mission} onAction={onAction} />
+              <MissionCard key={mission.id} mission={mission} onAction={onAction} canEdit={canEdit} canDelete={canDelete} />
             ))}
           </div>
         </div>
@@ -177,7 +191,7 @@ function MissionGroups({ missions, onAction }: { missions: Mission[]; onAction: 
   )
 }
 
-function ArchivedSection({ missions, onAction }: { missions: Mission[]; onAction: (action: MissionAction) => void }) {
+function ArchivedSection({ missions, onAction, canEdit, canDelete }: { missions: Mission[]; onAction: (action: MissionAction) => void; canEdit: boolean; canDelete: boolean }) {
   const [isOpen, setIsOpen] = useState(false)
   const archivedMissions = useMemo(() => missions.filter(m => m.status === "archived"), [missions])
   
@@ -197,7 +211,7 @@ function ArchivedSection({ missions, onAction }: { missions: Mission[]; onAction
       <CollapsibleContent className="mt-4">
         <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
           {archivedMissions.map((mission) => (
-            <MissionCard key={mission.id} mission={mission} onAction={onAction} />
+            <MissionCard key={mission.id} mission={mission} onAction={onAction} canEdit={canEdit} canDelete={canDelete} />
           ))}
         </div>
       </CollapsibleContent>
@@ -209,6 +223,10 @@ export default function MissionsPage() {
   const { data: missions, isLoading, mutate } = useMissions()
   const [action, setAction] = useState<MissionAction | null>(null)
   const [newName, setNewName] = useState("")
+  const { hasPermission } = useAuth()
+  const canCreate = hasPermission("missions_create")
+  const canEdit = hasPermission("missions_edit")
+  const canDelete = hasPermission("missions_delete")
 
   const handleAction = useCallback((a: MissionAction) => {
     setAction(a)
@@ -263,12 +281,14 @@ export default function MissionsPage() {
             <h2 className="text-[11px] uppercase tracking-widest text-muted-foreground">
               {activeMissions.length} missions
             </h2>
-            <Button asChild size="sm" className="bg-primary text-primary-foreground hover:bg-primary/90">
-              <Link href="/missions/new">
-                <Plus className="mr-1.5 h-3.5 w-3.5" />
-                New Mission
-              </Link>
-            </Button>
+            {canCreate && (
+              <Button asChild size="sm" className="bg-primary text-primary-foreground hover:bg-primary/90">
+                <Link href="/missions/new">
+                  <Plus className="mr-1.5 h-3.5 w-3.5" />
+                  New Mission
+                </Link>
+              </Button>
+            )}
           </div>
 
           {isLoading ? (
@@ -283,8 +303,8 @@ export default function MissionsPage() {
             </div>
           ) : (
             <>
-              <MissionGroups missions={activeMissions} onAction={handleAction} />
-              <ArchivedSection missions={missions ?? []} onAction={handleAction} />
+            <MissionGroups missions={activeMissions} onAction={handleAction} canEdit={canEdit} canDelete={canDelete} />
+            <ArchivedSection missions={missions ?? []} onAction={handleAction} canEdit={canEdit} canDelete={canDelete} />
             </>
           )}
         </div>

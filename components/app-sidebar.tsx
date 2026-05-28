@@ -30,22 +30,25 @@ import {
 import { NotificationBell } from "@/components/notification-bell"
 import { PushToggle } from "@/components/push-toggle"
 import { useAuth } from "@/lib/auth-context"
+import type { UserPermissions } from "@/lib/types"
 
-const navItems = [
-  { title: "Dashboard", href: "/dashboard", icon: LayoutDashboard, adminOnly: false },
-  { title: "Missions", href: "/missions", icon: Crosshair, adminOnly: false },
-  { title: "Devices", href: "/devices", icon: Radio, adminOnly: false },
-  { title: "Logs", href: "/logs", icon: ScrollText, adminOnly: false },
-  { title: "Administration", href: "/admin", icon: Settings, adminOnly: true },
-  { title: "A propos", href: "/about", icon: Info, adminOnly: false },
+type PermissionKey = keyof UserPermissions
+
+const navItems: { title: string; href: string; icon: typeof LayoutDashboard; permission: PermissionKey }[] = [
+  { title: "Dashboard", href: "/dashboard", icon: LayoutDashboard, permission: "dashboard" },
+  { title: "Missions", href: "/missions", icon: Crosshair, permission: "missions" },
+  { title: "Devices", href: "/devices", icon: Radio, permission: "devices" },
+  { title: "Logs", href: "/logs", icon: ScrollText, permission: "logs" },
+  { title: "Administration", href: "/admin", icon: Settings, permission: "administration" },
+  { title: "A propos", href: "/about", icon: Info, permission: "dashboard" }, // A propos accessible if dashboard is
 ]
 
 export function AppSidebar() {
   const pathname = usePathname()
   const router = useRouter()
-  const { user, isAdmin, logout } = useAuth()
+  const { user, isAdmin, logout, hasPermission } = useAuth()
 
-  const visibleItems = navItems.filter((item) => !item.adminOnly || isAdmin)
+  const visibleItems = navItems.filter((item) => hasPermission(item.permission))
 
   return (
     <Sidebar collapsible="offcanvas">

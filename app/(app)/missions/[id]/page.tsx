@@ -12,6 +12,7 @@ import {
   Volume2, VolumeX, Grid3X3, ArrowLeftRight,
 } from "lucide-react"
 import { TopHeader } from "@/components/top-header"
+import { useAuth } from "@/lib/auth-context"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
@@ -101,6 +102,13 @@ export default function MissionDetailPage() {
 
   // Detection sound
   const { soundEnabled, toggleSound, playDetection } = useNotificationSound()
+  
+  // Permissions
+  const { hasPermission } = useAuth()
+  const canEdit = hasPermission("missions_edit")
+  const canControl = hasPermission("missions_control")
+  const canAssign = hasPermission("devices_assign")
+  const canUnassign = hasPermission("devices_unassign")
 
   const [drawingMode, setDrawingMode] = useState(false)
   const [calibrationMode, setCalibrationMode] = useState(false)
@@ -1076,9 +1084,11 @@ export default function MissionDetailPage() {
                 <TabsTrigger value="history" className="text-xs gap-1 px-2 min-h-[36px] flex-1">
                   <BarChart3 className="h-3.5 w-3.5" /><span className="hidden sm:inline">History</span>
                 </TabsTrigger>
-                <TabsTrigger value="sensors" className="text-xs gap-1 px-2 min-h-[36px] flex-1">
-                  <Radio className="h-3.5 w-3.5" /><span className="hidden sm:inline">Sensors</span>
-                </TabsTrigger>
+                {(canAssign || canUnassign) && (
+                  <TabsTrigger value="sensors" className="text-xs gap-1 px-2 min-h-[36px] flex-1">
+                    <Radio className="h-3.5 w-3.5" /><span className="hidden sm:inline">Sensors</span>
+                  </TabsTrigger>
+                )}
                 <TabsTrigger value="timelapse" className="text-xs gap-1 px-2 min-h-[36px] flex-1">
                   <Timer className="h-3.5 w-3.5" /><span className="hidden sm:inline">Timelapse</span>
                 </TabsTrigger>
@@ -1132,12 +1142,12 @@ export default function MissionDetailPage() {
                 </span>
               )}
               <div className="flex items-center gap-1.5 ml-auto">
-                {mission.status === "draft" && (isFloorMode ? missionFloors.length > 0 : (isPlanMode ? !!planImageUrl : zones.length > 0)) && (
+                {canControl && mission.status === "draft" && (isFloorMode ? missionFloors.length > 0 : (isPlanMode ? !!planImageUrl : zones.length > 0)) && (
                   <Button size="sm" className="h-7 text-[10px] gap-1" onClick={() => changeStatus("active")} disabled={statusUpdating}>
                     <Play className="h-3 w-3" />Activate
                   </Button>
                 )}
-                {mission.status === "active" && (
+                {canControl && mission.status === "active" && (
                   <>
                     <Button variant="outline" size="sm" className="min-h-[36px] text-[10px] gap-1 px-3" onClick={() => changeStatus("paused")} disabled={statusUpdating}>
                       <Pause className="h-3.5 w-3.5" />Pause
@@ -1147,7 +1157,7 @@ export default function MissionDetailPage() {
                     </Button>
                   </>
                 )}
-                {mission.status === "paused" && (
+                {canControl && mission.status === "paused" && (
                   <Button size="sm" className="min-h-[36px] text-[10px] gap-1 px-3" onClick={() => changeStatus("active")} disabled={statusUpdating}>
                     <Play className="h-3.5 w-3.5" />Resume
                   </Button>
@@ -1608,9 +1618,9 @@ export default function MissionDetailPage() {
   heatmapMode={heatmapMode}
   estimatePosition={estimatePosition}
   className="h-[55vh] sm:h-[500px]"
-                      drawingMode={drawingMode}
+                      drawingMode={canEdit && drawingMode}
                       onPolygonDrawn={handlePolygonDrawn}
-                      onZoneClick={(zoneId) => !sensorPlaceMode && setAssignDialog(zoneId)}
+                      onZoneClick={(zoneId) => canAssign && !sensorPlaceMode && setAssignDialog(zoneId)}
                       sensorPlaceMode={sensorPlaceMode}
                       onSensorPlace={handleSensorPlace}
                       onMapMove={handleMapMove}
@@ -1693,15 +1703,17 @@ export default function MissionDetailPage() {
                           {calibrationMode ? "Calibration..." : "Calibrer"}
                         </Button>
                       )}
-                      <Button
-                        variant={drawingMode ? "default" : "outline"} size="sm"
-                        className="min-h-[44px] text-xs px-3 gap-1.5"
-                        onClick={() => { setDrawingMode(!drawingMode); setCalibrationMode(false) }}
-                      >
-                        {drawingMode
-                          ? <><Pencil className="h-3.5 w-3.5 animate-pulse" />Drawing...</>
-                          : <><Plus className="h-3.5 w-3.5" />Draw Zone</>}
-                      </Button>
+                      {canEdit && (
+                        <Button
+                          variant={drawingMode ? "default" : "outline"} size="sm"
+                          className="min-h-[44px] text-xs px-3 gap-1.5"
+                          onClick={() => { setDrawingMode(!drawingMode); setCalibrationMode(false) }}
+                        >
+                          {drawingMode
+                            ? <><Pencil className="h-3.5 w-3.5 animate-pulse" />Drawing...</>
+                            : <><Plus className="h-3.5 w-3.5" />Draw Zone</>}
+                        </Button>
+                      )}
                     </div>
                   </div>
                 </CardHeader>
@@ -1822,18 +1834,26 @@ export default function MissionDetailPage() {
                         </div>
                         <span className="text-[10px] text-muted-foreground font-mono">{missionDevices.filter(d => d.zone_id === zone.id).length} TX</span>
                         <div className="flex items-center shrink-0">
-                          <button onClick={() => openEditZone(zone.id)}
-                            className="text-muted-foreground hover:text-foreground active:text-foreground transition-colors p-2.5 min-h-[44px] min-w-[44px] flex items-center justify-center cursor-pointer"
-                            title="Edit zone name & sides"><MapPin className="h-4 w-4" /></button>
-                          <button onClick={() => editingZoneId === zone.id ? stopEditingZone() : startEditingZone(zone.id)}
-                            className={cn("transition-colors p-2.5 min-h-[44px] min-w-[44px] flex items-center justify-center cursor-pointer", editingZoneId === zone.id ? "text-warning" : "text-muted-foreground hover:text-foreground active:text-foreground")}
-                            title="Edit zone polygon"><Pencil className="h-4 w-4" /></button>
-                          <button onClick={() => setAssignDialog(zone.id)}
-                            className="text-primary hover:text-primary/80 active:text-primary/70 transition-colors p-2.5 min-h-[44px] min-w-[44px] flex items-center justify-center cursor-pointer"
-                            title="Assign device"><Plus className="h-4 w-4" /></button>
-                          <button onClick={() => deleteZone(zone.id)}
-                            className="text-destructive hover:text-destructive/80 active:text-destructive/70 transition-colors p-2.5 min-h-[44px] min-w-[44px] flex items-center justify-center cursor-pointer"
-                            title="Delete zone"><Trash2 className="h-4 w-4" /></button>
+                          {canEdit && (
+                            <>
+                              <button onClick={() => openEditZone(zone.id)}
+                                className="text-muted-foreground hover:text-foreground active:text-foreground transition-colors p-2.5 min-h-[44px] min-w-[44px] flex items-center justify-center cursor-pointer"
+                                title="Edit zone name & sides"><MapPin className="h-4 w-4" /></button>
+                              <button onClick={() => editingZoneId === zone.id ? stopEditingZone() : startEditingZone(zone.id)}
+                                className={cn("transition-colors p-2.5 min-h-[44px] min-w-[44px] flex items-center justify-center cursor-pointer", editingZoneId === zone.id ? "text-warning" : "text-muted-foreground hover:text-foreground active:text-foreground")}
+                                title="Edit zone polygon"><Pencil className="h-4 w-4" /></button>
+                            </>
+                          )}
+                          {canAssign && (
+                            <button onClick={() => setAssignDialog(zone.id)}
+                              className="text-primary hover:text-primary/80 active:text-primary/70 transition-colors p-2.5 min-h-[44px] min-w-[44px] flex items-center justify-center cursor-pointer"
+                              title="Assign device"><Plus className="h-4 w-4" /></button>
+                          )}
+                          {canEdit && (
+                            <button onClick={() => deleteZone(zone.id)}
+                              className="text-destructive hover:text-destructive/80 active:text-destructive/70 transition-colors p-2.5 min-h-[44px] min-w-[44px] flex items-center justify-center cursor-pointer"
+                              title="Delete zone"><Trash2 className="h-4 w-4" /></button>
+                          )}
                         </div>
                       </div>
                     )
@@ -2000,16 +2020,18 @@ export default function MissionDetailPage() {
                           <MapPin className="h-3.5 w-3.5" />
                         </button>
                           {/* Unassign */}
-                          <button
-                            onClick={(e) => {
-                              e.stopPropagation()
-                              unassignDevice(d.id)
-                            }}
-                            className="text-destructive/60 hover:text-destructive active:text-destructive transition-colors shrink-0 p-1 min-h-[36px] min-w-[36px] flex items-center justify-center cursor-pointer"
-                            title="Retirer de la mission"
-                          >
-                            <Trash2 className="h-3.5 w-3.5" />
-                          </button>
+                          {canUnassign && (
+                            <button
+                              onClick={(e) => {
+                                e.stopPropagation()
+                                unassignDevice(d.id)
+                              }}
+                              className="text-destructive/60 hover:text-destructive active:text-destructive transition-colors shrink-0 p-1 min-h-[36px] min-w-[36px] flex items-center justify-center cursor-pointer"
+                              title="Retirer de la mission"
+                            >
+                              <Trash2 className="h-3.5 w-3.5" />
+                            </button>
+                          )}
                         </div>
                       </div>
                     )
@@ -2562,9 +2584,11 @@ export default function MissionDetailPage() {
                               </TableCell>
                               <TableCell className="text-[11px] text-muted-foreground">{device.last_seen ? formatRelativeLocal(device.last_seen) : "Never"}</TableCell>
                               <TableCell>
-                                <Button variant="ghost" size="sm" className="h-6 text-[10px] px-2 text-destructive hover:text-destructive/80" onClick={() => unassignDevice(device.id)}>
-                                  <Unlink className="mr-1 h-3 w-3" />Remove
-                                </Button>
+                                {canUnassign && (
+                                  <Button variant="ghost" size="sm" className="h-6 text-[10px] px-2 text-destructive hover:text-destructive/80" onClick={() => unassignDevice(device.id)}>
+                                    <Unlink className="mr-1 h-3 w-3" />Remove
+                                  </Button>
+                                )}
                               </TableCell>
                             </TableRow>
                           )
@@ -2627,7 +2651,7 @@ export default function MissionDetailPage() {
                                   }}>
                                     <Signal className="mr-1 h-3 w-3" />{isElsewhere ? "Reassign" : "Assign"}
                                   </Button>
-                                  {isElsewhere && (
+                                  {isElsewhere && canUnassign && (
                                     <Button variant="ghost" size="sm" className="h-6 text-[10px] px-2 text-destructive hover:text-destructive/80" onClick={() => unassignDevice(device.id)}>
                                       <Unlink className="mr-1 h-3 w-3" />Remove
                                     </Button>
