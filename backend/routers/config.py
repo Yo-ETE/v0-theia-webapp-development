@@ -355,6 +355,10 @@ async def hotspot_start(body: dict = None):
             if hostapd_check.returncode != 0:
                 return {"status": "error", "message": "hostapd n'est pas installe. Installez avec: sudo apt install hostapd"}
             
+            # Step 0: Set regulatory domain for proper WiFi transmission
+            subprocess.run(["sudo", "iw", "reg", "set", "FR"], capture_output=True, timeout=5)
+            time.sleep(0.5)
+            
             # Step 1: Disconnect and clean up
             print(f"[THEIA] Hotspot: disconnecting {iface} and killing existing processes", flush=True)
             subprocess.run(["sudo", "nmcli", "device", "disconnect", iface], capture_output=True, timeout=10)
