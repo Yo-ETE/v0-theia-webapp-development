@@ -1190,12 +1190,13 @@ export default function MissionDetailPage() {
                       Grille
                     </Button>
                   )}
-                  {!isFloorMode && (missionDevices.length >= 2 || (timelapseMode && sensorPlacements.length >= 2)) && (
+                  {!isFloorMode && (
                     <Button
                       variant={estimatePosition ? "default" : "outline"}
                       size="sm"
                       className="min-h-[36px] text-[10px] px-2.5 gap-1"
                       onClick={() => setEstimatePosition(!estimatePosition)}
+                      disabled={missionDevices.length < 2 && !(timelapseMode && sensorPlacements.length >= 2)}
                     >
                       <Crosshair className="h-3.5 w-3.5" />
                       Position
@@ -2109,12 +2110,13 @@ export default function MissionDetailPage() {
                             Grille
                           </Button>
                         )}
-                        {!isFloorMode && (missionDevices.length >= 2 || (timelapseMode && sensorPlacements.length >= 2)) && (
+                        {!isFloorMode && (
                           <Button
                             variant={estimatePosition ? "default" : "outline"}
                             size="sm"
                             className="min-h-[36px] text-[10px] px-2.5 gap-1"
                             onClick={() => setEstimatePosition(!estimatePosition)}
+                            disabled={missionDevices.length < 2 && !(timelapseMode && sensorPlacements.length >= 2)}
                             title="Estimate position from multiple sensors"
                           >
                             <Crosshair className="h-3.5 w-3.5" />
