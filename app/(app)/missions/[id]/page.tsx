@@ -1178,7 +1178,7 @@ export default function MissionDetailPage() {
                       FOV
                     </Button>
                   )}
-                  {!isPlanMode && !isFloorMode && (
+                  {!isFloorMode && (
                     <Button
                       variant={showGrid ? "default" : "outline"}
                       size="sm"
@@ -1190,7 +1190,7 @@ export default function MissionDetailPage() {
                       Grille
                     </Button>
                   )}
-                  {!isPlanMode && !isFloorMode && (missionDevices.length >= 2 || (timelapseMode && sensorPlacements.length >= 2)) && (
+                  {!isFloorMode && (missionDevices.length >= 2 || (timelapseMode && sensorPlacements.length >= 2)) && (
                     <Button
                       variant={estimatePosition ? "default" : "outline"}
                       size="sm"
@@ -1250,6 +1250,7 @@ export default function MissionDetailPage() {
               onCalibrationDone={handleCalibrationDone}
               planScale={mission?.plan_scale ?? null}
               visualConfig={visualConfig}
+              showGrid={showGrid}
               className="rounded-lg overflow-hidden border border-border/50 h-[calc(100vh-310px)]"
             />
           ) : (
@@ -1561,6 +1562,7 @@ export default function MissionDetailPage() {
                       onCalibrationDone={handleCalibrationDone}
                       planScale={mission?.plan_scale ?? null}
                       visualConfig={visualConfig}
+                      showGrid={showGrid}
                       className="rounded-lg overflow-hidden border border-border/50"
                     />
                   </div>

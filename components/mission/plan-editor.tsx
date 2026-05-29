@@ -70,6 +70,8 @@ interface PlanEditorProps {
   visualConfig?: VisualConfig | null
   /** Show measurements (side lengths, area) on zones */
   showMeasurements?: boolean
+  /** Show grid overlay on zones */
+  showGrid?: boolean
 }
 
 /** Group polygon edges by bearing -- simplified for pixel coords */
@@ -121,7 +123,16 @@ function formatArea(pxArea: number, scale: number | null): string {
 
 /** Get a point along a polygon edge at parameter t (0..1) */
 function getPointOnEdge(polygon: [number, number][], sideIdx: number, t: number): [number, number] | null {
-  if (!polygon || sideIdx < 0 || sideIdx >= polygon.length) return null
+  if (!polygon || polygon.length < 2) return null
+  // For facades (2 points), only side 0 exists
+  if (polygon.length === 2) {
+    if (sideIdx !== 0) return null
+    const a = polygon[0]
+    const b = polygon[1]
+    return [a[0] + (b[0] - a[0]) * t, a[1] + (b[1] - a[1]) * t]
+  }
+  // For polygons (3+ points)
+  if (sideIdx < 0 || sideIdx >= polygon.length) return null
   const a = polygon[sideIdx]
   const b = polygon[(sideIdx + 1) % polygon.length]
   return [a[0] + (b[0] - a[0]) * t, a[1] + (b[1] - a[1]) * t]
@@ -130,6 +141,114 @@ function getPointOnEdge(polygon: [number, number][], sideIdx: number, t: number)
 /** Side index from side letter */
 function sideLetterToIdx(side: string): number {
   return side.charCodeAt(0) - 65
+}
+
+/** Grid columns (A-C) and rows (1-3) for zone overlay */
+const GRID_COLS = "ABC".split("")
+const GRID_ROWS = [1, 2, 3]
+
+/** Interpolate between two points */
+function lerp2D(p1: [number, number], p2: [number, number], t: number): [number, number] {
+  return [p1[0] + (p2[0] - p1[0]) * t, p1[1] + (p2[1] - p1[1]) * t]
+}
+
+/** Generate grid that follows polygon shape (assumes quadrilateral polygon) */
+function generateZoneGrid(polygon: [number, number][]): {
+  gridLines: [number, number][][]
+  cellLabels: { label: string; row: number; col: number }[]
+} {
+  if (polygon.length < 4) return { gridLines: [], cellLabels: [] }
+  
+  const p0 = polygon[0]
+  const p1 = polygon[1]
+  const p2 = polygon[2]
+  const p3 = polygon[3]
+  
+  // Find centroid
+  const centroidRow = (p0[0] + p1[0] + p2[0] + p3[0]) / 4
+  const centroidCol = (p0[1] + p1[1] + p2[1] + p3[1]) / 4
+  
+  // Sort points by angle from centroid
+  const withAngles = [p0, p1, p2, p3].map(p => ({
+    point: p,
+    angle: Math.atan2(p[1] - centroidCol, p[0] - centroidRow)
+  }))
+  withAngles.sort((a, b) => a.angle - b.angle)
+  const sorted = withAngles.map(w => w.point)
+  
+  // Find point with minimum row (most top in image coords)
+  let minRowIdx = 0
+  for (let i = 1; i < 4; i++) {
+    if (sorted[i][0] < sorted[minRowIdx][0]) minRowIdx = i
+  }
+  
+  const reordered = []
+  for (let i = 0; i < 4; i++) {
+    reordered.push(sorted[(minRowIdx + i) % 4])
+  }
+  
+  const nextPoint = reordered[1]
+  let tl: [number, number], tr: [number, number], br: [number, number], bl: [number, number]
+  
+  if (nextPoint[1] > reordered[0][1]) {
+    tl = reordered[0]
+    tr = reordered[1]
+    br = reordered[2]
+    bl = reordered[3]
+  } else {
+    tl = reordered[0]
+    bl = reordered[1]
+    br = reordered[2]
+    tr = reordered[3]
+  }
+  
+  const numRows = GRID_ROWS.length
+  const numCols = GRID_COLS.length
+  
+  const gridLines: [number, number][][] = []
+  const cellLabels: { label: string; row: number; col: number }[] = []
+  
+  // Horizontal lines
+  for (let i = 0; i <= numRows; i++) {
+    const t = i / numRows
+    const leftPt = lerp2D(tl, bl, t)
+    const rightPt = lerp2D(tr, br, t)
+    gridLines.push([leftPt, rightPt])
+  }
+  
+  // Vertical lines
+  for (let i = 0; i <= numCols; i++) {
+    const t = i / numCols
+    const topPt = lerp2D(tl, tr, t)
+    const bottomPt = lerp2D(bl, br, t)
+    gridLines.push([topPt, bottomPt])
+  }
+  
+  // Cell labels
+  for (let row = 0; row < numRows; row++) {
+    for (let col = 0; col < numCols; col++) {
+      const rowT1 = row / numRows
+      const rowT2 = (row + 1) / numRows
+      const colT1 = col / numCols
+      const colT2 = (col + 1) / numCols
+      
+      const cellTL = lerp2D(lerp2D(tl, bl, rowT1), lerp2D(tr, br, rowT1), colT1)
+      const cellTR = lerp2D(lerp2D(tl, bl, rowT1), lerp2D(tr, br, rowT1), colT2)
+      const cellBL = lerp2D(lerp2D(tl, bl, rowT2), lerp2D(tr, br, rowT2), colT1)
+      const cellBR = lerp2D(lerp2D(tl, bl, rowT2), lerp2D(tr, br, rowT2), colT2)
+      
+      const centerRow = (cellTL[0] + cellTR[0] + cellBL[0] + cellBR[0]) / 4
+      const centerCol = (cellTL[1] + cellTR[1] + cellBL[1] + cellBR[1]) / 4
+      
+      cellLabels.push({
+        label: `${GRID_COLS[col]}${GRID_ROWS[row]}`,
+        row: centerRow,
+        col: centerCol,
+      })
+    }
+  }
+  
+  return { gridLines, cellLabels }
 }
 
 export function PlanEditor({
@@ -158,6 +277,7 @@ export function PlanEditor({
   planScale,
   visualConfig,
   showMeasurements = true,
+  showGrid = false,
 }: PlanEditorProps) {
   // Use provided visual config or fall back to defaults
   const vc: VisualConfig = useMemo(() => visualConfig ?? {
@@ -944,9 +1064,72 @@ export function PlanEditor({
           )
         })}
 
+        {/* Grid overlay on zones (A-C columns, 1-3 rows) */}
+        {showGrid && activeZones.map(zone => {
+          if (!zone.polygon?.length || zone.polygon.length < 4) return null
+          const { gridLines, cellLabels } = generateZoneGrid(zone.polygon as [number, number][])
+          const gridColor = "#475569" // slate-600
+          return (
+            <g key={`grid-${zone.id}`}>
+              {gridLines.map((line, i) => {
+                const [p1, p2] = line
+                const [x1, y1] = toSvg(p1)
+                const [x2, y2] = toSvg(p2)
+                return (
+                  <line
+                    key={`gridline-${zone.id}-${i}`}
+                    x1={x1} y1={y1} x2={x2} y2={y2}
+                    stroke={gridColor}
+                    strokeWidth={1.5}
+                    strokeOpacity={0.6}
+                    className="pointer-events-none"
+                  />
+                )
+              })}
+              {cellLabels.map((cell) => {
+                const [x, y] = toSvg([cell.row, cell.col])
+                return (
+                  <text
+                    key={`cell-${zone.id}-${cell.label}`}
+                    x={x}
+                    y={y}
+                    textAnchor="middle"
+                    dominantBaseline="central"
+                    className="text-[10px] font-semibold pointer-events-none"
+                    style={{
+                      fill: "#374151",
+                      paintOrder: "stroke",
+                      stroke: "rgba(255,255,255,0.85)",
+                      strokeWidth: 3,
+                    }}
+                  >
+                    {cell.label}
+                  </text>
+                )
+              })}
+            </g>
+          )
+        })}
+
         {/* Highlighted edges in placement mode */}
         {sensorPlaceMode && activeZones.map(zone => {
-          if (!zone.polygon?.length || zone.polygon.length < 3) return null
+          if (!zone.polygon?.length || zone.polygon.length < 2) return null
+          // For facades (2 points), only show one edge
+          if (zone.polygon.length === 2) {
+            const [x1, y1] = toSvg(zone.polygon[0])
+            const [x2, y2] = toSvg(zone.polygon[1])
+            return (
+              <line
+                key={`place-${zone.id}-0`}
+                x1={x1} y1={y1} x2={x2} y2={y2}
+                stroke={vc.fov_overlay_color}
+                strokeWidth={4}
+                strokeOpacity={0.7}
+                className="cursor-crosshair"
+              />
+            )
+          }
+          // Polygons (3+ points)
           return zone.polygon.map((pt, i) => {
             const nextPt = zone.polygon[(i + 1) % zone.polygon.length]
             const [x1, y1] = toSvg(pt)
