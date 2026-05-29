@@ -40,7 +40,7 @@ export function authFetch(url: string, init?: RequestInit): Promise<Response> {
 // We derive the backend URL from the current browser location.
 function getDirectBackendUrl(): string | null {
   if (typeof window === "undefined") return null
-  // If we're on the Pi (not localhost:3000 on v0 preview), use port 8000
+  // Use port 8000 for direct backend access
   const host = window.location.hostname
   // Always try direct backend on port 8000
   return `http://${host}:8000`

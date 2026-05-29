@@ -148,12 +148,12 @@ export default function NewMissionPage() {
           })
           if (!uploadRes.ok) {
             const errTxt = await uploadRes.text().catch(() => "")
-            console.error("[v0] Plan image upload failed:", uploadRes.status, errTxt)
+            console.error("[THEIA] Plan image upload failed:", uploadRes.status, errTxt)
           }
           // Small delay to ensure file is flushed to disk on the Pi
           await new Promise(r => setTimeout(r, 500))
         } catch (err) {
-          console.error("[v0] Plan image upload error:", err)
+          console.error("[THEIA] Plan image upload error:", err)
         }
       }
       // Add timestamp param so the detail page PlanEditor doesn't use a cached 404

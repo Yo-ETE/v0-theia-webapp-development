@@ -351,7 +351,7 @@ export function PlanEditor({
           // Retry with increasing delay (1s, 2s, 3s, ...)
           retryTimer = setTimeout(tryLoad, retryCountRef.current * 1000)
         } else {
-          console.error("[v0] PlanEditor: failed to load image after retries:", resolvedImage)
+          console.error("[THEIA] PlanEditor: failed to load image after retries:", resolvedImage)
           setImgError(true)
           setImgLoading(false)
         }
