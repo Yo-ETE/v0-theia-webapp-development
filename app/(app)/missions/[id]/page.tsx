@@ -2097,7 +2097,7 @@ export default function MissionDetailPage() {
                             FOV
                           </Button>
                         )}
-                        {!isPlanMode && !isFloorMode && (
+                        {!isFloorMode && (
                           <Button
                             variant={showGrid ? "default" : "outline"}
                             size="sm"
