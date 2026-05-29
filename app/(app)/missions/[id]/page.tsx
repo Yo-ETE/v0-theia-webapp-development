@@ -2985,8 +2985,32 @@ export default function MissionDetailPage() {
               <div className="flex flex-col gap-2 py-2">
                 {(() => {
                   const assignZone = zones.find((z) => z.id === assignDialog)
-                  if (!assignZone?.polygon || !Array.isArray(assignZone.polygon) || assignZone.polygon.length < 3) return null
-                  // Use groupSidesByBearing for consistency with map display
+                  if (!assignZone?.polygon || !Array.isArray(assignZone.polygon) || assignZone.polygon.length < 2) return null
+                  
+                  // Handle facades (2 points) - only has side A
+                  if (assignZone.polygon.length === 2) {
+                    return (
+                      <button
+                        onClick={() => {
+                          setSensorPlaceMode({
+                            zoneId: assignDialog!,
+                            side: "A",
+                            deviceId: assignStep!.deviceId,
+                            deviceName: assignStep!.deviceName,
+                            deviceType: assignStep!.deviceType,
+                          })
+                          setAssignDialog(null)
+                          setAssignStep(null)
+                        }}
+                        className="flex items-center gap-3 rounded border border-border/50 p-3 text-left hover:bg-muted/30 transition-colors"
+                      >
+                        <span className="text-sm font-mono font-bold text-cyan-500 w-6 text-center">A</span>
+                        <span className="text-xs text-foreground">Façade A (ligne)</span>
+                      </button>
+                    )
+                  }
+                  
+                  // Polygons (3+ points) - use groupSidesByBearing for consistency with map display
                   const { segmentToGroup } = groupSidesByBearing(assignZone.polygon as [number, number][])
                   if (!Array.isArray(segmentToGroup) || segmentToGroup.length === 0) return null
                   const uniqueGroups = [...new Set(segmentToGroup)]

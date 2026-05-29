@@ -410,8 +410,39 @@ export function PlanEditor({
     let bestDist = Infinity
 
     for (const zone of zones) {
-      if (!zone.polygon?.length || zone.polygon.length < 3) continue
-      // Use zone.sides to get facade letters: { "A": "facadeLetter", "B": "facadeLetter", ... }
+      if (!zone.polygon?.length || zone.polygon.length < 2) continue
+      
+      // Handle facades (2 points) - only has one edge (A)
+      if (zone.polygon.length === 2) {
+        const a = zone.polygon[0]
+        const b = zone.polygon[1]
+        const side = "A"
+        
+        // Only consider if matching the selected facade
+        if (sensorPlaceMode.side && side !== sensorPlaceMode.side) continue
+        
+        const ax = a[1], ay = a[0]
+        const bx = b[1], by = b[0]
+        const dx = bx - ax, dy = by - ay
+        const len2 = dx * dx + dy * dy
+        if (len2 > 0) {
+          let t = ((col - ax) * dx + (row - ay) * dy) / len2
+          t = Math.max(0, Math.min(1, t))
+          const px = ax + t * dx
+          const py = ay + t * dy
+          const dist = Math.sqrt((col - px) ** 2 + (row - py) ** 2)
+          
+          if (dist < bestDist) {
+            bestDist = dist
+            bestZoneId = zone.id
+            bestSide = side
+            bestT = Math.max(0.02, Math.min(0.98, t))
+          }
+        }
+        continue
+      }
+      
+      // Polygons (3+ points) - use zone.sides to get facade letters
       const zoneSides = zone.sides as Record<string, string> | undefined
       for (let i = 0; i < zone.polygon.length; i++) {
         const a = zone.polygon[i]
