@@ -284,11 +284,12 @@ class PortReader:
                     if not presence and d > 15:
                         presence = True
 
-                await self._handle_detection(
-                    tx_id=tx_id, sensor_type=sensor_type,
-                    x=x, y=y, d=d, v=v,
-                    angle=angle, presence=presence, vbatt=vbatt,
-                )
+        await self._handle_detection(
+            tx_id=tx_id, sensor_type=sensor_type,
+            x=x, y=y, d=d, v=v,
+            angle=angle, presence=presence, vbatt=vbatt,
+            sensor_status=sensor_status, charging=charging,
+        )
                 return
 
         # key=value format: x=0 y=0 d=1 v=0 rssi=-45 battTX=4.10
@@ -364,7 +365,7 @@ class PortReader:
         self, *, tx_id: str | None, sensor_type: str,
         x: int, y: int, d: int, v: int,
         angle: float, presence: bool, vbatt: float | None,
-        sensor_status: str | None = None,
+        sensor_status: str | None = None, charging: bool = False,
     ):
         """Common logic: lookup device, phantom gate, store event, broadcast SSE."""
         db = await get_db()
@@ -623,6 +624,7 @@ class PortReader:
             "x": round(x, 1) if x is not None else None,
             "y": round(y, 1) if y is not None else None,
             "vbatt_tx": vbatt,
+            "charging": charging,
             "rssi": self.last_rssi,
             "timestamp": now_iso,
         })
@@ -638,7 +640,8 @@ class PortReader:
                 f"{device_name} reconnecte"
             )
 
-        if vbatt is not None and vbatt > 0 and device_id:
+        if vbatt is not None and vbatt > 0 and device_id and not charging:
+            # Skip battery alerts when charging (XAVER shows low voltage while charging)
             if vbatt < 3.3:
                 await self._create_notification(
                     "battery_low", "critical", device_id, device_name,
@@ -680,6 +683,8 @@ class PortReader:
             vbatt = float(parts[idx_start + 4]) if len(parts) > idx_start + 4 else None
             # XAVER status (ready/calibrating/error) - 8th field
             sensor_status = parts[idx_start + 5].strip() if len(parts) > idx_start + 5 else None
+            # XAVER charging flag (1/0) - 9th field
+            charging = parts[idx_start + 6].strip() == "1" if len(parts) > idx_start + 6 else False
         except (ValueError, IndexError):
             self.packets_err += 1
             return

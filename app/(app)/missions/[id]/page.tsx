@@ -9,7 +9,7 @@ import {
   Activity, Eye, EyeOff, Zap, Timer, Download, Signal, Battery, Wifi, Unlink,
   Flame, Crosshair, ArrowDownLeft, ArrowUpRight, Bell, BellOff,
   Maximize2, Minimize2, FileImage, Ruler, Palette, RotateCw,
-  Volume2, VolumeX, Grid3X3, ArrowLeftRight, Copy,
+  Volume2, VolumeX, Grid3X3, ArrowLeftRight, Copy, Plug,
 } from "lucide-react"
 import { TopHeader } from "@/components/top-header"
 import { useAuth } from "@/lib/auth-context"
@@ -1372,12 +1372,12 @@ export default function MissionDetailPage() {
                             <span className="text-[9px] font-mono text-muted-foreground flex items-center gap-0.5">
                               <Signal className="h-2.5 w-2.5" />{rssi}dBm
                             </span>
-                          )}
-                          {vbatt != null && vbatt > 0 && (
-                            <span className="text-[9px] font-mono text-muted-foreground flex items-center gap-0.5">
-                              <Battery className="h-2.5 w-2.5" />{Number(vbatt).toFixed(2)}V
-                            </span>
-                          )}
+                        )}
+                        {vbatt != null && vbatt > 0 && (
+                          <span className="text-[9px] font-mono text-muted-foreground flex items-center gap-0.5">
+                            {det?.charging ? <Plug className="h-2.5 w-2.5 text-cyan-400" /> : <Battery className="h-2.5 w-2.5" />}{Number(vbatt).toFixed(2)}V
+                          </span>
+                        )}
                         </div>
                       </div>
                       {det?.timestamp && (
@@ -2274,7 +2274,8 @@ export default function MissionDetailPage() {
                               </span>
                             )}
                             {det.vbatt_tx != null && (
-                              <span className="text-[9px] font-mono text-muted-foreground">
+                              <span className="text-[9px] font-mono text-muted-foreground flex items-center gap-0.5">
+                                {det.charging && <Plug className="h-2 w-2 text-cyan-400" />}
                                 {det.vbatt_tx.toFixed(2)}V
                               </span>
                             )}

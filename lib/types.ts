@@ -243,6 +243,7 @@ export interface LiveDetection {
   direction: string
   x?: number | null
   y?: number | null
+  charging?: boolean
   vbatt_tx?: number | null
   rssi: number | null
   sensor_type?: string
