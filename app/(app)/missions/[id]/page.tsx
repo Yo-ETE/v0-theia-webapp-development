@@ -245,6 +245,45 @@ export default function MissionDetailPage() {
   // Also track by device_id for multi-TX per zone support
   const [liveByDevice, setLiveByDevice] = useState<Record<string, LiveDetection>>({})
   const feedRef = useRef<HTMLDivElement>(null)
+  
+  // Auto-expire detections after 5 seconds of no update
+  // This handles sensors that don't send presence: false
+  useEffect(() => {
+    const EXPIRE_MS = 5000 // 5 seconds
+    const interval = setInterval(() => {
+      const now = Date.now()
+      setLiveByDevice(prev => {
+        const updated: Record<string, LiveDetection> = {}
+        let changed = false
+        for (const [deviceId, det] of Object.entries(prev)) {
+          const detTime = new Date(det.timestamp).getTime()
+          if (det.presence && (now - detTime > EXPIRE_MS)) {
+            // Auto-expire: set presence to false
+            updated[deviceId] = { ...det, presence: false }
+            changed = true
+          } else {
+            updated[deviceId] = det
+          }
+        }
+        return changed ? updated : prev
+      })
+      setLiveByZone(prev => {
+        const updated: Record<string, LiveDetection> = {}
+        let changed = false
+        for (const [zoneId, det] of Object.entries(prev)) {
+          const detTime = new Date(det.timestamp).getTime()
+          if (det.presence && (now - detTime > EXPIRE_MS)) {
+            updated[zoneId] = { ...det, presence: false }
+            changed = true
+          } else {
+            updated[zoneId] = det
+          }
+        }
+        return changed ? updated : prev
+      })
+    }, 1000) // Check every second
+    return () => clearInterval(interval)
+  }, [])
 
   // Keep a ref of muted device IDs so SSE handler can filter without re-creating
   const mutedIdsRef = useRef<Set<string>>(new Set())
