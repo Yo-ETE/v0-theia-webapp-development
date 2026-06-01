@@ -620,6 +620,8 @@ class PortReader:
             "speed": v,
             "angle": round(angle, 1),
             "direction": direction if presence else "C",
+            "x": round(x, 1) if x is not None else None,
+            "y": round(y, 1) if y is not None else None,
             "vbatt_tx": vbatt,
             "rssi": self.last_rssi,
             "timestamp": now_iso,

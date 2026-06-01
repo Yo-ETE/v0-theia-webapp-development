@@ -1281,28 +1281,40 @@ export default function MapInner({
       // Presence-only sensors: NO point projection, FOV illumination only
       // Set detectionLatLon to null - the FOV will be highlighted instead
       detectionLatLon = null
-    } else if (det?.presence && det.distance > 0) {
-      // Distance-based sensors: project detection point
-      const distM = det.distance / 100 // cm -> meters
-      const sensorM = toMeters(sensorLatLon)
+  } else if (det?.presence && det.distance > 0) {
+    // Distance-based sensors: project detection point
+    const distM = det.distance / 100 // cm -> meters
+    const sensorM = toMeters(sensorLatLon)
+    const rightM: [number, number] = [normalM[1], -normalM[0]] // rightM = -leftM
 
-      // Lateral offset based on direction: G = left, D = right, C = center
-      // LD2450 has ~60deg FOV per zone, so offset ~30 degrees from center
-      // At distance d, lateral offset = d * tan(30deg) ~ d * 0.577
+    const xCm = det.x ?? 0
+    const yCm = det.y ?? 0
+
+    let detM: [number, number]
+    if (xCm !== 0 || yCm !== 0) {
+      // XAVER / exact coords: x = lateral (cm), y = forward (cm)
+      const xm = xCm / 100
+      const ym = yCm / 100
+      detM = [
+        sensorM[0] + ym * normalM[0] + xm * rightM[0],
+        sensorM[1] + ym * normalM[1] + xm * rightM[1],
+      ]
+    } else {
+      // LD2450 fallback: direction G/D/C with fixed lateral offset
       let lateralM = 0
       if (det.direction === "G" || det.direction === "Gauche") {
-        lateralM = distM * 0.5 // shift left by ~half the distance
+        lateralM = distM * 0.5 // shift left
       } else if (det.direction === "D" || det.direction === "Droite") {
         lateralM = -distM * 0.5 // shift right
       }
       // Centre: lateralM stays 0
-
-      const detM: [number, number] = [
+      detM = [
         sensorM[0] + normalM[0] * distM + leftM[0] * lateralM,
         sensorM[1] + normalM[1] * distM + leftM[1] * lateralM,
       ]
-      detectionLatLon = toLatLon(detM)
     }
+    detectionLatLon = toLatLon(detM)
+  }
     // Compute inward normal bearing (degrees from north, clockwise)
     // normalM is [east, north] unit vector -> bearing = atan2(east, north)
     const normalBearingDeg = ((Math.atan2(normalM[0], normalM[1]) * 180 / Math.PI) + 360) % 360
