@@ -522,7 +522,11 @@ class PortReader:
                     except Exception as e:
                         print(f"[THEIA] rssi_history insert error: {e}")
 
-        direction = "D" if angle > 30 else ("G" if angle < -30 else "C")
+        # Direction thresholds vary by sensor type
+        # XAVER has wider FOV so needs tighter thresholds (10 degrees)
+        # LD2450 uses 30 degrees as before
+        dir_threshold = 10 if sensor_type == "xaver" else 30
+        direction = "D" if angle > dir_threshold else ("G" if angle < -dir_threshold else "C")
         effective_distance = d if presence else 0
         payload = {
             "x": x, "y": y, "distance": effective_distance, "speed": v,
