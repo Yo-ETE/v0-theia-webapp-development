@@ -263,7 +263,7 @@ export default function LogsPage() {
                 </ScrollArea>
               )}
             </CardContent>
-          )}
+          </Card>
           )}
 
           {/* System (Pi) Log viewer */}
