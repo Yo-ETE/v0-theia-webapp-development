@@ -2,10 +2,81 @@
 THEIA - Logs query router
 """
 import asyncio
+import json
 from fastapi import APIRouter, HTTPException
+from pydantic import BaseModel
 from backend.database import get_db
 
 router = APIRouter(prefix="/logs", tags=["logs"])
+
+# Device hosts - can be Tailscale hostnames or IPs
+# These resolve via Tailscale MagicDNS or local network
+DEVICE_HOSTS = {
+    "xaver01": "theia-xaver@theia-xaver01",  # Tailscale hostname
+    "xaver02": "theia-xaver@theia-xaver02",  # Tailscale hostname
+    "hub": "theia@theia",                     # Hub is localhost or Tailscale
+}
+
+# Fallback IPs (local network 192.168.84.x)
+FALLBACK_IPS = {
+    "xaver01": "theia-xaver@192.168.84.111",
+    "xaver02": "theia-xaver@192.168.84.242",
+    "hub": "theia@192.168.84.179",
+}
+
+
+async def get_tailscale_peers() -> dict:
+    """Get Tailscale peer IPs from tailscale status."""
+    try:
+        proc = await asyncio.create_subprocess_exec(
+            "tailscale", "status", "--json",
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.PIPE,
+        )
+        stdout, _ = await asyncio.wait_for(proc.communicate(), timeout=5.0)
+        data = json.loads(stdout.decode())
+        peers = {}
+        for peer_id, peer in data.get("Peer", {}).items():
+            hostname = peer.get("HostName", "").lower()
+            ips = peer.get("TailscaleIPs", [])
+            if hostname and ips:
+                peers[hostname] = ips[0]  # First IP (usually IPv4)
+        # Add self
+        self_node = data.get("Self", {})
+        if self_node:
+            hostname = self_node.get("HostName", "").lower()
+            ips = self_node.get("TailscaleIPs", [])
+            if hostname and ips:
+                peers[hostname] = ips[0]
+        return peers
+    except Exception:
+        return {}
+
+
+async def resolve_device_host(device: str) -> str:
+    """Resolve device to SSH target (user@host)."""
+    # Try Tailscale first
+    peers = await get_tailscale_peers()
+    
+    # Map device names to expected Tailscale hostnames
+    ts_hostname_map = {
+        "xaver01": "theia-xaver01",
+        "xaver02": "theia-xaver02", 
+        "hub": "theia",
+    }
+    
+    ts_hostname = ts_hostname_map.get(device)
+    if ts_hostname and ts_hostname in peers:
+        user = "theia-xaver" if "xaver" in device else "theia"
+        return f"{user}@{peers[ts_hostname]}"
+    
+    # Fallback to local network IPs
+    return FALLBACK_IPS.get(device, FALLBACK_IPS.get("hub", ""))
+
+
+class CommandRequest(BaseModel):
+    device: str
+    cmd: str
 
 
 @router.get("/system")
@@ -69,29 +140,40 @@ async def list_logs(
 
 
 @router.post("/command")
-async def execute_command(device: str, cmd: str):
+async def execute_command(req: CommandRequest):
     """Execute command on Pi Xaver/Hub via SSH. Allowed commands only."""
-    # Whitelist of allowed commands for safety
-    allowed_cmds = {
-        "status-xaver01": "ssh theia-xaver@192.168.84.111 'systemctl status xaver-detect'",
-        "status-xaver02": "ssh theia-xaver@192.168.84.242 'systemctl status xaver-detect'",
-        "status-hub": "ssh theia@192.168.84.179 'systemctl status theia-api'",
-        "stop-xaver01": "ssh theia-xaver@192.168.84.111 'sudo systemctl stop xaver-detect'",
-        "stop-xaver02": "ssh theia-xaver@192.168.84.242 'sudo systemctl stop xaver-detect'",
-        "restart-xaver01": "ssh theia-xaver@192.168.84.111 'sudo systemctl restart xaver-detect'",
-        "restart-xaver02": "ssh theia-xaver@192.168.84.242 'sudo systemctl restart xaver-detect'",
-        "restart-hub-api": "ssh theia@192.168.84.179 'sudo systemctl restart theia-api'",
-        "logs-xaver01": "ssh theia-xaver@192.168.84.111 'sudo journalctl -u xaver-detect -n 50 --no-pager'",
-        "logs-xaver02": "ssh theia-xaver@192.168.84.242 'sudo journalctl -u xaver-detect -n 50 --no-pager'",
-        "logs-hub": "ssh theia@192.168.84.179 'sudo journalctl -u theia-api -n 50 --no-pager'",
-        "test-lora-xaver01": "ssh theia-xaver@192.168.84.111 'python3 -c \"import serial; s = serial.Serial('/dev/ttyUSB0', 115200, timeout=2); print(s.readline())\"'",
-        "ps-xaver01": "ssh theia-xaver@192.168.84.111 'ps aux | grep xaver'",
-        "ps-xaver02": "ssh theia-xaver@192.168.84.242 'ps aux | grep xaver'",
+    device = req.device
+    cmd = req.cmd
+    
+    # Resolve device to SSH target
+    ssh_target = await resolve_device_host(device)
+    if not ssh_target:
+        raise HTTPException(status_code=400, detail=f"Unknown device: {device}")
+    
+    # Map command shortcuts to actual shell commands
+    cmd_templates = {
+        "status": "systemctl status {service}",
+        "restart": "sudo systemctl restart {service}",
+        "stop": "sudo systemctl stop {service}",
+        "logs": "sudo journalctl -u {service} -n 50 --no-pager",
+        "ps": "ps aux | grep {process}",
+        "restart-api": "sudo systemctl restart theia-api",
     }
-
-    full_cmd = allowed_cmds.get(f"{device}-{cmd}")
-    if not full_cmd:
-        raise HTTPException(status_code=400, detail=f"Unknown command: {device}/{cmd}")
+    
+    # Determine service/process based on device
+    if "xaver" in device:
+        service = "xaver-detect"
+        process = "xaver"
+    else:
+        service = "theia-api"
+        process = "theia"
+    
+    template = cmd_templates.get(cmd)
+    if not template:
+        raise HTTPException(status_code=400, detail=f"Unknown command: {cmd}")
+    
+    shell_cmd = template.format(service=service, process=process)
+    full_cmd = f"ssh -o ConnectTimeout=5 -o StrictHostKeyChecking=no {ssh_target} '{shell_cmd}'"
 
     try:
         proc = await asyncio.create_subprocess_shell(
@@ -99,10 +181,25 @@ async def execute_command(device: str, cmd: str):
             stdout=asyncio.subprocess.PIPE,
             stderr=asyncio.subprocess.PIPE,
         )
-        stdout, stderr = await asyncio.wait_for(proc.communicate(), timeout=10.0)
+        stdout, stderr = await asyncio.wait_for(proc.communicate(), timeout=15.0)
         output = (stdout + stderr).decode("utf-8", errors="replace")
-        return {"output": output, "returncode": proc.returncode}
+        return {"output": output, "returncode": proc.returncode, "target": ssh_target}
     except asyncio.TimeoutError:
-        return {"output": "[TIMEOUT] Command took too long", "returncode": 1}
+        return {"output": f"[TIMEOUT] SSH to {ssh_target} took too long", "returncode": 1}
     except Exception as e:
         return {"output": f"[ERROR] {str(e)}", "returncode": 1}
+
+
+@router.get("/devices")
+async def get_control_devices():
+    """Return available devices for control panel with their resolved IPs."""
+    devices = []
+    for dev_id in ["xaver01", "xaver02", "hub"]:
+        target = await resolve_device_host(dev_id)
+        devices.append({
+            "id": dev_id,
+            "name": f"TX-XAVER0{dev_id[-1]}" if "xaver" in dev_id else "HUB",
+            "target": target,
+            "type": "xaver" if "xaver" in dev_id else "hub",
+        })
+    return devices
