@@ -238,6 +238,43 @@ async def init_tables(db: aiosqlite.Connection):
             created_at TEXT DEFAULT (datetime('now','localtime')),
             UNIQUE(firmware_name, version)
         );
+
+        -- Pi nodes registry (XAVER01, XAVER02, etc.) with dynamic IP tracking
+        CREATE TABLE IF NOT EXISTS pi_nodes (
+            id TEXT PRIMARY KEY,
+            name TEXT NOT NULL,
+            hostname TEXT NOT NULL,
+            ssh_user TEXT DEFAULT 'theia-xaver',
+            ip_address TEXT,
+            mac_address TEXT,
+            service_name TEXT DEFAULT 'xaver-detect',
+            node_type TEXT DEFAULT 'xaver',
+            last_seen TEXT,
+            online INTEGER DEFAULT 0,
+            created_at TEXT DEFAULT (datetime('now','localtime'))
+        );
+
+        -- Allowed networks for SSH commands (SSID or subnet)
+        CREATE TABLE IF NOT EXISTS allowed_networks (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            network_type TEXT NOT NULL,
+            network_value TEXT NOT NULL,
+            description TEXT,
+            UNIQUE(network_type, network_value)
+        );
+
+        -- Insert default Pi nodes if not exist
+        INSERT OR IGNORE INTO pi_nodes (id, name, hostname, ssh_user, service_name, node_type)
+        VALUES 
+            ('xaver01', 'TX-XAVER01', 'theia-xaver01', 'theia-xaver', 'xaver-detect', 'xaver'),
+            ('xaver02', 'TX-XAVER02', 'theia-xaver02', 'theia-xaver', 'xaver-detect', 'xaver'),
+            ('hub', 'HUB', 'theia', 'theia', 'theia-api', 'hub');
+
+        -- Insert default allowed networks (local 192.168.84.x)
+        INSERT OR IGNORE INTO allowed_networks (network_type, network_value, description)
+        VALUES 
+            ('subnet', '192.168.84.0/24', 'Local THEIA network'),
+            ('subnet', '100.64.0.0/10', 'Tailscale network');
     """)
     await db.commit()
 
