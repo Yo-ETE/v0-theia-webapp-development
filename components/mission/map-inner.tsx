@@ -979,8 +979,13 @@ export default function MapInner({
       }
       sensorByDevice[sp.device_id] = geo
       // Also index by device_name for tx_id matching (e.g. "TX-XAVER01")
-      if ((sp as { device_name?: string }).device_name) {
-        sensorByTxId[(sp as { device_name?: string }).device_name!] = geo
+      const devName = (sp as { device_name?: string }).device_name
+      if (devName) {
+        sensorByTxId[devName] = geo
+        // Also index without TX- prefix for flexibility
+        if (devName.startsWith("TX-")) {
+          sensorByTxId[devName.slice(3)] = geo
+        }
       }
       if (!sensorByZone[sp.zone_id]) sensorByZone[sp.zone_id] = []
       sensorByZone[sp.zone_id].push(geo)
@@ -1218,6 +1223,10 @@ export default function MapInner({
       }
 
       const ll = toLatLon(ptM)
+      // DEBUG: Log projection results for XAVER
+      if (hasRealXY && events.length < 500) {
+        console.log("[THEIA] heatmap projection:", { x_cm, y_cm, dm, ptM, ll, txId: String(p.tx_id ?? "") })
+      }
       pts.push({ lat: ll[0], lon: ll[1], weight: triangulationBoost })
     }
 
