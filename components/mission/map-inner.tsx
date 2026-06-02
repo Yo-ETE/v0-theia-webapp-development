@@ -513,9 +513,16 @@ export default function MapInner({
     const L = leafletL
     if (!map || !L || !showTrajectory || !heatmapMode) return
 
-    // Clear previous trajectory lines
-    const existingLines = map.getLayers().filter((layer: any) => layer.trajectoryLine === true)
-    existingLines.forEach((line: any) => map.removeLayer(line))
+    // Clear previous trajectory lines by accessing map's internal layer group
+    try {
+      if (map._layers) {
+        Object.values(map._layers).forEach((layer: any) => {
+          if (layer && layer.trajectoryLine === true) {
+            try { map.removeLayer(layer) } catch {}
+          }
+        })
+      }
+    } catch {}
 
     // Build trajectory from filtered events (time-filtered)
     const now = Date.now()
@@ -537,24 +544,26 @@ export default function MapInner({
       
       // Only draw if both events have x/y coordinates
       if (p1.x !== undefined && p1.y !== undefined && p2.x !== undefined && p2.y !== undefined) {
-        const ll1: [number, number] = [
-          centerLat + (Number(p1.y) / 100) / 111320,
-          centerLon + (Number(p1.x) / 100) / (111320 * Math.cos(centerLat * Math.PI / 180))
-        ]
-        const ll2: [number, number] = [
-          centerLat + (Number(p2.y) / 100) / 111320,
-          centerLon + (Number(p2.x) / 100) / (111320 * Math.cos(centerLat * Math.PI / 180))
-        ]
-        
-        const line = L.polyline([ll1, ll2], {
-          color: "#06b6d4",
-          weight: 1.5,
-          opacity: 0.5,
-          dashArray: "2, 3"
-        })
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        (line as any).trajectoryLine = true
-        line.addTo(map)
+        try {
+          const ll1: [number, number] = [
+            centerLat + (Number(p1.y) / 100) / 111320,
+            centerLon + (Number(p1.x) / 100) / (111320 * Math.cos(centerLat * Math.PI / 180))
+          ]
+          const ll2: [number, number] = [
+            centerLat + (Number(p2.y) / 100) / 111320,
+            centerLon + (Number(p2.x) / 100) / (111320 * Math.cos(centerLat * Math.PI / 180))
+          ]
+          
+          const line = L.polyline([ll1, ll2], {
+            color: "#06b6d4",
+            weight: 1.5,
+            opacity: 0.5,
+            dashArray: "2, 3"
+          })
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          (line as any).trajectoryLine = true
+          line.addTo(map)
+        } catch {}
       }
     }
   }, [showTrajectory, heatmapMode, heatmapTimeFilter, events, centerLat, centerLon, leafletL, mapRef])
