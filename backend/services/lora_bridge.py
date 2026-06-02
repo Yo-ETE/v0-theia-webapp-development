@@ -250,8 +250,19 @@ class PortReader:
                 angle=0.0, presence=False, vbatt=vbatt,
             )
             return
-
         # LD45 semicolon format embedded in RX frame: LD45;TXnn;x;y;d;v;battV
+        # Default values - always defined regardless of which branch is taken
+        sensor_type = "ld2450"
+        sensor_status = None
+        charging = False
+        x = 0
+        y = 0
+        d = 0
+        v = 0
+        vbatt = None
+        angle = 0.0
+        presence = False
+
         if data_str.startswith("LD45;"):
             parts = data_str.split(";")
             if len(parts) >= 6:
