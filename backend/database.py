@@ -263,12 +263,17 @@ async def init_tables(db: aiosqlite.Connection):
             UNIQUE(network_type, network_value)
         );
 
-        -- Insert default Pi nodes if not exist
-        INSERT OR IGNORE INTO pi_nodes (id, name, hostname, ssh_user, service_name, node_type)
+        -- Insert default Pi nodes if not exist (with fallback IPs for local network)
+        INSERT OR IGNORE INTO pi_nodes (id, name, hostname, ssh_user, ip_address, service_name, node_type)
         VALUES 
-            ('xaver01', 'TX-XAVER01', 'theia-xaver01', 'theia-xaver', 'xaver-detect', 'xaver'),
-            ('xaver02', 'TX-XAVER02', 'theia-xaver02', 'theia-xaver', 'xaver-detect', 'xaver'),
-            ('hub', 'HUB', 'theia', 'theia', 'theia-api', 'hub');
+            ('xaver01', 'TX-XAVER01', 'theia-xaver01', 'theia-xaver', '192.168.84.111', 'xaver-detect', 'xaver'),
+            ('xaver02', 'TX-XAVER02', 'theia-xaver02', 'theia-xaver', '192.168.84.242', 'xaver-detect', 'xaver'),
+            ('hub', 'HUB', 'theia', 'theia', '127.0.0.1', 'theia-api', 'hub');
+        
+        -- Update existing nodes with fallback IPs if they don't have one
+        UPDATE pi_nodes SET ip_address = '192.168.84.111' WHERE id = 'xaver01' AND ip_address IS NULL;
+        UPDATE pi_nodes SET ip_address = '192.168.84.242' WHERE id = 'xaver02' AND ip_address IS NULL;
+        UPDATE pi_nodes SET ip_address = '127.0.0.1' WHERE id = 'hub' AND ip_address IS NULL;
 
         -- Insert default allowed networks (local 192.168.84.x)
         INSERT OR IGNORE INTO allowed_networks (network_type, network_value, description)

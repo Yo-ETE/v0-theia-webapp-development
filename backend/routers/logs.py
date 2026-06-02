@@ -58,8 +58,9 @@ async def resolve_device_host(node_id: str) -> dict | None:
     
     node_dict = dict(node)
     
-    # If we have a recent IP (last_seen within 5 min), use it
-    if node_dict.get("ip_address") and node_dict.get("online"):
+    # Priority: IP address first, then hostname
+    # This ensures we always use a resolvable address
+    if node_dict.get("ip_address"):
         target = f"{node_dict['ssh_user']}@{node_dict['ip_address']}"
     else:
         # Fallback to hostname (Tailscale MagicDNS or mDNS)
