@@ -1942,8 +1942,8 @@ export default function MapInner({
       <HeatmapCanvas
         map={mapInstance}
         points={heatPoints}
-        radiusMeters={1.0}
-        opacity={0.7}
+        radiusMeters={2.0}
+        opacity={0.85}
         enabled={heatmapMode && heatPoints.length > 0}
         zonePolygons={zones.map(z => z.polygon)}
       />

@@ -159,7 +159,8 @@ export default function HeatmapCanvas({
           const dx = px2 - cx
           const distSq = dx * dx + dySq
           if (distSq > rSq) continue
-          const g = Math.exp(-3 * distSq / rSq)
+          // Softer gaussian falloff (factor 2 instead of 3) for wider spread
+          const g = Math.exp(-2 * distSq / rSq)
           intensity[py * sw + px2] += g * strength
         }
       }
@@ -198,13 +199,15 @@ export default function HeatmapCanvas({
     // Create the colorized image at small resolution
     const smallImg = octx.createImageData(sw, sh)
     const out = smallImg.data
-    const noiseFloor = maxI * 0.02
+    // Lower noise floor (1%) to show more of the gradient/dissipation
+    const noiseFloor = maxI * 0.01
 
     for (let i = 0; i < sw * sh; i++) {
       const v = intensity[i]
       if (v < noiseFloor) continue
       const normalized = (v - noiseFloor) / (maxI - noiseFloor)
-      const paletteIdx = Math.min(255, Math.round(25 + normalized * 230))
+      // Start palette earlier (index 15) for more visible low-intensity areas
+      const paletteIdx = Math.min(255, Math.round(15 + normalized * 240))
       const idx = paletteIdx * 4
       const oi = i * 4
       out[oi]     = PALETTE[idx]
