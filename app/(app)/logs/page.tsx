@@ -18,8 +18,9 @@ import { ScrollArea } from "@/components/ui/scroll-area"
 import { useLogs } from "@/hooks/use-api"
 import { logLevelConfig, formatDateTime } from "@/lib/format"
 import { cn } from "@/lib/utils"
+import { DeviceControl } from "@/components/logs/device-control"
 
-type Tab = "app" | "system"
+type Tab = "app" | "system" | "control"
 
 function getBackendBase() {
   if (typeof window === "undefined") return ""
@@ -112,6 +113,16 @@ export default function LogsPage() {
             >
               <Terminal className="h-3 w-3" />
               Systeme (Pi)
+            </button>
+            <button
+              onClick={() => setTab("control")}
+              className={cn(
+                "flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium border-b-2 transition-colors cursor-pointer -mb-px",
+                tab === "control" ? "border-primary text-foreground" : "border-transparent text-muted-foreground hover:text-foreground"
+              )}
+            >
+              <Settings className="h-3 w-3" />
+              Control TX
             </button>
           </div>
 
@@ -293,6 +304,10 @@ export default function LogsPage() {
               )}
             </CardContent>
           </Card>
+
+          {tab === "control" && (
+            <DeviceControl />
+          )}
           )}
         </div>
       </main>
