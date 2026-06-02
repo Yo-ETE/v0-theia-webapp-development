@@ -263,7 +263,7 @@ export default function LogsPage() {
                 </ScrollArea>
               )}
             </CardContent>
-          </Card>
+          )}
           )}
 
           {/* System (Pi) Log viewer */}
@@ -304,6 +304,7 @@ export default function LogsPage() {
               )}
             </CardContent>
           </Card>
+          )}
 
           {tab === "control" && (
             <DeviceControl />
