@@ -669,6 +669,11 @@ class PortReader:
             self.packets_err += 1
             return
 
+        # Default values - always defined regardless of which branch is taken
+        sensor_type = "ld2450"
+        sensor_status = None
+        charging = False
+
         tx_id = None
         try:
             int(parts[1])
