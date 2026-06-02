@@ -542,6 +542,17 @@ export default function MapInner({
 
     console.log("[v0] trajectory: filtered", filteredEvents.length, "events")
 
+    // Precalculate projection factors outside the loop to avoid TDZ issues
+    const mPerDegLat = 111320
+    const latRad = centerLat * (Math.PI / 180)
+    const mPerDegLon = 111320 * Math.cos(latRad)
+
+    // Helper: project sensor-relative cm coords to [lat, lon]
+    const cmToLatLon = (xCm: number, yCm: number): [number, number] => [
+      centerLat + (yCm / 100) / mPerDegLat,
+      centerLon + (xCm / 100) / mPerDegLon,
+    ]
+
     // Draw lines between consecutive points that have x/y data
     let drawnCount = 0
     for (let i = 0; i < filteredEvents.length - 1; i++) {
@@ -553,16 +564,10 @@ export default function MapInner({
       // Only draw if both events have x/y coordinates
       if (p1.x !== undefined && p1.y !== undefined && p2.x !== undefined && p2.y !== undefined) {
         try {
-          const ll1: [number, number] = [
-            centerLat + (Number(p1.y) / 100) / 111320,
-            centerLon + (Number(p1.x) / 100) / (111320 * Math.cos(centerLat * Math.PI / 180))
-          ]
-          const ll2: [number, number] = [
-            centerLat + (Number(p2.y) / 100) / 111320,
-            centerLon + (Number(p2.x) / 100) / (111320 * Math.cos(centerLat * Math.PI / 180))
-          ]
+          const pt1 = cmToLatLon(Number(p1.x), Number(p1.y))
+          const pt2 = cmToLatLon(Number(p2.x), Number(p2.y))
           
-          const line = L.polyline([ll1, ll2], {
+          const line = L.polyline([pt1, pt2], {
             color: "#06b6d4",
             weight: 1.5,
             opacity: 0.5,
