@@ -318,6 +318,8 @@ export default function MapInner({
   // LOCAL polygon copy for editing -- only this state changes during edit, not the parent's
   const [localPoly, setLocalPoly] = useState<[number, number][] | null>(null)
   const localPolyRef = useRef<[number, number][] | null>(null)
+  // Heatmap radius control (1.0 to 5.0 meters)
+  const [heatmapRadius, setHeatmapRadius] = useState(2.0)
   // Keep ref in sync for use in native Leaflet callbacks
   useEffect(() => { localPolyRef.current = localPoly }, [localPoly])
 
@@ -1942,7 +1944,7 @@ export default function MapInner({
       <HeatmapCanvas
         map={mapInstance}
         points={heatPoints}
-        radiusMeters={2.0}
+        radiusMeters={heatmapRadius}
         opacity={0.85}
         enabled={heatmapMode && heatPoints.length > 0}
         zonePolygons={zones.map(z => z.polygon)}
@@ -2070,6 +2072,46 @@ export default function MapInner({
           </div>
         )
       })()}
+
+      {/* Heatmap controls and legend */}
+      {heatmapMode && (
+        <div className="absolute bottom-4 right-4 z-[500] flex flex-col gap-3 rounded-lg bg-card/95 backdrop-blur px-4 py-3 border border-border shadow-lg max-w-sm">
+          {/* Radius slider */}
+          <div className="flex flex-col gap-1.5">
+            <label className="text-xs font-semibold text-foreground">
+              Blur Radius: {heatmapRadius.toFixed(1)}m
+            </label>
+            <input
+              type="range"
+              min="0.5"
+              max="5"
+              step="0.5"
+              value={heatmapRadius}
+              onChange={(e) => setHeatmapRadius(parseFloat(e.target.value))}
+              className="w-full h-2 bg-muted rounded-lg appearance-none cursor-pointer accent-cyan-600"
+            />
+            <div className="text-[10px] text-muted-foreground flex justify-between">
+              <span>0.5m</span>
+              <span>5m</span>
+            </div>
+          </div>
+
+          {/* Color legend */}
+          <div className="flex flex-col gap-1">
+            <p className="text-xs font-semibold text-foreground">Intensity</p>
+            <div
+              className="h-6 rounded-sm border border-border"
+              style={{
+                background: "linear-gradient(to right, #0369a1, #0d9488, #16a34a, #ca8a04, #dc2626)",
+              }}
+            />
+            <div className="text-[10px] text-muted-foreground flex justify-between">
+              <span>Low</span>
+              <span>High</span>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }
