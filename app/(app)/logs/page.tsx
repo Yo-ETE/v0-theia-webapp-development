@@ -308,7 +308,6 @@ export default function LogsPage() {
           {tab === "control" && (
             <DeviceControl />
           )}
-          )}
         </div>
       </main>
     </>
