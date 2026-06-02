@@ -942,6 +942,7 @@ export default function MapInner({
     if (!heatmapMode || !zones.length || events.length === 0) return []
 
     // Build lookups: device_id -> SensorGeo AND zone_id -> SensorGeo[] (fallback)
+    // Also index by tx_id for events that only have tx_id (e.g. XAVER01)
     type SensorGeo = {
       sensorM: [number, number]
       sensorLL: [number, number]
@@ -952,6 +953,7 @@ export default function MapInner({
       effective_fov?: number
     }
     const sensorByDevice: Record<string, SensorGeo> = {}
+    const sensorByTxId: Record<string, SensorGeo> = {}
     const sensorByZone: Record<string, SensorGeo[]> = {}
     for (const sp of sensorPlacements) {
       const zone = zones.find(z => z.id === sp.zone_id)
@@ -976,6 +978,10 @@ export default function MapInner({
         effective_fov: (sp as { effective_fov?: number }).effective_fov,
       }
       sensorByDevice[sp.device_id] = geo
+      // Also index by device_name for tx_id matching (e.g. "TX-XAVER01")
+      if ((sp as { device_name?: string }).device_name) {
+        sensorByTxId[(sp as { device_name?: string }).device_name!] = geo
+      }
       if (!sensorByZone[sp.zone_id]) sensorByZone[sp.zone_id] = []
       sensorByZone[sp.zone_id].push(geo)
     }
@@ -994,7 +1000,10 @@ export default function MapInner({
       const sensorType = String(p.sensor_type ?? "ld2450")
       if (sensorType === "gravity_mw" || dist <= 0) continue // Skip presence-only for index
 
+      // Match event to sensor: by device_id, then tx_id from payload, then zone fallback
+      const txId = String(p.tx_id ?? "")
       const sg = (evt.device_id ? sensorByDevice[evt.device_id] : null)
+        ?? (txId ? sensorByTxId[`TX-${txId}`] ?? sensorByTxId[txId] : null)
         ?? sensorByZone[evt.zone_id ?? ""]?.[0]
       if (!sg) continue
 
@@ -1036,11 +1045,13 @@ export default function MapInner({
       }
 
       const zId = evt.zone_id
-      if (!zId) continue
+      // Allow events without zone_id if we can match by device_id or tx_id
+      const txId = String(p.tx_id ?? "")
 
-      // Match event to correct sensor: by device_id first, then fallback to zone
+      // Match event to correct sensor: by device_id, then tx_id from payload, then zone fallback
       const sg = (evt.device_id ? sensorByDevice[evt.device_id] : null)
-        ?? sensorByZone[zId]?.[0]
+        ?? (txId ? sensorByTxId[`TX-${txId}`] ?? sensorByTxId[txId] : null)
+        ?? (zId ? sensorByZone[zId]?.[0] : null)
       if (!sg) continue
 
       // rightM = -leftM: points right when facing the inward normal direction
