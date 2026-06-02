@@ -1164,9 +1164,16 @@ export default function MapInner({
           sg.sensorM[0] + ym * sg.normalM[0] + xm * rM[0],
           sg.sensorM[1] + ym * sg.normalM[1] + xm * rM[1],
         ]
-        // Debug first 5 events with x/y
-        if (pts.length < 5) {
-          console.log("[v0] heatmap PHASE2:", { x_cm, y_cm, dm, sensorM: sg.sensorM, normalM: sg.normalM, rM, ptM })
+        // Debug - log first unique positions
+        if (pts.length < 3) {
+          console.log("[v0] heatmap PHASE2 values:",
+            "sensorM=[" + sg.sensorM[0].toFixed(4) + "," + sg.sensorM[1].toFixed(4) + "]",
+            "normalM=[" + sg.normalM[0].toFixed(4) + "," + sg.normalM[1].toFixed(4) + "]",
+            "rM=[" + rM[0].toFixed(4) + "," + rM[1].toFixed(4) + "]",
+            "x_cm=" + x_cm + " y_cm=" + y_cm,
+            "xm=" + (x_cm/100).toFixed(3) + " ym=" + (y_cm/100).toFixed(3),
+            "ptM=[" + ptM[0].toFixed(4) + "," + ptM[1].toFixed(4) + "]"
+          )
         }
       } else if (hasAngle) {
         // Angle from atan2(x,y): positive = right, negative = left
