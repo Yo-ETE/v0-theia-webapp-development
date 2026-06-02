@@ -1223,10 +1223,6 @@ export default function MapInner({
       }
 
       const ll = toLatLon(ptM)
-      // DEBUG: Log projection results for XAVER
-      if (hasRealXY && events.length < 500) {
-        console.log("[THEIA] heatmap projection:", { x_cm, y_cm, dm, ptM, ll, txId: String(p.tx_id ?? "") })
-      }
       pts.push({ lat: ll[0], lon: ll[1], weight: triangulationBoost })
     }
 
@@ -1946,7 +1942,7 @@ export default function MapInner({
       <HeatmapCanvas
         map={mapInstance}
         points={heatPoints}
-        radiusMeters={2.0}
+        radiusMeters={0.5}
         opacity={0.7}
         enabled={heatmapMode && heatPoints.length > 0}
         zonePolygons={zones.map(z => z.polygon)}
