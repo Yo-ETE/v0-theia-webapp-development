@@ -1010,10 +1010,7 @@ export default function MapInner({
       const sg = (evt.device_id ? sensorByDevice[evt.device_id] : null)
         ?? (txId ? sensorByTxId[`TX-${txId}`] ?? sensorByTxId[txId] : null)
         ?? sensorByZone[evt.zone_id ?? ""]?.[0]
-      if (!sg) {
-        console.log("[v0] heatmap: no sensor found for event", { device_id: evt.device_id, txId, zone_id: evt.zone_id, sensorByTxIdKeys: Object.keys(sensorByTxId) })
-        continue
-      }
+      if (!sg) continue
 
       const rM: [number, number] = [-sg.leftM[0], -sg.leftM[1]]
       const x_cm = Number(p.x ?? 0)
@@ -1164,17 +1161,6 @@ export default function MapInner({
           sg.sensorM[0] + ym * sg.normalM[0] + xm * rM[0],
           sg.sensorM[1] + ym * sg.normalM[1] + xm * rM[1],
         ]
-        // Debug - log first unique positions
-        if (pts.length < 3) {
-          console.log("[v0] heatmap PHASE2 values:",
-            "sensorM=[" + sg.sensorM[0].toFixed(4) + "," + sg.sensorM[1].toFixed(4) + "]",
-            "normalM=[" + sg.normalM[0].toFixed(4) + "," + sg.normalM[1].toFixed(4) + "]",
-            "rM=[" + rM[0].toFixed(4) + "," + rM[1].toFixed(4) + "]",
-            "x_cm=" + x_cm + " y_cm=" + y_cm,
-            "xm=" + (x_cm/100).toFixed(3) + " ym=" + (y_cm/100).toFixed(3),
-            "ptM=[" + ptM[0].toFixed(4) + "," + ptM[1].toFixed(4) + "]"
-          )
-        }
       } else if (hasAngle) {
         // Angle from atan2(x,y): positive = right, negative = left
         const rad = evtAngle * Math.PI / 180
