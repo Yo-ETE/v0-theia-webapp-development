@@ -301,7 +301,6 @@ class PortReader:
             angle=angle, presence=presence, vbatt=vbatt,
             sensor_status=sensor_status, charging=charging,
         )
-        return
 
         # key=value format: x=0 y=0 d=1 v=0 rssi=-45 battTX=4.10
         kv = {}
