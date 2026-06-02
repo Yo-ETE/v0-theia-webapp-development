@@ -511,18 +511,23 @@ export default function MapInner({
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const map = mapRef.current as any
     const L = leafletL
+    console.log("[v0] trajectory useEffect:", { showTrajectory, heatmapMode, mapExists: !!map, leafletExists: !!L })
     if (!map || !L || !showTrajectory || !heatmapMode) return
+
+    console.log("[v0] trajectory: starting draw")
 
     // Clear previous trajectory lines by accessing map's internal layer group
     try {
       if (map._layers) {
+        let cleared = 0
         Object.values(map._layers).forEach((layer: any) => {
           if (layer && layer.trajectoryLine === true) {
-            try { map.removeLayer(layer) } catch {}
+            try { map.removeLayer(layer); cleared++ } catch {}
           }
         })
+        console.log("[v0] trajectory: cleared", cleared, "previous lines")
       }
-    } catch {}
+    } catch (e) { console.log("[v0] trajectory: error clearing", e) }
 
     // Build trajectory from filtered events (time-filtered)
     const now = Date.now()
@@ -535,7 +540,10 @@ export default function MapInner({
       return true
     }).sort((a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime())
 
+    console.log("[v0] trajectory: filtered", filteredEvents.length, "events")
+
     // Draw lines between consecutive points that have x/y data
+    let drawnCount = 0
     for (let i = 0; i < filteredEvents.length - 1; i++) {
       const evt1 = filteredEvents[i]
       const evt2 = filteredEvents[i + 1]
@@ -563,9 +571,11 @@ export default function MapInner({
           // eslint-disable-next-line @typescript-eslint/no-explicit-any
           (line as any).trajectoryLine = true
           line.addTo(map)
-        } catch {}
+          drawnCount++
+        } catch (e) { console.log("[v0] trajectory: error drawing line", e) }
       }
     }
+    console.log("[v0] trajectory: drew", drawnCount, "lines")
   }, [showTrajectory, heatmapMode, heatmapTimeFilter, events, centerLat, centerLon, leafletL, mapRef])
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
