@@ -322,8 +322,6 @@ export default function MapInner({
   const [heatmapRadius, setHeatmapRadius] = useState(2.0)
   // Heatmap time filter: "all" | "1h" | "10m"
   const [heatmapTimeFilter, setHeatmapTimeFilter] = useState<"all" | "1h" | "10m">("all")
-  // Show trajectory lines between consecutive detections
-  const [showTrajectory, setShowTrajectory] = useState(false)
   // Keep ref in sync for use in native Leaflet callbacks
   useEffect(() => { localPolyRef.current = localPoly }, [localPoly])
 
@@ -505,83 +503,6 @@ export default function MapInner({
     return cleanup
   // Re-run when polygon, tool, or editing zone changes
   }, [localPoly, editTool, editingZoneId, leafletL]) // eslint-disable-line react-hooks/exhaustive-deps
-  
-  // Draw trajectory lines between consecutive events if showTrajectory is enabled
-  useEffect(() => {
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const map = mapRef.current as any
-    const L = leafletL
-    console.log("[v0] trajectory useEffect:", { showTrajectory, heatmapMode, mapExists: !!map, leafletExists: !!L })
-    if (!map || !L || !showTrajectory || !heatmapMode) return
-
-    console.log("[v0] trajectory: starting draw")
-
-    // Clear previous trajectory lines by accessing map's internal layer group
-    try {
-      if (map._layers) {
-        let cleared = 0
-        Object.values(map._layers).forEach((layer: any) => {
-          if (layer && layer.trajectoryLine === true) {
-            try { map.removeLayer(layer); cleared++ } catch {}
-          }
-        })
-        console.log("[v0] trajectory: cleared", cleared, "previous lines")
-      }
-    } catch (e) { console.log("[v0] trajectory: error clearing", e) }
-
-    // Build trajectory from filtered events (time-filtered)
-    const now = Date.now()
-    const filteredEvents = events.filter(evt => {
-      if (heatmapTimeFilter === "all") return true
-      const eTime = new Date(evt.timestamp).getTime()
-      const ageSec = (now - eTime) / 1000
-      if (heatmapTimeFilter === "1h") return ageSec <= 3600
-      if (heatmapTimeFilter === "10m") return ageSec <= 600
-      return true
-    }).sort((a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime())
-
-    console.log("[v0] trajectory: filtered", filteredEvents.length, "events")
-
-    // Precalculate projection factors outside the loop to avoid TDZ issues
-    const mPerDegLat = 111320
-    const latRad = centerLat * (Math.PI / 180)
-    const mPerDegLon = 111320 * Math.cos(latRad)
-
-    // Helper: project sensor-relative cm coords to [lat, lon]
-    const cmToLatLon = (xCm: number, yCm: number): [number, number] => [
-      centerLat + (yCm / 100) / mPerDegLat,
-      centerLon + (xCm / 100) / mPerDegLon,
-    ]
-
-    // Draw lines between consecutive points that have x/y data
-    let drawnCount = 0
-    for (let i = 0; i < filteredEvents.length - 1; i++) {
-      const evt1 = filteredEvents[i]
-      const evt2 = filteredEvents[i + 1]
-      const p1 = evt1.payload ?? {}
-      const p2 = evt2.payload ?? {}
-      
-      // Only draw if both events have x/y coordinates
-      if (p1.x !== undefined && p1.y !== undefined && p2.x !== undefined && p2.y !== undefined) {
-        try {
-          const pt1 = cmToLatLon(Number(p1.x), Number(p1.y))
-          const pt2 = cmToLatLon(Number(p2.x), Number(p2.y))
-          
-          const line = L.polyline([pt1, pt2], {
-            color: "#06b6d4",
-            weight: 1.5,
-            opacity: 0.5,
-            dashArray: "2, 3"
-          })
-          // eslint-disable-next-line @typescript-eslint/no-explicit-any
-          (line as any).trajectoryLine = true
-          line.addTo(map)
-          drawnCount++
-        } catch (e) { console.log("[v0] trajectory: error drawing line", e) }
-      }
-    }
-    console.log("[v0] trajectory: drew", drawnCount, "lines")
-  }, [showTrajectory, heatmapMode, heatmapTimeFilter, events, centerLat, centerLon, leafletL, mapRef])
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const [mapInstance, setMapInstance] = useState<any>(null)
@@ -2228,17 +2149,6 @@ export default function MapInner({
                 All
               </button>
             </div>
-          </div>
-
-          {/* Trajectory toggle */}
-          <div className="flex items-center justify-between">
-            <label className="text-xs font-semibold text-foreground">Show Paths</label>
-            <button
-              onClick={() => setShowTrajectory(!showTrajectory)}
-              className={`relative inline-flex h-6 w-11 rounded-full border transition-colors ${showTrajectory ? "bg-cyan-600 border-cyan-600" : "bg-muted border-border"}`}
-            >
-              <span className={`inline-block h-5 w-5 rounded-full bg-white transition-transform ${showTrajectory ? "translate-x-5" : "translate-x-0.5"}`} />
-            </button>
           </div>
         </div>
       )}
