@@ -325,6 +325,8 @@ class PortReader:
 
         # Extract XAVER sensor status if present
         sensor_status = kv.get("status", None)
+        # Extract charging flag if present (XAVER)
+        charging = kv.get("charging", "0") == "1"
 
         self.packets_ok += 1
         angle = math.degrees(math.atan2(x, y)) if (x != 0 or y != 0) else 0.0
@@ -357,7 +359,7 @@ class PortReader:
             tx_id=tx_id, sensor_type=sensor_type,
             x=x, y=y, d=d, v=v,
             angle=angle, presence=presence, vbatt=vbatt,
-            sensor_status=sensor_status,
+            sensor_status=sensor_status, charging=charging,
         )
 
     # ------------------------------------------------------------------ common handler
@@ -725,7 +727,7 @@ class PortReader:
             tx_id=tx_id, sensor_type=sensor_type,
             x=x, y=y, d=d, v=v,
             angle=angle, presence=presence, vbatt=vbatt,
-            sensor_status=sensor_status,
+            sensor_status=sensor_status, charging=charging,
         )
 
     # ------------------------------------------------------------------ RX log lines
