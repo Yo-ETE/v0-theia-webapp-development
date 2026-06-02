@@ -1010,7 +1010,10 @@ export default function MapInner({
       const sg = (evt.device_id ? sensorByDevice[evt.device_id] : null)
         ?? (txId ? sensorByTxId[`TX-${txId}`] ?? sensorByTxId[txId] : null)
         ?? sensorByZone[evt.zone_id ?? ""]?.[0]
-      if (!sg) continue
+      if (!sg) {
+        console.log("[v0] heatmap: no sensor found for event", { device_id: evt.device_id, txId, zone_id: evt.zone_id, sensorByTxIdKeys: Object.keys(sensorByTxId) })
+        continue
+      }
 
       const rM: [number, number] = [-sg.leftM[0], -sg.leftM[1]]
       const x_cm = Number(p.x ?? 0)
@@ -1161,6 +1164,10 @@ export default function MapInner({
           sg.sensorM[0] + ym * sg.normalM[0] + xm * rM[0],
           sg.sensorM[1] + ym * sg.normalM[1] + xm * rM[1],
         ]
+        // Debug first 5 events with x/y
+        if (pts.length < 5) {
+          console.log("[v0] heatmap PHASE2:", { x_cm, y_cm, dm, sensorM: sg.sensorM, normalM: sg.normalM, rM, ptM })
+        }
       } else if (hasAngle) {
         // Angle from atan2(x,y): positive = right, negative = left
         const rad = evtAngle * Math.PI / 180
