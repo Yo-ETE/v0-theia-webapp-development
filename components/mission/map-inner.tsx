@@ -320,6 +320,10 @@ export default function MapInner({
   const localPolyRef = useRef<[number, number][] | null>(null)
   // Heatmap radius control (1.0 to 5.0 meters)
   const [heatmapRadius, setHeatmapRadius] = useState(2.0)
+  // Heatmap time filter: "all" | "1h" | "10m"
+  const [heatmapTimeFilter, setHeatmapTimeFilter] = useState<"all" | "1h" | "10m">("all")
+  // Show trajectory lines between consecutive detections
+  const [showTrajectory, setShowTrajectory] = useState(false)
   // Keep ref in sync for use in native Leaflet callbacks
   useEffect(() => { localPolyRef.current = localPoly }, [localPoly])
 
@@ -501,6 +505,60 @@ export default function MapInner({
     return cleanup
   // Re-run when polygon, tool, or editing zone changes
   }, [localPoly, editTool, editingZoneId, leafletL]) // eslint-disable-line react-hooks/exhaustive-deps
+  
+  // Draw trajectory lines between consecutive events if showTrajectory is enabled
+  useEffect(() => {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const map = mapRef.current as any
+    const L = leafletL
+    if (!map || !L || !showTrajectory || !heatmapMode) return
+
+    // Clear previous trajectory lines
+    const existingLines = map.getLayers().filter((layer: any) => layer.trajectoryLine === true)
+    existingLines.forEach((line: any) => map.removeLayer(line))
+
+    // Build trajectory from filtered events (time-filtered)
+    const now = Date.now()
+    const filteredEvents = events.filter(evt => {
+      if (heatmapTimeFilter === "all") return true
+      const eTime = new Date(evt.timestamp).getTime()
+      const ageSec = (now - eTime) / 1000
+      if (heatmapTimeFilter === "1h") return ageSec <= 3600
+      if (heatmapTimeFilter === "10m") return ageSec <= 600
+      return true
+    }).sort((a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime())
+
+    // Draw lines between consecutive points that have x/y data
+    for (let i = 0; i < filteredEvents.length - 1; i++) {
+      const evt1 = filteredEvents[i]
+      const evt2 = filteredEvents[i + 1]
+      const p1 = evt1.payload ?? {}
+      const p2 = evt2.payload ?? {}
+      
+      // Only draw if both events have x/y coordinates
+      if (p1.x !== undefined && p1.y !== undefined && p2.x !== undefined && p2.y !== undefined) {
+        const ll1: [number, number] = [
+          centerLat + (Number(p1.y) / 100) / 111320,
+          centerLon + (Number(p1.x) / 100) / (111320 * Math.cos(centerLat * Math.PI / 180))
+        ]
+        const ll2: [number, number] = [
+          centerLat + (Number(p2.y) / 100) / 111320,
+          centerLon + (Number(p2.x) / 100) / (111320 * Math.cos(centerLat * Math.PI / 180))
+        ]
+        
+        const line = L.polyline([ll1, ll2], {
+          color: "#06b6d4",
+          weight: 1.5,
+          opacity: 0.5,
+          dashArray: "2, 3"
+        })
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        (line as any).trajectoryLine = true
+        line.addTo(map)
+      }
+    }
+  }, [showTrajectory, heatmapMode, heatmapTimeFilter, events, centerLat, centerLon, leafletL, mapRef])
+
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const [mapInstance, setMapInstance] = useState<any>(null)
   const mapInstanceSet = useRef(false)
@@ -943,6 +1001,18 @@ export default function MapInner({
     try {
     if (!heatmapMode || !zones.length || events.length === 0) return []
 
+    // Apply time filter to events
+    const now = Date.now()
+    const filteredEvents = events.filter(evt => {
+      if (heatmapTimeFilter === "all") return true
+      const eTime = new Date(evt.timestamp).getTime()
+      const ageSec = (now - eTime) / 1000
+      if (heatmapTimeFilter === "1h") return ageSec <= 3600
+      if (heatmapTimeFilter === "10m") return ageSec <= 600
+      return true
+    })
+    if (filteredEvents.length === 0) return []
+
     // Build lookups: device_id -> SensorGeo AND zone_id -> SensorGeo[] (fallback)
     // Also index by tx_id for events that only have tx_id (e.g. XAVER01)
     type SensorGeo = {
@@ -1001,7 +1071,7 @@ export default function MapInner({
     const distanceEventsByTime: Record<string, Array<{ ptM: [number, number]; zoneId: string; deviceId: string; ts: number }>> = {}
     const TIME_WINDOW_MS = 1000 // 1 second correlation window for precision
 
-    for (const evt of events) {
+    for (const evt of filteredEvents) {
       const p = evt.payload ?? {}
       const dist = Number(p.distance ?? 0)
       const sensorType = String(p.sensor_type ?? "ld2450")
@@ -1036,7 +1106,7 @@ export default function MapInner({
     }
 
     // PHASE 2: Process all events
-    for (const evt of events) {
+    for (const evt of filteredEvents) {
       const p = evt.payload ?? {}
       const dist = Number(p.distance ?? 0)
       const sensorType = String(p.sensor_type ?? "ld2450")
@@ -2109,6 +2179,42 @@ export default function MapInner({
               <span>Low</span>
               <span>High</span>
             </div>
+          </div>
+
+          {/* Time filter */}
+          <div className="flex flex-col gap-1.5">
+            <label className="text-xs font-semibold text-foreground">Time Filter</label>
+            <div className="flex gap-1">
+              <button
+                onClick={() => setHeatmapTimeFilter("10m")}
+                className={`text-[11px] px-2 py-1 rounded border transition-colors ${heatmapTimeFilter === "10m" ? "bg-cyan-600 text-white border-cyan-600" : "bg-muted border-border hover:bg-muted-foreground/20"}`}
+              >
+                10m
+              </button>
+              <button
+                onClick={() => setHeatmapTimeFilter("1h")}
+                className={`text-[11px] px-2 py-1 rounded border transition-colors ${heatmapTimeFilter === "1h" ? "bg-cyan-600 text-white border-cyan-600" : "bg-muted border-border hover:bg-muted-foreground/20"}`}
+              >
+                1h
+              </button>
+              <button
+                onClick={() => setHeatmapTimeFilter("all")}
+                className={`text-[11px] px-2 py-1 rounded border transition-colors ${heatmapTimeFilter === "all" ? "bg-cyan-600 text-white border-cyan-600" : "bg-muted border-border hover:bg-muted-foreground/20"}`}
+              >
+                All
+              </button>
+            </div>
+          </div>
+
+          {/* Trajectory toggle */}
+          <div className="flex items-center justify-between">
+            <label className="text-xs font-semibold text-foreground">Show Paths</label>
+            <button
+              onClick={() => setShowTrajectory(!showTrajectory)}
+              className={`relative inline-flex h-6 w-11 rounded-full border transition-colors ${showTrajectory ? "bg-cyan-600 border-cyan-600" : "bg-muted border-border"}`}
+            >
+              <span className={`inline-block h-5 w-5 rounded-full bg-white transition-transform ${showTrajectory ? "translate-x-5" : "translate-x-0.5"}`} />
+            </button>
           </div>
         </div>
       )}
