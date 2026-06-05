@@ -8,6 +8,10 @@ les affiche sur une carte interactive, et fournit un tableau de bord operationne
 
 **THEIA Hub Control v1.0** - (c) 2026 Yoann ETE
 
+![Status](https://img.shields.io/badge/status-production-green)
+![Version](https://img.shields.io/badge/version-1.0-blue)
+![License](https://img.shields.io/badge/license-proprietary-red)
+
 ---
 
 ## Documentation
@@ -71,7 +75,10 @@ Capteurs Radar (TX LoRa)  --868MHz-->  Heltec RX (USB)  -->  Raspberry Pi 5
 - Mode FOV (champ de vision des capteurs) avec orientation ajustable
 - Estimation de position sur la facade avec zone de detection
 - Mode timelapse pour replay des detections historiques
-- Heatmap des evenements avec intensite par zone
+- **Heatmap des evenements** avec controles avances :
+  - Slider de rayon de flou (0.5m - 5m)
+  - Legende d'intensite (Low - High)
+  - Filtrage temporel (10min, 1h, All)
 - **Detection Feed temps reel** :
   - Affichage SSE uniquement (pas de donnees DB)
   - TTL 5 minutes : apres inactivite, seule la derniere detection reste
@@ -103,6 +110,11 @@ Capteurs Radar (TX LoRa)  --868MHz-->  Heltec RX (USB)  -->  Raspberry Pi 5
 - Logs systeme du Raspberry Pi (journalctl theia-api)
 - Logs device (connexions, deconnexions, alertes)
 - Recherche, filtrage et export
+- **Control TX** : Panneau de controle des Pi XAVER et HUB
+  - Status, Restart, Logs des services (xaver-detect, theia-api)
+  - Resolution dynamique des IPs via base de donnees
+  - Heartbeat automatique des Pi pour mise a jour des IPs
+  - Verification du reseau autorise avant execution SSH
 
 ### Authentification et Comptes
 - Compte admin par defaut : `admin` / `admin` (a changer apres premiere connexion)
@@ -450,6 +462,35 @@ gpsmon
 sudo dpkg-reconfigure gpsd
 ```
 
+### Configuration SSH pour Control TX
+
+Le panneau Control TX necessite que le HUB puisse se connecter aux Pi XAVER via SSH sans mot de passe.
+
+```bash
+# Sur le HUB, generer une cle SSH (si pas deja fait)
+ssh-keygen -t ed25519 -N "" -f ~/.ssh/id_ed25519
+
+# Copier la cle vers chaque Pi XAVER
+ssh-copy-id theia-xaver@192.168.84.111   # XAVER01
+ssh-copy-id theia-xaver@192.168.84.242   # XAVER02
+
+# Tester la connexion
+ssh theia-xaver@192.168.84.111 "hostname"
+```
+
+### Heartbeat Pi (optionnel)
+
+Pour que les Pi signalent automatiquement leur IP au HUB :
+
+```bash
+# Sur chaque Pi XAVER, installer le script heartbeat
+sudo cp /opt/theia/scripts/pi_heartbeat.py /home/theia-xaver/
+sudo cp /opt/theia/services/theia-heartbeat.service /etc/systemd/system/
+sudo systemctl enable --now theia-heartbeat
+```
+
+Le script envoie un heartbeat toutes les 60s avec l'IP, MAC, et hostname.
+
 ### Mot de passe admin oublie
 
 ```bash
@@ -494,3 +535,34 @@ Mettre la carte en mode bootloader :
 ## Licence
 
 Projet prive - (c) 2026 Yoann ETE - theiahub.contact@gmail.com - Tous droits reserves.
+
+---
+
+## Roadmap
+
+### Haute priorite
+- [ ] Export PDF rapport mission (heatmap, statistiques, timeline)
+- [ ] Alertes temps reel WebSocket (remplacer polling)
+- [ ] Mode offline / PWA avec cache et sync
+- [ ] Backup automatique SQLite (cron)
+- [ ] Audit trail des commandes SSH
+
+### Moyenne priorite
+- [ ] Multi-floor 3D (visualisation batiments multi-etages)
+- [ ] Historique des configs mission (versionning/rollback)
+- [ ] Dashboard analytics (tendances, graphiques)
+- [ ] Gestion multi-utilisateurs avec roles granulaires
+- [ ] Rate limiting sur endpoints sensibles
+- [ ] Monitoring uptime des Pi
+
+### Basse priorite
+- [ ] Theme Dark/Light complet
+- [ ] Internationalisation FR/EN
+- [ ] Docker compose pour deployment
+- [ ] CI/CD avec tests automatiques
+
+### Optimisations techniques
+- [ ] Refactoriser map-inner.tsx (2100+ lignes)
+- [ ] Memoiser le calcul heatmap (useMemo + debounce)
+- [ ] Pagination/virtualisation des events
+- [ ] Specifier les exceptions Python (pas de generic `except Exception`)
