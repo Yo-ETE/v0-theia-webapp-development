@@ -1001,7 +1001,22 @@ export default function MissionDetailPage() {
   // Use live placements consistently across all modes (Live, History, Timelapse)
   // This ensures FOV angle is always the same for the same sensor
   // Historical events may have different zone_id/side values but we use current placement for display consistency
-  const sensorPlacements = livePlacements.length > 0 ? livePlacements : historicalPlacements
+  //
+  // In timelapse/history mode we MERGE live + historical placements so that TX that
+  // were removed from a facade (no longer in livePlacements) still appear during replay,
+  // reconstructed from their recorded events. Without this, replay detections for a
+  // removed TX have no placement to render against and stay invisible.
+  const sensorPlacements = (() => {
+    if (timelapseMode) {
+      const byId = new Map<string, (typeof livePlacements)[0]>()
+      for (const p of livePlacements) byId.set(p.device_id, p)
+      for (const p of historicalPlacements) {
+        if (!byId.has(p.device_id)) byId.set(p.device_id, p)
+      }
+      return Array.from(byId.values())
+    }
+    return livePlacements.length > 0 ? livePlacements : historicalPlacements
+  })()
 
   // Map detections: ONLY from SSE (real-time). Never from DB -- DB events are history.
   // Filter out muted devices from zone-level AND device-level aggregation
