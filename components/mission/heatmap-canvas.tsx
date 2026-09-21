@@ -22,6 +22,18 @@ interface HeatmapCanvasProps {
   zonePolygons?: [number, number][][]
 }
 
+/**
+ * The parent rebuilds `points` and `zonePolygons` on every render (and MapInner re-renders every
+ * 500 ms). Returning the previous reference while the content is identical keeps `draw` stable,
+ * so the expensive Gaussian rendering only runs when the data really changes.
+ */
+function useStableValue<T>(value: T): T {
+  const ref = useRef<{ value: T; key: string } | null>(null)
+  const key = JSON.stringify(value)
+  if (!ref.current || ref.current.key !== key) ref.current = { value, key }
+  return ref.current.value
+}
+
 // ── Thermal palette (256 RGBA entries) ──────────────────────────
 // transparent -> blue -> cyan -> green -> yellow -> orange -> red -> dark red
 function buildPalette(): Uint8ClampedArray {
@@ -77,13 +89,15 @@ function metersToPixels(
 
 export default function HeatmapCanvas({
   map,
-  points,
+  points: pointsProp,
   radiusMeters = 1.5,
   opacity = 0.75,
   enabled = true,
-  zonePolygons = [],
+  zonePolygons: zonePolygonsProp,
 }: HeatmapCanvasProps) {
   const canvasRef = useRef<HTMLCanvasElement | null>(null)
+  const points = useStableValue(pointsProp)
+  const zonePolygons = useStableValue(zonePolygonsProp ?? [])
 
   // Create / destroy the canvas element on the map container
   useEffect(() => {
@@ -226,7 +240,6 @@ export default function HeatmapCanvas({
   // Redraw on map events
   useEffect(() => {
     if (!map || !enabled) return
-    draw()
     map.on("moveend", draw)
     map.on("zoomend", draw)
     map.on("resize", draw)

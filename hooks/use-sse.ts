@@ -47,6 +47,10 @@ export function useSSE(onEvent?: SSEHandler) {
 
     function connect() {
       if (closed) return
+      if (reconnectTimer) {
+        clearTimeout(reconnectTimer)
+        reconnectTimer = null
+      }
 
       // Close any existing connection first
       if (esRef.current) {
@@ -95,8 +99,9 @@ export function useSSE(onEvent?: SSEHandler) {
 
     connect()
 
-    // Health check: if no message (including keepalive) for 45s, force reconnect
-    // Backend sends keepalive every 30s, so 45s means the connection is dead
+    // Health check: if no message for 45s, force reconnect.
+    // The backend sends a {"type":"heartbeat"} data event every 30s (SSE comments never reach onmessage),
+    // so 45s of silence means the connection is dead
     healthCheckTimer = setInterval(() => {
       if (closed) return
       const sinceLastMsg = Date.now() - lastMessageRef.current

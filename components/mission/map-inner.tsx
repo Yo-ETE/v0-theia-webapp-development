@@ -565,9 +565,22 @@ export default function MapInner({
     prevLiveByDevRef.current = liveByDevice
   }
 
-  // Tick every 500ms to re-evaluate stale/hold/fade transitions
+  // Re-render every 500ms while a detection is live / holding / fading (stale -> hold -> fade
+  // transitions are time based). With nothing to animate the whole map used to re-render 2x per
+  // second for nothing: idle, tick every 30s (enough to slide the heatmap time-filter window).
   useEffect(() => {
-    const interval = setInterval(() => setTick(t => t + 1), 500)
+    const ACTIVE_HORIZON_MS = STALE_MS + HOLD_MS + FADE_MS + 1000
+    const hasActive = (tsByKey: Record<string, number>, nowTs: number) =>
+      Object.values(tsByKey).some(ts => ts > 0 && nowTs - ts < ACTIVE_HORIZON_MS)
+    let idleTicks = 0
+    const interval = setInterval(() => {
+      const nowTs = Date.now()
+      const busy = hasActive(lastPresenceTsRef.current, nowTs) || hasActive(lastPresenceTsByDevRef.current, nowTs)
+      if (busy || ++idleTicks >= 60) {
+        idleTicks = 0
+        setTick(t => t + 1)
+      }
+    }, 500)
     return () => clearInterval(interval)
   }, [])
 
