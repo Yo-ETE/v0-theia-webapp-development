@@ -15,7 +15,7 @@ from pydantic import BaseModel
 
 from backend.database import get_db
 from backend.security import (
-    is_within, valid_fqbn, valid_sensor_type, valid_serial_port,
+    RX_TX_ID_MAX_LEN, is_within, valid_fqbn, valid_sensor_type, valid_serial_port,
     valid_sketch_name, valid_tx_id,
 )
 
@@ -612,8 +612,12 @@ class FlashRequest(BaseModel):
 async def flash_device(req: FlashRequest):
     """Compile and flash a sketch to an ESP32. Returns SSE stream of progress."""
     # Untrusted input: tx_id is written into C source, port/fqbn go to arduino-cli argv.
-    if not valid_tx_id(req.tx_id):
-        raise HTTPException(status_code=400, detail="tx_id invalide (1-16 caracteres: lettres, chiffres, _ -)")
+    if not valid_tx_id(req.tx_id, max_len=RX_TX_ID_MAX_LEN):
+        raise HTTPException(
+            status_code=400,
+            detail=f"tx_id invalide (1-{RX_TX_ID_MAX_LEN} caracteres: lettres, chiffres, _ -). "
+                   "Le recepteur RX tronque les identifiants a 7 caracteres.",
+        )
     if not valid_serial_port(req.port):
         raise HTTPException(status_code=400, detail="Port invalide (attendu /dev/ttyUSB*, /dev/ttyACM* ou /dev/serial/by-id/*)")
     if req.fqbn and not valid_fqbn(req.fqbn):

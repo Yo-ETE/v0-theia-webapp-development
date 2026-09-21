@@ -64,8 +64,13 @@ def valid_sketch_name(name: str) -> bool:
     return bool(_SKETCH_NAME_RE.match(name or "")) and ".." not in name
 
 
-def valid_tx_id(value: str) -> bool:
-    return bool(_TX_ID_RE.match(value or ""))
+# The RX firmware keeps only 7 characters of a TX id (TX_ID_LEN 8 incl. the terminator):
+# a longer id is received truncated and never matches the device in the database.
+RX_TX_ID_MAX_LEN = 7
+
+
+def valid_tx_id(value: str, max_len: int = 16) -> bool:
+    return bool(_TX_ID_RE.match(value or "")) and len(value) <= max_len
 
 
 def valid_ssh_user(value: str) -> bool:
