@@ -59,12 +59,9 @@ export function DeviceControl() {
     setLoadingNodes(true)
     try {
       const base = getBackendBase()
-      const token = localStorage.getItem("theia_token")
-      const headers = token ? { Authorization: `Bearer ${token}` } : {}
-      
       const [nodesRes, networkRes] = await Promise.all([
-        fetch(`${base}/api/logs/nodes`, { headers }),
-        fetch(`${base}/api/logs/networks`, { headers }),
+        fetch(`${base}/api/logs/nodes`, { credentials: "include" }),
+        fetch(`${base}/api/logs/networks`, { credentials: "include" }),
       ])
       
       if (nodesRes.ok) {
@@ -96,13 +93,9 @@ export function DeviceControl() {
 
     try {
       const base = getBackendBase()
-      const token = localStorage.getItem("theia_token")
       const res = await fetch(`${base}/api/logs/command`, {
         method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          ...(token ? { Authorization: `Bearer ${token}` } : {}),
-        },
+        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ device: nodeId, cmd }),
         credentials: "include",
       })

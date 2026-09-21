@@ -150,6 +150,13 @@ class UpdateUserRequest(BaseModel):
 # Routes
 # ---------------------------------------------------------------------------
 
+def _is_https(request: Request) -> bool:
+    """True when the browser talked HTTPS (directly or via tailscale serve / a reverse proxy).
+    Local HTTP access on the LAN must keep working, so Secure is never forced."""
+    proto = request.headers.get("x-forwarded-proto", request.url.scheme)
+    return proto.split(",")[0].strip().lower() == "https"
+
+
 @router.post("/login")
 async def login(req: LoginRequest, request: Request):
     ip = request.client.host if request.client else "unknown"
@@ -182,7 +189,7 @@ async def login(req: LoginRequest, request: Request):
         "exp": int(time.time()) + 7 * 24 * 3600,
     }, _get_secret())
 
-    response = JSONResponse({"ok": True, "token": token, "user": {
+    response = JSONResponse({"ok": True, "user": {
         "id": row["id"],
         "username": row["username"],
         "role": row["role"],
@@ -191,6 +198,7 @@ async def login(req: LoginRequest, request: Request):
         key="theia_session",
         value=token,
         httponly=True,
+        secure=_is_https(request),
         samesite="lax",
         max_age=7 * 24 * 3600,
         path="/",

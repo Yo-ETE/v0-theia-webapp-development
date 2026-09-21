@@ -3,7 +3,7 @@ import { isPreviewMode, getBackendUrl } from "@/lib/api-mode"
 export const runtime = "nodejs"
 export const dynamic = "force-dynamic"
 
-export async function GET() {
+export async function GET(request: Request) {
   if (isPreviewMode()) {
     // In preview, return a no-op SSE stream that just sends a heartbeat every 30s
     const encoder = new TextEncoder()
@@ -24,8 +24,8 @@ export async function GET() {
           }
         }, 30000)
 
-        // Clean up on close
-        return () => clearInterval(interval)
+        // A start() return value is ignored by ReadableStream: clean up on client abort instead
+        request.signal.addEventListener("abort", () => clearInterval(interval))
       },
     })
 
@@ -41,12 +41,18 @@ export async function GET() {
   // In pi mode, proxy to FastAPI SSE endpoint
   // We re-emit each chunk individually to avoid Node.js buffering
   try {
+    // Forward the session cookie (the backend requires auth) and abort upstream when the client leaves
+    const cookie = request.headers.get("cookie")
     const backendRes = await fetch(`${getBackendUrl()}/api/stream`, {
-      headers: { Accept: "text/event-stream" },
+      headers: { Accept: "text/event-stream", ...(cookie ? { Cookie: cookie } : {}) },
+      signal: request.signal,
       // @ts-expect-error -- Node.js fetch extension to disable response buffering
       highWaterMark: 0,
     })
 
+    if (!backendRes.ok) {
+      return new Response(backendRes.body, { status: backendRes.status, headers: { "Content-Type": "application/json" } })
+    }
     if (!backendRes.body) throw new Error("No body")
 
     const reader = backendRes.body.getReader()

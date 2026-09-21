@@ -20,7 +20,9 @@ async def stream():
                     data = await asyncio.wait_for(queue.get(), timeout=30.0)
                     yield f"data: {data}\n\n"
                 except asyncio.TimeoutError:
-                    yield ": keepalive\n\n"
+                    # Real data event: SSE comments never fire EventSource.onmessage,
+                    # so the client health check could not tell a live stream from a dead one.
+                    yield 'data: {"type":"heartbeat"}\n\n'
         except asyncio.CancelledError:
             pass
         finally:

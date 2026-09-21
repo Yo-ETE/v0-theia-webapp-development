@@ -27,9 +27,8 @@ PUBLIC_ROUTES = {
     ("GET", "/"),
 }
 
-# Prefixes that are public (SSE stream uses token query param)
+# Prefixes that are public
 PUBLIC_PREFIXES = [
-    "/api/stream",   # SSE -- authenticated via query param below
     "/api/tiles",    # map tiles proxy -- no auth needed
 ]
 
@@ -78,15 +77,6 @@ class AuthMiddleware(BaseHTTPMiddleware):
                 return await call_next(request)
         for prefix in PUBLIC_PREFIXES:
             if path.startswith(prefix):
-                # For SSE stream, require token query param
-                if path.startswith("/api/stream"):
-                    token = request.query_params.get("token")
-                    if not token:
-                        return _cors_response(request, {"detail": "Token required"}, 401)
-                    payload = jwt_decode(token)
-                    if not payload:
-                        return _cors_response(request, {"detail": "Invalid token"}, 401)
-                    request.state.user = payload
                 return await call_next(request)
 
         # Extract JWT from cookie

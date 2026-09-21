@@ -1,7 +1,6 @@
 "use client"
 
 import { useEffect, useRef, useCallback, useState } from "react"
-import { getAuthToken } from "@/lib/auth-context"
 
 type SSEEvent = {
   type: string
@@ -54,13 +53,9 @@ export function useSSE(onEvent?: SSEHandler) {
         esRef.current = null
       }
 
-      // Connect directly to FastAPI backend with JWT token as query param
-      const token = getAuthToken()
-      const backendBase = `http://${window.location.hostname}:8000`
-      const url = token
-        ? `${backendBase}/api/stream?token=${encodeURIComponent(token)}`
-        : "/api/stream"  // fallback to Next.js proxy (preview)
-      const es = new EventSource(url)
+      // Connect directly to FastAPI backend; auth = httpOnly session cookie (no token in the URL)
+      const url = `http://${window.location.hostname}:8000/api/stream`
+      const es = new EventSource(url, { withCredentials: true })
       esRef.current = es
 
       es.onopen = () => {

@@ -30,18 +30,27 @@ function getBackendUrl(path: string): string {
   return `http://${window.location.hostname}:8000/api${path}`
 }
 
-/** Get stored auth token -- used by fetch helpers for cross-port requests */
+/**
+ * Auth relies on the httpOnly `theia_session` cookie (sent with `credentials: "include"`).
+ * The JWT is never readable from JS anymore, so there is no token to attach.
+ * Kept as a no-op so existing fetch helpers keep working.
+ */
 export function getAuthToken(): string | null {
-  if (typeof window === "undefined") return null
-  return localStorage.getItem(TOKEN_KEY)
+  return null
 }
 
-/** Build auth headers with Bearer token for cross-port requests */
+/** Headers for backend requests (auth is carried by the httpOnly cookie) */
 export function authHeaders(extra?: Record<string, string>): Record<string, string> {
-  const headers: Record<string, string> = { ...extra }
-  const token = getAuthToken()
-  if (token) headers["Authorization"] = `Bearer ${token}`
-  return headers
+  return { ...extra }
+}
+
+/** Remove the token older versions kept in localStorage (readable by any XSS) */
+function purgeLegacyToken() {
+  try {
+    if (typeof window !== "undefined") localStorage.removeItem(TOKEN_KEY)
+  } catch {
+    // storage unavailable: nothing to purge
+  }
 }
 
 export function AuthProvider({ children }: { children: ReactNode }) {
@@ -59,7 +68,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         setUser(data)
       } else {
         setUser(null)
-        localStorage.removeItem(TOKEN_KEY)
       }
     } catch {
       setUser(null)
@@ -69,6 +77,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, [])
 
   useEffect(() => {
+    purgeLegacyToken()
     refresh()
   }, [refresh])
 
@@ -84,18 +93,15 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       throw new Error(data.detail || "Login failed")
     }
     const data = await res.json()
-    if (data.token) localStorage.setItem(TOKEN_KEY, data.token)
     setUser(data.user)
   }, [])
 
   const logout = useCallback(async () => {
-    const token = getAuthToken()
     await fetch(getBackendUrl("/auth/logout"), {
       method: "POST",
       credentials: "include",
-      headers: token ? { "Authorization": `Bearer ${token}` } : {},
     }).catch(() => {})
-    localStorage.removeItem(TOKEN_KEY)
+    purgeLegacyToken()
     setUser(null)
   }, [])
 
