@@ -14,6 +14,11 @@ from datetime import datetime
 from fastapi import APIRouter, Request
 from fastapi.responses import JSONResponse
 
+from backend.security import (
+    valid_backup_filename, valid_git_ref, valid_host, valid_ssid,
+    valid_timezone, valid_wpa_passphrase, UPDATE_LOCK,
+)
+
 logger = logging.getLogger("theia.config")
 
 router = APIRouter(prefix="/api/config")
@@ -273,6 +278,8 @@ async def wifi_connect(body: dict):
     """Connect to a WiFi network."""
     ssid = body.get("ssid", "")
     password = body.get("password", "")
+    if not valid_ssid(ssid):
+        return {"status": "error", "message": "SSID invalide"}
     try:
         def _connect():
             # Use nmcli to connect
@@ -470,6 +477,10 @@ async def hotspot_start(body: dict = None):
     """Start WiFi hotspot using hostapd."""
     ssid = (body or {}).get("ssid", "THEIA")
     password = (body or {}).get("password", "theia1234")
+    if not valid_ssid(ssid):
+        return {"status": "error", "message": "SSID invalide (1-32 caracteres, sans retour a la ligne)"}
+    if not valid_wpa_passphrase(password):
+        return {"status": "error", "message": "Mot de passe WiFi invalide (8 a 63 caracteres ASCII)"}
     try:
         def _start():
             # Use AP-capable interface instead of just any WiFi interface
@@ -580,7 +591,9 @@ wpa_key_mgmt=WPA-PSK
 rsn_pairwise=CCMP
 """
                 conf_path = f"/tmp/theia_hostapd_{driver}.conf"
-                with open(conf_path, "w") as f:
+                # Holds the WiFi passphrase: owner-only (hostapd is started through sudo, i.e. root)
+                fd = os.open(conf_path, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+                with os.fdopen(fd, "w") as f:
                     f.write(hostapd_conf)
                 
                 # Start hostapd in background (-B flag)
@@ -826,6 +839,8 @@ async def tailscale_logout():
 async def tailscale_exit_node(body: dict):
     """Set/unset exit node."""
     ip = body.get("ip", "")
+    if ip and not valid_host(ip):
+        return {"status": "error", "message": "Adresse d'exit node invalide"}
     try:
         cmd = ["sudo", "tailscale", "set"]
         if ip:
@@ -890,6 +905,8 @@ async def create_backup():
 async def restore_backup(body: dict):
     """Restore a backup."""
     filename = body.get("filename", "")
+    if not valid_backup_filename(filename):
+        return {"status": "error", "message": "Nom de sauvegarde invalide"}
     filepath = os.path.join(BACKUP_DIR, filename)
     if not os.path.exists(filepath):
         return {"status": "error", "message": "Sauvegarde introuvable"}
@@ -908,6 +925,8 @@ async def restore_backup(body: dict):
 @router.delete("/backups/{filename}")
 async def delete_backup(filename: str):
     """Delete a backup file."""
+    if not valid_backup_filename(filename):
+        return {"status": "error", "message": "Nom de sauvegarde invalide"}
     filepath = os.path.join(BACKUP_DIR, filename)
     if os.path.exists(filepath):
         os.remove(filepath)
@@ -956,6 +975,8 @@ async def git_branches():
 async def git_fetch(body: dict = None):
     """Fetch latest commits from remote for a given branch."""
     branch = (body or {}).get("branch", "")
+    if branch and not valid_git_ref(branch):
+        return JSONResponse(status_code=400, content={"status": "error", "message": "Nom de branche invalide"})
     try:
         repo_dir = os.getenv("THEIA_REPO", os.path.expanduser("~/theia"))
 
@@ -983,6 +1004,8 @@ async def git_update(body: dict = None):
     import queue as _queue
 
     branch = (body or {}).get("branch", "")
+    if branch and not valid_git_ref(branch):
+        return JSONResponse(status_code=400, content={"status": "error", "message": "Nom de branche invalide"})
     repo_dir = os.getenv("THEIA_REPO", os.path.expanduser("~/theia"))
 
     msg_queue: _queue.Queue = _queue.Queue()
@@ -992,6 +1015,10 @@ async def git_update(body: dict = None):
         def send(step: str, detail: str = "", status: str = "running"):
             msg_queue.put(json.dumps({"step": step, "detail": detail, "status": status}))
 
+        if not UPDATE_LOCK.acquire(blocking=False):
+            send("FINISHED", "Une mise a jour est deja en cours", "error")
+            msg_queue.put(None)
+            return
         try:
             # 1. git stash
             send("git stash", "Sauvegarde des modifications locales...")
@@ -1099,6 +1126,7 @@ async def git_update(body: dict = None):
         except Exception as e:
             send("FINISHED", str(e), "error")
         finally:
+            UPDATE_LOCK.release()
             msg_queue.put(None)  # Signal end of stream
 
     # Start update in background thread
@@ -1250,6 +1278,8 @@ async def set_timezone(request: Request):
         tz = body.get("timezone", "").strip()
         if not tz:
             return {"status": "error", "message": "Timezone manquant"}
+        if not valid_timezone(tz):
+            return {"status": "error", "message": "Timezone invalide"}
 
         def _set():
             result = subprocess.run(

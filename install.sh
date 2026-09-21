@@ -44,6 +44,10 @@ check_root() {
     if [[ $EUID -ne 0 ]]; then
         fail "This script must be run as root (use sudo ./install.sh)"
     fi
+    # The API/web services must never run as root: they execute network-facing code
+    if [[ "$SERVICE_USER" == "root" ]]; then
+        fail "SERVICE_USER resolved to root (run with sudo from a normal user, or set SUDO_USER)"
+    fi
 }
 
 # ============================================
@@ -52,13 +56,17 @@ check_root() {
 install_system_packages() {
     info "Updating system packages..."
     apt-get update -qq
-    apt-get upgrade -y -qq
+    # A full system upgrade is slow, not atomic and can pull in kernel/firmware changes:
+    # it is opt-in (THEIA_APT_UPGRADE=1) instead of running on every OTA update.
+    if [[ "${THEIA_APT_UPGRADE:-0}" == "1" ]]; then
+        apt-get upgrade -y -qq
+    fi
 
     info "Installing dependencies..."
     apt-get install -y -qq \
         python3 python3-venv python3-pip python3-dev \
         gpsd gpsd-clients \
-        curl wget git \
+        curl wget git rsync \
         build-essential \
         sqlite3 \
         hostapd dnsmasq \
@@ -143,6 +151,7 @@ create_directories() {
     info "Creating THEIA directories..."
     mkdir -p "$APP_DIR" "$DATA_DIR" "$TILE_DIR" "$LOG_DIR"
     chown -R "$SERVICE_USER:$SERVICE_USER" /opt/theia
+    chmod 750 "$DATA_DIR"   # database, JWT secret, VAPID key, SMS settings
     ok "Directories created: $APP_DIR, $DATA_DIR, $TILE_DIR, $LOG_DIR"
 }
 
@@ -159,6 +168,7 @@ copy_app_files() {
         --exclude='.venv' \
         --exclude='.git' \
         --exclude='__pycache__' \
+        --exclude='.env' \
         "$SCRIPT_DIR/" "$APP_DIR/"
 
     chown -R "$SERVICE_USER:$SERVICE_USER" "$APP_DIR"
@@ -187,7 +197,7 @@ setup_env() {
 
     # Generate a fixed JWT_SECRET if not already set
     local jwt_secret
-    jwt_secret=$(grep '^JWT_SECRET=' "$env_file" | cut -d'=' -f2)
+    jwt_secret=$(grep '^JWT_SECRET=' "$env_file" | cut -d'=' -f2 || true)
     if [[ -z "$jwt_secret" ]]; then
         jwt_secret=$(python3 -c "import secrets; print(secrets.token_hex(32))")
         sed -i "s|^JWT_SECRET=.*|JWT_SECRET=$jwt_secret|" "$env_file"
@@ -206,6 +216,7 @@ setup_env() {
     done < "$APP_DIR/.env.example"
 
     chown "$SERVICE_USER:$SERVICE_USER" "$env_file"
+    chmod 600 "$env_file"   # holds JWT_SECRET and API keys
     ok "Environment configured (NEXT_PUBLIC_MODE=pi)"
 }
 
@@ -243,8 +254,11 @@ setup_nodejs() {
     # See: https://nextjs.org/docs/app/api-reference/config/next-config-js/output#automatically-copying-traced-files
     if [[ -d "$APP_DIR/.next/standalone" ]]; then
         info "Copying static assets to standalone output..."
+        # rm first: cp -r onto an existing directory would nest it (static/static) on the 2nd run
+        rm -rf "$APP_DIR/.next/standalone/.next/static"
         cp -r "$APP_DIR/.next/static" "$APP_DIR/.next/standalone/.next/static"
         if [[ -d "$APP_DIR/public" ]]; then
+            rm -rf "$APP_DIR/.next/standalone/public"
             cp -r "$APP_DIR/public" "$APP_DIR/.next/standalone/public"
         fi
         ok "Static assets copied to standalone"
@@ -329,8 +343,10 @@ install_services() {
     # Enable and start services (use || true to not fail if service has issues)
     systemctl enable theia-api.service || true
     systemctl enable theia-web.service || true
-    systemctl restart theia-api.service || true
+    # theia-web first, theia-api LAST: when install.sh is started by the API (OTA update),
+    # restarting the API kills this script with it.
     systemctl restart theia-web.service || true
+    systemctl restart theia-api.service || true
 
     ok "Services installed and started"
 }
@@ -354,11 +370,16 @@ verify_install() {
         fi
     done
 
-    # Wait for API startup
-    sleep 3
-
-    # Check health endpoint
-    if curl -sf http://localhost:8000/api/health > /dev/null 2>&1; then
+    # Wait for API startup (up to 30 s: a Pi can be slow to import everything)
+    local api_up=false
+    for _ in $(seq 1 15); do
+        if curl -sf http://localhost:8000/api/health > /dev/null 2>&1; then
+            api_up=true
+            break
+        fi
+        sleep 2
+    done
+    if [[ "$api_up" == "true" ]]; then
         ok "API health check passed"
     else
         warn "API health check failed (may still be starting)"

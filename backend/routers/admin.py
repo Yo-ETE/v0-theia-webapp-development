@@ -7,7 +7,23 @@ import os
 import subprocess
 from fastapi import APIRouter
 
+from backend.security import UPDATE_LOCK
+
 router = APIRouter(prefix="/api/admin")
+
+
+def _git_dir() -> str:
+    """Directory holding the git checkout. /opt/theia/app is rsync'ed without .git,
+    so prefer the source repo (THEIA_REPO) and fall back to THEIA_DIR."""
+    candidates = [
+        os.getenv("THEIA_REPO", os.path.expanduser("~/theia")),
+        os.getenv("THEIA_DIR", "/opt/theia/app"),
+        "/opt/theia",
+    ]
+    for c in candidates:
+        if c and os.path.isdir(os.path.join(c, ".git")):
+            return c
+    return candidates[0]
 
 
 @router.post("/reboot")
@@ -37,27 +53,27 @@ async def shutdown():
 @router.post("/restart-services")
 async def restart_services():
     """Restart THEIA services (theia-api + theia-web)."""
-    errors = []
-    for svc in ["theia-api", "theia-web"]:
-        try:
-            await asyncio.get_event_loop().run_in_executor(
-                None, lambda s=svc: subprocess.run(
-                    ["sudo", "systemctl", "restart", s],
-                    check=True
-                )
+    try:
+        await asyncio.get_running_loop().run_in_executor(
+            None, lambda: subprocess.run(
+                ["sudo", "systemctl", "restart", "theia-web"], check=True, timeout=60
             )
-        except Exception as e:
-            errors.append(f"{svc}: {e}")
-    if errors:
-        return {"status": "error", "message": "; ".join(errors)}
-    return {"status": "success", "message": "Services theia-api + theia-web redemarres"}
+        )
+    except Exception as e:
+        return {"status": "error", "message": f"theia-web: {e}"}
+    # Restarting theia-api kills this very process: schedule it detached so the response gets out first
+    subprocess.Popen(
+        ["bash", "-c", "sleep 2 && sudo systemctl restart theia-api"],
+        stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, start_new_session=True,
+    )
+    return {"status": "success", "message": "theia-web redemarre, theia-api redemarre dans 2 secondes"}
 
 
 @router.get("/version")
 async def version():
     """Get THEIA version info from git."""
     try:
-        theia_dir = os.getenv("THEIA_DIR", "/opt/theia")
+        theia_dir = _git_dir()
 
         def _get_version():
             branch = subprocess.run(
@@ -76,10 +92,13 @@ async def version():
             ).stdout.strip()
 
             # Check for updates
-            subprocess.run(
-                ["git", "fetch", "--quiet"],
-                capture_output=True, text=True, cwd=theia_dir
-            )
+            try:
+                subprocess.run(
+                    ["git", "fetch", "--quiet"],
+                    capture_output=True, text=True, cwd=theia_dir, timeout=15
+                )
+            except subprocess.TimeoutExpired:
+                pass  # offline: report the version we have, without update info
             behind = subprocess.run(
                 ["git", "rev-list", "--count", f"HEAD..origin/{branch}"],
                 capture_output=True, text=True, cwd=theia_dir
@@ -103,34 +122,39 @@ async def version():
 @router.post("/update")
 async def update():
     """Pull latest THEIA code from git and run install.sh."""
-    try:
-        theia_dir = os.getenv("THEIA_DIR", "/opt/theia/app")
-        repo_dir = os.getenv("THEIA_REPO", os.path.expanduser("~/theia"))
+    repo_dir = _git_dir()
 
-        def _do_update():
+    def _do_update():
+        if not UPDATE_LOCK.acquire(blocking=False):
+            return "error", "Une mise a jour est deja en cours", ""
+        try:
             lines = []
-            # Pull latest from git
             r = subprocess.run(
                 ["git", "pull", "--ff-only"],
-                capture_output=True, text=True, cwd=repo_dir
+                capture_output=True, text=True, cwd=repo_dir, timeout=120
             )
             lines.append(r.stdout.strip())
             if r.returncode != 0:
                 lines.append(r.stderr.strip())
-                return "\n".join(lines)
-            # Run install.sh
+                return "error", "git pull --ff-only a echoue (depot local divergent ?)", "\n".join(lines)
             r2 = subprocess.run(
                 ["sudo", "bash", "install.sh"],
                 capture_output=True, text=True, cwd=repo_dir,
-                timeout=300,
+                timeout=1200,  # apt + pip + pnpm build on a Pi can exceed 5 minutes
             )
             lines.append(r2.stdout.strip()[-500:] if r2.stdout else "")
             if r2.returncode != 0:
                 lines.append(r2.stderr.strip()[-200:] if r2.stderr else "")
-            return "\n".join(lines)
+                return "error", f"install.sh a echoue (code {r2.returncode})", "\n".join(lines)
+            return "success", "Mise a jour terminee", "\n".join(lines)
+        except subprocess.TimeoutExpired as e:
+            return "error", f"Delai depasse: {e.cmd[0]} (verifiez l'etat du build avant de relancer)", ""
+        finally:
+            UPDATE_LOCK.release()
 
-        output = await asyncio.get_event_loop().run_in_executor(None, _do_update)
-        return {"status": "success", "message": "Mise a jour terminee", "output": output}
+    try:
+        status, message, output = await asyncio.get_running_loop().run_in_executor(None, _do_update)
+        return {"status": status, "message": message, "output": output}
     except Exception as e:
         return {"status": "error", "message": str(e)}
 

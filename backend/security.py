@@ -105,3 +105,40 @@ def is_within(base: str, candidate: str) -> bool:
     base_real = os.path.realpath(base)
     cand_real = os.path.realpath(candidate)
     return cand_real != base_real and os.path.commonpath([base_real, cand_real]) == base_real
+
+
+# ── Admin / system operations ────────────────────────────────────
+_GIT_REF_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._/-]{0,99}$")
+_TZ_RE = re.compile(r"^[A-Za-z][A-Za-z0-9_+/-]{0,63}$")
+_BACKUP_RE = re.compile(r"^theia_backup_[A-Za-z0-9_.-]{1,64}\.tar\.gz$")
+
+
+def valid_git_ref(ref: str) -> bool:
+    """Branch / tag name that cannot be read as a git option (no leading '-')."""
+    return bool(_GIT_REF_RE.match(ref or "")) and ".." not in ref
+
+
+def valid_timezone(tz: str) -> bool:
+    return bool(_TZ_RE.match(tz or "")) and ".." not in tz
+
+
+def valid_backup_filename(name: str) -> bool:
+    return bool(_BACKUP_RE.match(name or "")) and ".." not in name
+
+
+def valid_ssid(ssid: str) -> bool:
+    """1-32 bytes, printable, no newline (it is written into hostapd/nmcli config), not an option."""
+    if not ssid or ssid.startswith("-") or len(ssid.encode("utf-8", "ignore")) > 32:
+        return False
+    return ssid.isprintable()
+
+
+def valid_wpa_passphrase(pw: str) -> bool:
+    """WPA2 passphrase: 8-63 printable ASCII characters (no newline injection into hostapd.conf)."""
+    return 8 <= len(pw or "") <= 63 and all(32 <= ord(c) < 127 for c in pw)
+
+
+import threading
+
+# One system update at a time (double click / two admins would run install.sh twice in parallel)
+UPDATE_LOCK = threading.Lock()
