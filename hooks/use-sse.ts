@@ -1,5 +1,6 @@
 "use client"
 
+import { backendOrigin } from "@/lib/backend"
 import { useEffect, useRef, useCallback, useState } from "react"
 
 type SSEEvent = {
@@ -54,7 +55,7 @@ export function useSSE(onEvent?: SSEHandler) {
       }
 
       // Connect directly to FastAPI backend; auth = httpOnly session cookie (no token in the URL)
-      const url = `http://${window.location.hostname}:8000/api/stream`
+      const url = `${backendOrigin()}/api/stream`
       const es = new EventSource(url, { withCredentials: true })
       esRef.current = es
 

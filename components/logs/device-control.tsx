@@ -1,5 +1,6 @@
 "use client"
 
+import { backendOrigin } from "@/lib/backend"
 import { useState, useEffect } from "react"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
@@ -45,7 +46,7 @@ const HUB_COMMANDS: DeviceCommand[] = [
 
 function getBackendBase() {
   if (typeof window === "undefined") return ""
-  return `http://${window.location.hostname}:8000`
+  return backendOrigin()
 }
 
 export function DeviceControl() {

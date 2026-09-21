@@ -1,12 +1,13 @@
 "use client"
 
+import { backendOrigin } from "@/lib/backend"
 import useSWR from "swr"
 import { getAuthToken } from "@/lib/auth-context"
 
 // Try direct backend first (port 8000), fallback to Next.js route
 function getBackendBase(): string | null {
   if (typeof window === "undefined") return null
-  return `http://${window.location.hostname}:8000`
+  return backendOrigin()
 }
 
 /** Build headers with Bearer token for backend requests */

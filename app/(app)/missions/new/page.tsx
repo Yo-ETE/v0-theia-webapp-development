@@ -1,5 +1,6 @@
 "use client"
 
+import { backendOrigin } from "@/lib/backend"
 import { useState, useCallback, useRef } from "react"
 import { useRouter } from "next/navigation"
 import Link from "next/link"
@@ -134,7 +135,7 @@ export default function NewMissionPage() {
       // If plan type, upload the plan image DIRECTLY to backend BEFORE redirecting
       if (form.environment === "plan" && planFile && mission.id) {
         try {
-          const backendBase = `http://${window.location.hostname}:8000`
+          const backendBase = backendOrigin()
           const _t = localStorage.getItem("theia_token")
           const uploadRes = await fetch(`${backendBase}/api/missions/${mission.id}/plan-image`, {
             method: "POST",

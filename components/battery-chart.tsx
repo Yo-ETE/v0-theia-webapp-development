@@ -1,5 +1,6 @@
 "use client"
 
+import { backendOrigin } from "@/lib/backend"
 import { useState, useMemo } from "react"
 import useSWR from "swr"
 import {
@@ -23,7 +24,7 @@ type DeviceBatteryData = {
 // --- fetcher ---
 function getBackendBase(): string | null {
   if (typeof window === "undefined") return null
-  return `http://${window.location.hostname}:8000`
+  return backendOrigin()
 }
 function _bearerH(): Record<string, string> {
   try {

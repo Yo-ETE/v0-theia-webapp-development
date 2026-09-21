@@ -106,7 +106,7 @@ function edgeLengthPx(p1: [number, number], p2: [number, number]): number {
 }
 
 /** Format distance for display */
-function formatDistance(px: number, scale: number | null): string {
+function formatDistance(px: number, scale: number | null | undefined): string {
   if (!scale || scale <= 0) return `${Math.round(px)}px`
   const meters = px / scale
   if (meters < 1) return `${Math.round(meters * 100)}cm`
@@ -114,7 +114,7 @@ function formatDistance(px: number, scale: number | null): string {
 }
 
 /** Format area for display */
-function formatArea(pxArea: number, scale: number | null): string {
+function formatArea(pxArea: number, scale: number | null | undefined): string {
   if (!scale || scale <= 0) return `${Math.round(pxArea)}px2`
   const m2 = pxArea / (scale * scale)
   if (m2 < 1) return `${Math.round(m2 * 10000)}cm2`

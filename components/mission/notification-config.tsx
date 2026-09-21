@@ -1,5 +1,6 @@
 "use client"
 
+import { backendOrigin } from "@/lib/backend"
 import { useState, useEffect, useCallback } from "react"
 import { Bell, BellOff, Save, Loader2, Smartphone, SendHorizonal } from "lucide-react"
 import { Button } from "@/components/ui/button"
@@ -11,7 +12,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 
 function _getApi(): string {
   if (typeof window === "undefined") return "http://localhost:8000"
-  return `http://${window.location.hostname}:8000`
+  return backendOrigin()
 }
 function _bH(): Record<string, string> {
   const t = typeof window !== "undefined" ? localStorage.getItem("theia_token") : null

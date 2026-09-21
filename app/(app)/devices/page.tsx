@@ -1,5 +1,6 @@
 "use client"
 
+import { backendOrigin } from "@/lib/backend"
 import { useState, useCallback, useEffect, useRef } from "react"
 import { Radio, Battery, Signal, Plus, Trash2, Cpu, Upload, Terminal, X, ChevronDown, Power } from "lucide-react"
 import { TopHeader } from "@/components/top-header"
@@ -56,7 +57,7 @@ export default function DevicesPage() {
   type FirmwareInfo = { name: string; file: string; sensor_type?: string; is_template?: boolean; is_custom?: boolean; current_version?: string }
   const [firmwares, setFirmwares] = useState<FirmwareInfo[]>([])
 
-  const backendBase = typeof window !== "undefined" ? `http://${window.location.hostname}:8000` : ""
+  const backendBase = typeof window !== "undefined" ? backendOrigin() : ""
   const _bH = (): Record<string, string> => { const t = typeof window !== "undefined" ? localStorage.getItem("theia_token") : null; return t ? { Authorization: `Bearer ${t}` } : {} }
 
   // Step 2: snapshot baseline then poll for new ports

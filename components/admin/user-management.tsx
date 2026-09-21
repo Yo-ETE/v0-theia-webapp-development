@@ -1,5 +1,6 @@
 "use client"
 
+import { backendOrigin } from "@/lib/backend"
 import { useState, useEffect, useCallback } from "react"
 import {
   Users,
@@ -38,7 +39,7 @@ interface UserInfo {
 
 function getBackendUrl(path: string): string {
   if (typeof window === "undefined") return `/api${path}`
-  return `http://${window.location.hostname}:8000/api${path}`
+  return `${backendOrigin()}/api${path}`
 }
 function _bH(): Record<string, string> {
   const t = typeof window !== "undefined" ? localStorage.getItem("theia_token") : null

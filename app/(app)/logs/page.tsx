@@ -1,5 +1,6 @@
 "use client"
 
+import { backendOrigin } from "@/lib/backend"
 import { useState, useEffect } from "react"
 import { Search, Download, Filter, Terminal, Database, Settings } from "lucide-react"
 import { TopHeader } from "@/components/top-header"
@@ -24,7 +25,7 @@ type Tab = "app" | "system" | "control"
 
 function getBackendBase() {
   if (typeof window === "undefined") return ""
-  return `http://${window.location.hostname}:8000`
+  return backendOrigin()
 }
 
 export default function LogsPage() {

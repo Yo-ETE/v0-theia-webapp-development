@@ -2,6 +2,7 @@
 // All requests go to /api/* (Next.js API routes)
 // The API routes decide: mock data in preview, proxy to FastAPI in pi mode
 
+import { backendOrigin } from "@/lib/backend"
 import { getAuthToken } from "@/lib/auth-context"
 
 const API_BASE = "/api"
@@ -43,7 +44,7 @@ function getDirectBackendUrl(): string | null {
   // Use port 8000 for direct backend access
   const host = window.location.hostname
   // Always try direct backend on port 8000
-  return `http://${host}:8000`
+  return backendOrigin()
 }
 
 async function request<T>(path: string, options?: RequestInit): Promise<T> {

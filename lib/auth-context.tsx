@@ -1,5 +1,6 @@
 "use client"
 
+import { backendOrigin } from "@/lib/backend"
 import { createContext, useContext, useEffect, useState, useCallback, type ReactNode } from "react"
 import { type UserPermissions, PERMISSION_PRESETS, DEFAULT_PERMISSIONS } from "@/lib/types"
 
@@ -27,7 +28,7 @@ const TOKEN_KEY = "theia_token"
 
 function getBackendUrl(path: string): string {
   if (typeof window === "undefined") return `/api${path}`
-  return `http://${window.location.hostname}:8000/api${path}`
+  return `${backendOrigin()}/api${path}`
 }
 
 /**

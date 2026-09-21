@@ -1,5 +1,6 @@
 "use client"
 
+import { backendOrigin } from "@/lib/backend"
 import { useState, useEffect, useCallback } from "react"
 import {
   RefreshCw,
@@ -444,7 +445,7 @@ export default function AdminPage() {
     try {
       const body: Record<string, string> = { branch: branchToUse }
       if (selectedCommit) body.commit = selectedCommit
-      const backendBase = `http://${window.location.hostname}:8000`
+      const backendBase = backendOrigin()
       const token = localStorage.getItem("theia_token")
       const headers: Record<string, string> = { "Content-Type": "application/json" }
       if (token) headers["Authorization"] = `Bearer ${token}`

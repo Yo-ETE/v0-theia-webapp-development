@@ -1,5 +1,6 @@
 "use client"
 
+import { backendOrigin } from "@/lib/backend"
 import { useState, useCallback, useEffect, useRef, useMemo } from "react"
 import Link from "next/link"
 import { useParams } from "next/navigation"
@@ -894,7 +895,7 @@ export default function MissionDetailPage() {
   // Use direct backend URL for plan image (avoids Next.js proxy multipart/binary issues)
   const backendBase =
     typeof window !== "undefined"
-      ? `http://${window.location.hostname}:8000`
+      ? backendOrigin()
       : ""
   
   const hasPlan = Boolean(mission?.plan_image) && !planDeleted
@@ -1515,7 +1516,7 @@ export default function MissionDetailPage() {
                             const file = e.target.files?.[0]
                             if (!file) return
                             try {
-                              const backendBase = typeof window !== "undefined" ? `http://${window.location.hostname}:8000` : ""
+                              const backendBase = typeof window !== "undefined" ? backendOrigin() : ""
                               const _t = localStorage.getItem("theia_token")
                               const res = await fetch(`${backendBase}/api/missions/${id}/plan-image`, {
                                 method: "POST",
@@ -1552,7 +1553,7 @@ export default function MissionDetailPage() {
                               mutate({ ...mission, plan_image: null }, false)
                             
                               const backendBase = typeof window !== "undefined"
-                                ? `http://${window.location.hostname}:8000`
+                                ? backendOrigin()
                                 : ""
                               const _t = localStorage.getItem("theia_token")
                             
@@ -2354,7 +2355,7 @@ export default function MissionDetailPage() {
                     onClick={async () => {
                       if (!confirm("Purger tous les events de cette mission ?")) return
                       // Call both proxy and backend directly to ensure deletion
-                      const backendUrl = window.location.protocol + "//" + window.location.hostname + ":8000"
+                      const backendUrl = backendOrigin()
                       const _t = localStorage.getItem("theia_token")
                       const _ah: Record<string, string> = _t ? { Authorization: `Bearer ${_t}` } : {}
                       await Promise.allSettled([

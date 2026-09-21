@@ -1,5 +1,6 @@
 "use client"
 
+import { backendOrigin } from "@/lib/backend"
 import { Bell, BellOff, Battery, Signal, Wifi, WifiOff, X } from "lucide-react"
 import { useNotifications, useNotificationCount, type Notification } from "@/hooks/use-api"
 import { cn } from "@/lib/utils"
@@ -11,7 +12,7 @@ import {
 
 function getBackendBase(): string | null {
   if (typeof window === "undefined") return null
-  return `http://${window.location.hostname}:8000`
+  return backendOrigin()
 }
 
 function _bH(): Record<string, string> {

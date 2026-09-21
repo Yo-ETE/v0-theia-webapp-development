@@ -1,5 +1,6 @@
 "use client"
 
+import { backendOrigin } from "@/lib/backend"
 import { useRef } from "react"
 import {
   Cpu,
@@ -51,7 +52,7 @@ function alertIcon(type: string) {
 
 function getBackendBase(): string | null {
   if (typeof window === "undefined") return null
-  return `http://${window.location.hostname}:8000`
+  return backendOrigin()
 }
 
 export default function DashboardPage() {
