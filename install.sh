@@ -85,13 +85,35 @@ install_system_packages() {
 # ============================================
 # STEP 1b: Arduino CLI (for TX firmware flashing)
 # ============================================
+# Version installed when arduino-cli is missing or broken. 1.5.1 is confirmed working on a Pi 5
+# (aarch64, 16K pages, kernel 6.18). Override with: ARDUINO_CLI_VERSION=x.y.z sudo -E bash install.sh
+ARDUINO_CLI_VERSION="${ARDUINO_CLI_VERSION:-1.5.1}"
+
+# True only if the binary exists AND starts (a Go runtime crash at startup makes `version` fail)
+arduino_cli_works() {
+    command -v arduino-cli &>/dev/null && arduino-cli version &>/dev/null
+}
+
 install_arduino_cli() {
-    if command -v arduino-cli &>/dev/null; then
+    if arduino_cli_works; then
         ok "arduino-cli already installed ($(arduino-cli version | head -1))"
     else
-        info "Installing arduino-cli..."
-        curl -fsSL https://raw.githubusercontent.com/arduino/arduino-cli/master/install.sh | BINDIR=/usr/local/bin sh
-        ok "arduino-cli installed"
+        local existing
+        existing=$(command -v arduino-cli || true)
+        if [[ -n "$existing" ]]; then
+            warn "arduino-cli is installed but crashes on start (old Go runtime vs this kernel?): replacing it with $ARDUINO_CLI_VERSION"
+            mv -f "$existing" "${existing}.broken"
+        else
+            info "Installing arduino-cli $ARDUINO_CLI_VERSION..."
+        fi
+        curl -fsSL https://raw.githubusercontent.com/arduino/arduino-cli/master/install.sh \
+            | BINDIR=/usr/local/bin sh -s "$ARDUINO_CLI_VERSION" || true
+        if arduino_cli_works; then
+            ok "arduino-cli installed ($(arduino-cli version | head -1))"
+        else
+            warn "arduino-cli is not working: firmware flashing from the admin page will fail. Try: arduino-cli version"
+            return 0   # not fatal for the rest of the hub
+        fi
     fi
 
     info "Installing ESP32 board core (this may take a few minutes)..."
@@ -109,7 +131,11 @@ install_arduino_cli() {
     sudo -u "$SERVICE_USER" arduino-cli lib install "RadioLib" 2>/dev/null || true
     sudo -u "$SERVICE_USER" arduino-cli lib install "LD2450" 2>/dev/null || true
 
-    ok "Arduino CLI + ESP32 core + RadioLib configured"
+    if sudo -u "$SERVICE_USER" arduino-cli core list 2>/dev/null | grep -q "esp32:esp32"; then
+        ok "Arduino CLI + ESP32 core + RadioLib configured"
+    else
+        warn "ESP32 core is not installed (network? disk?). Run as $SERVICE_USER: arduino-cli core install esp32:esp32"
+    fi
 }
 
 # ============================================
@@ -120,7 +146,7 @@ install_nodejs() {
         local current_version
         current_version=$(node -v | cut -d'v' -f2 | cut -d'.' -f1)
         if [[ "$current_version" -ge "$NODE_MAJOR" ]]; then
-            ok "Node.js v$(node -v) already installed"
+            ok "Node.js $(node -v) already installed"
         else
             info "Installing Node.js ${NODE_MAJOR}.x..."
             curl -fsSL "https://deb.nodesource.com/setup_${NODE_MAJOR}.x" | bash -
@@ -397,6 +423,8 @@ verify_install() {
     local lan_ips
     lan_ips=$(hostname -I 2>/dev/null | tr ' ' '\n' | grep -v '^$' || echo "unknown")
     for ip in $lan_ips; do
+        # IPv6 literals need brackets in a URL
+        [[ "$ip" == *:* ]] && ip="[${ip}]"
         echo -e "  Web UI:     ${GREEN}http://${ip}:3000${NC}"
         echo -e "  API:        ${GREEN}http://${ip}:8000${NC}"
     done
@@ -418,8 +446,13 @@ verify_install() {
     echo ""
     echo -e "  ${YELLOW}Admin login:${NC}"
     echo -e "    Username: ${GREEN}admin${NC}"
-    echo -e "    Password: random, generated at first start, see ${GREEN}${DATA_DIR:-/opt/theia/data}/initial_admin_password.txt${NC}"
-    echo -e "    ${RED}IMPORTANT: Change this password after first login, then delete that file!${NC}"
+    if [[ -f "${DATA_DIR:-/opt/theia/data}/initial_admin_password.txt" ]]; then
+        echo -e "    Password: random, generated at first start, see ${GREEN}${DATA_DIR:-/opt/theia/data}/initial_admin_password.txt${NC}"
+        echo -e "    ${RED}IMPORTANT: Change this password after first login, then delete that file!${NC}"
+    else
+        echo -e "    Password: the one you set (no default password on this install)"
+        echo -e "    Lost it? See the reset procedure in README.md (\"Mot de passe admin oublie\")"
+    fi
     echo ""
 
     # Service status
