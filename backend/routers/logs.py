@@ -7,6 +7,7 @@ import socket
 from fastapi import APIRouter, HTTPException, Request
 from pydantic import BaseModel
 from backend.database import get_db
+from backend.security import valid_host, valid_ssh_user, valid_service_name
 
 router = APIRouter(prefix="/logs", tags=["logs"])
 
@@ -95,6 +96,11 @@ async def node_heartbeat(req: HeartbeatRequest, request: Request):
     Pi nodes call this endpoint periodically to register their current IP.
     This allows dynamic IP tracking.
     """
+    if not valid_host(req.ip_address):
+        raise HTTPException(status_code=400, detail="Invalid ip_address")
+    if req.hostname is not None and not valid_host(req.hostname):
+        raise HTTPException(status_code=400, detail="Invalid hostname")
+
     db = await get_db()
     
     # Update or insert the node's IP
@@ -145,6 +151,11 @@ async def list_pi_nodes():
 @router.put("/nodes/{node_id}")
 async def update_pi_node(node_id: str, ip_address: str | None = None, ssh_user: str | None = None):
     """Manually update a Pi node's IP or SSH user."""
+    if ip_address and not valid_host(ip_address):
+        raise HTTPException(status_code=400, detail="Invalid ip_address")
+    if ssh_user and not valid_ssh_user(ssh_user):
+        raise HTTPException(status_code=400, detail="Invalid ssh_user")
+
     db = await get_db()
     updates = []
     params = []
@@ -232,7 +243,14 @@ async def execute_command(req: CommandRequest):
     ssh_target = node["target"]
     service = node.get("service_name", "xaver-detect")
     is_local = device == "hub"
-    
+
+    # Everything below ends up in a command line: validate it, never trust the DB.
+    ssh_user, _, ssh_host = ssh_target.partition("@")
+    if not is_local and not (valid_ssh_user(ssh_user) and valid_host(ssh_host)):
+        raise HTTPException(status_code=400, detail="Invalid SSH target for this node")
+    if not valid_service_name(service):
+        raise HTTPException(status_code=400, detail="Invalid service name for this node")
+
     # Map command shortcuts to actual shell commands
     cmd_templates = {
         "status": "systemctl status {service}",
@@ -250,15 +268,19 @@ async def execute_command(req: CommandRequest):
     
     shell_cmd = template.format(service=service, process=process)
     
-    # For hub commands, run locally without SSH
+    # argv only, no local shell: the hub runs `sh -c <fixed template>` (service validated above),
+    # remote nodes get `ssh ... -- user@host <fixed template>`.
     if is_local:
-        full_cmd = shell_cmd
+        argv = ["sh", "-c", shell_cmd]
     else:
-        full_cmd = f"ssh -o ConnectTimeout=5 -o StrictHostKeyChecking=no -o BatchMode=yes {ssh_target} '{shell_cmd}'"
+        argv = [
+            "ssh", "-o", "ConnectTimeout=5", "-o", "StrictHostKeyChecking=no",
+            "-o", "BatchMode=yes", "--", ssh_target, shell_cmd,
+        ]
 
     try:
-        proc = await asyncio.create_subprocess_shell(
-            full_cmd,
+        proc = await asyncio.create_subprocess_exec(
+            *argv,
             stdout=asyncio.subprocess.PIPE,
             stderr=asyncio.subprocess.PIPE,
         )

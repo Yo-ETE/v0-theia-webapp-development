@@ -7,13 +7,14 @@ from starlette.requests import Request
 from starlette.responses import JSONResponse
 
 from backend.routers.auth import jwt_decode
+from backend.security import is_allowed_origin
 
 
 def _cors_response(request: Request, data: dict, status_code: int) -> JSONResponse:
     """Return a JSONResponse with CORS headers so browsers don't block error responses."""
     origin = request.headers.get("origin", "")
     response = JSONResponse(data, status_code=status_code)
-    if origin:
+    if origin and is_allowed_origin(origin):
         response.headers["Access-Control-Allow-Origin"] = origin
         response.headers["Access-Control-Allow-Credentials"] = "true"
     return response
@@ -44,11 +45,17 @@ ADMIN_ROUTES_EXACT = {
 ADMIN_PREFIXES = [
     "/api/admin",
     "/api/config",
+    "/api/firmware",  # flash / edit / delete sketches, esptool on the RX port
 ]
 # Admin routes by method + prefix pattern
 ADMIN_PATTERNS = [
     ("DELETE", "/api/auth/users/"),
     ("PATCH", "/api/auth/users/"),
+    ("POST", "/api/logs/command"),      # runs commands on the hub / Pi nodes
+    ("PUT", "/api/logs/nodes/"),        # edits SSH targets
+    ("POST", "/api/logs/networks"),
+    ("DELETE", "/api/logs/networks/"),
+    ("GET", "/api/logs/system"),        # journal can contain SSE tokens
 ]
 
 

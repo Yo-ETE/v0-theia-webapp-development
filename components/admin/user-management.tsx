@@ -387,7 +387,7 @@ export function UserManagement() {
                   autoComplete="new-password"
                   value={newPassword}
                   onChange={(e) => setNewPassword(e.target.value)}
-                  placeholder="****"
+                  placeholder="10 caracteres minimum"
                   className="h-8 text-sm"
                 />
               </div>
@@ -470,7 +470,7 @@ export function UserManagement() {
               <Button size="sm" variant="ghost" onClick={() => setShowCreate(false)}>Annuler</Button>
               <Button
                 size="sm"
-                disabled={creating || !newUsername || !newPassword}
+                disabled={creating || !newUsername || newPassword.length < 10}
                 onClick={handleCreate}
               >
                 {creating ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : "Creer"}
@@ -572,14 +572,14 @@ export function UserManagement() {
                       autoComplete="new-password"
                       value={newPw}
                       onChange={(e) => setNewPw(e.target.value)}
-                      placeholder="Nouveau mot de passe"
+                      placeholder="Nouveau mot de passe (10 car. min)"
                       className="h-7 text-xs flex-1"
                     />
                     <Button
                       size="sm"
                       variant="outline"
                       className="h-7 text-xs"
-                      disabled={!newPw || newPw.length < 4}
+                      disabled={!newPw || newPw.length < 10}
                       onClick={() => handleChangePassword(u.id)}
                     >
                       Enregistrer

@@ -395,10 +395,10 @@ verify_install() {
     echo -e "  Dashboard:  ${GREEN}http://localhost:3000/dashboard${NC}"
     echo -e "  API Docs:   ${GREEN}http://localhost:8000/docs${NC}"
     echo ""
-    echo -e "  ${YELLOW}Default login:${NC}"
+    echo -e "  ${YELLOW}Admin login:${NC}"
     echo -e "    Username: ${GREEN}admin${NC}"
-    echo -e "    Password: ${GREEN}admin${NC}"
-    echo -e "    ${RED}IMPORTANT: Change this password after first login!${NC}"
+    echo -e "    Password: random, generated at first start, see ${GREEN}${DATA_DIR:-/opt/theia/data}/initial_admin_password.txt${NC}"
+    echo -e "    ${RED}IMPORTANT: Change this password after first login, then delete that file!${NC}"
     echo ""
 
     # Service status

@@ -283,22 +283,39 @@ async def init_tables(db: aiosqlite.Connection):
     """)
     await db.commit()
 
-    # Create default admin account if no users exist
+    # First start: create the admin account with a random password (never a well-known default)
+    import secrets as _secrets
+    import hashlib as _hashlib
     cursor = await db.execute("SELECT COUNT(*) FROM users")
     count = (await cursor.fetchone())[0]
     if count == 0:
-        # PBKDF2 hash of "admin" -- same algorithm as auth.py _hash_password
-        import secrets as _secrets
-        import hashlib as _hashlib
+        _password = _secrets.token_urlsafe(12)
         _salt = _secrets.token_hex(16)
-        _dk = _hashlib.pbkdf2_hmac("sha256", b"admin", _salt.encode(), 100_000)
-        _hash = f"{_salt}${_dk.hex()}"
+        _dk = _hashlib.pbkdf2_hmac("sha256", _password.encode(), _salt.encode(), 100_000)
         await db.execute(
             "INSERT INTO users (username, password_hash, role) VALUES (?, ?, ?)",
-            ("admin", _hash, "admin")
+            ("admin", f"{_salt}${_dk.hex()}", "admin")
         )
         await db.commit()
-        print("[THEIA] Default admin account created (username: admin, password: admin)")
+        _pw_path = os.path.join(os.path.dirname(DB_PATH), "initial_admin_password.txt")
+        try:
+            _fd = os.open(_pw_path, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+            with os.fdopen(_fd, "w") as _f:
+                _f.write(f"username: admin\npassword: {_password}\n")
+            print(f"[THEIA] Admin account created. Initial password stored in {_pw_path} (delete it after changing the password)")
+        except OSError as e:
+            print(f"[THEIA] Admin account created but the initial password could not be saved ({e}). Reset it with the procedure in README.md")
+    else:
+        # Legacy installs: warn loudly if the old well-known default is still in place
+        cursor = await db.execute("SELECT password_hash FROM users WHERE username = 'admin'")
+        row = await cursor.fetchone()
+        if row:
+            try:
+                _s, _h = row[0].split("$", 1)
+                if _hashlib.pbkdf2_hmac("sha256", b"admin", _s.encode(), 100_000).hex() == _h:
+                    print("[THEIA] WARNING: the 'admin' account still uses the default password 'admin'. Change it now (Administration > Comptes utilisateurs).")
+            except Exception:
+                pass
 
     # Migrations for existing databases
     try:

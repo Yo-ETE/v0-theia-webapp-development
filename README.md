@@ -311,8 +311,8 @@ Le script est **idempotent** : relancez-le autant de fois que necessaire.
 
   Default login:
     Username: admin
-    Password: admin
-    IMPORTANT: Change this password after first login!
+    Password: random, see /opt/theia/data/initial_admin_password.txt
+    IMPORTANT: Change this password after first login, then delete that file!
 
   Service Status:
     theia-api            active
@@ -495,12 +495,13 @@ Le script envoie un heartbeat toutes les 60s avec l'IP, MAC, et hostname.
 
 ```bash
 sudo /opt/theia/.venv/bin/python3 -c "
-import sqlite3, hashlib, os
+import sqlite3, hashlib, secrets
 db = sqlite3.connect('/opt/theia/data/theia.db')
-salt = os.urandom(32).hex()
-pw = hashlib.pbkdf2_hmac('sha256', b'admin', bytes.fromhex(salt), 100000).hex()
-db.execute('UPDATE users SET password_hash=?, salt=? WHERE username=?', (pw, salt, 'admin'))
-db.commit(); print('Password reset to: admin')
+pw = secrets.token_urlsafe(12)
+salt = secrets.token_hex(16)
+h = salt + '\$' + hashlib.pbkdf2_hmac('sha256', pw.encode(), salt.encode(), 100000).hex()
+db.execute('UPDATE users SET password_hash=? WHERE username=?', (h, 'admin'))
+db.commit(); print('New admin password:', pw)
 "
 sudo systemctl restart theia-api
 ```

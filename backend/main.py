@@ -18,6 +18,7 @@ from backend.services.gps_reader import gps_reader
 from backend.services.lora_bridge import lora_bridge
 from backend.routers import health, missions, devices, events, logs, stream, tiles, admin, config, notifications, auth, push
 from backend.middleware.auth import AuthMiddleware
+from backend.security import cors_origin_regex
 try:
     from backend.routers import firmware
 except ImportError as e:
@@ -74,11 +75,11 @@ app = FastAPI(
 )
 
 # CORS: With credentials=True, the spec requires an explicit origin (not "*").
-# We list common origins for the Pi (Next.js :3000, direct :8000, Tailscale IPs).
-# allow_origin_regex echoes back the exact request Origin, which satisfies browsers.
+# Only loopback, LAN (RFC1918), Tailscale and *.local origins are echoed back
+# (see backend/security.py). Extra origins: THEIA_CORS_ORIGINS=https://a,https://b
 app.add_middleware(
     CORSMiddleware,
-    allow_origin_regex=r"^https?://.*$",
+    allow_origin_regex=cors_origin_regex(),
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],

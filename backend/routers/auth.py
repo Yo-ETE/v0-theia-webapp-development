@@ -116,6 +116,7 @@ def _verify_password(password: str, stored: str) -> bool:
 # ---------------------------------------------------------------------------
 _login_attempts: dict[str, list[float]] = {}
 _MAX_ATTEMPTS = 5
+MIN_PASSWORD_LEN = 10
 _WINDOW_SECONDS = 300  # 5 minutes
 
 def _check_rate_limit(ip: str) -> bool:
@@ -236,8 +237,8 @@ async def create_user(req: CreateUserRequest, request: Request):
         raise HTTPException(400, "Role must be 'admin' or 'viewer'")
     if len(req.username) < 2:
         raise HTTPException(400, "Username must be at least 2 characters")
-    if len(req.password) < 4:
-        raise HTTPException(400, "Password must be at least 4 characters")
+    if len(req.password) < MIN_PASSWORD_LEN:
+        raise HTTPException(400, f"Password must be at least {MIN_PASSWORD_LEN} characters")
 
     db = await get_db()
     # Check if username exists
@@ -270,8 +271,8 @@ async def update_user(user_id: int, req: UpdateUserRequest, request: Request):
         raise HTTPException(400, "Role must be 'admin' or 'viewer'")
 
     if req.password:
-        if len(req.password) < 4:
-            raise HTTPException(400, "Password must be at least 4 characters")
+        if len(req.password) < MIN_PASSWORD_LEN:
+            raise HTTPException(400, f"Password must be at least {MIN_PASSWORD_LEN} characters")
         await db.execute(
             "UPDATE users SET password_hash = ? WHERE id = ?",
             (_hash_password(req.password), user_id)

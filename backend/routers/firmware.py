@@ -14,6 +14,10 @@ from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 
 from backend.database import get_db
+from backend.security import (
+    is_within, valid_fqbn, valid_sensor_type, valid_serial_port,
+    valid_sketch_name, valid_tx_id,
+)
 
 router = APIRouter(prefix="/firmware", tags=["firmware"])
 
@@ -33,13 +37,17 @@ DATA_DIR = os.getenv("THEIA_DATA_DIR", "/opt/theia/data")
 CUSTOM_FIRMWARE_DIR = os.path.join(DATA_DIR, "firmware")
 os.makedirs(CUSTOM_FIRMWARE_DIR, exist_ok=True)
 RX_MAC_FILE = os.path.join(DATA_DIR, "rx_mac.txt")
+MAX_SKETCH_BYTES = 1024 * 1024
 
 
 def _resolve_sketch_dir(name: str) -> str | None:
-    """Find a sketch directory by name, checking custom dir first then templates."""
+    """Find a sketch directory by name, checking custom dir first then templates.
+    The name is validated and the resolved path must stay inside the base directory."""
+    if not valid_sketch_name(name):
+        return None
     for base in (CUSTOM_FIRMWARE_DIR, FIRMWARE_DIR):
         candidate = os.path.join(base, name)
-        if os.path.isdir(candidate):
+        if os.path.isdir(candidate) and is_within(base, candidate):
             return candidate
     return None
 
@@ -376,7 +384,7 @@ async def update_sketch_content(name: str, body: dict):
     
     # Backup old file to versioned directory
     if max_version_str != "0.0.0":
-        versioned_dir = os.path.join(sketch_dir.replace(name, f"{name}_v{max_version_str}"))
+        versioned_dir = os.path.join(os.path.dirname(sketch_dir), f"{name}_v{max_version_str}")
         os.makedirs(versioned_dir, exist_ok=True)
         old_filepath = os.path.join(sketch_dir, ino_files[0])
         shutil.copy2(old_filepath, os.path.join(versioned_dir, ino_files[0]))
@@ -429,13 +437,20 @@ async def upload_sketch(
     if not file.filename or not file.filename.endswith((".ino", ".cpp", ".c")):
         raise HTTPException(status_code=400, detail="Le fichier doit etre un .ino, .cpp, ou .c")
 
-    # Normalize: always save as .ino in the persistent custom firmware dir
-    base_name = file.filename.rsplit(".", 1)[0]
+    # Normalize: always save as .ino in the persistent custom firmware dir.
+    # The client-supplied filename is untrusted: strip any directory part, then validate.
+    base_name = os.path.basename(file.filename.replace("\\", "/")).rsplit(".", 1)[0]
     sketch_name = f"custom_{base_name}"
+    if not valid_sketch_name(sketch_name):
+        raise HTTPException(status_code=400, detail="Nom de fichier invalide (lettres, chiffres, _ - . uniquement)")
     sketch_dir = os.path.join(CUSTOM_FIRMWARE_DIR, sketch_name)
-    os.makedirs(sketch_dir, exist_ok=True)
+    if not is_within(CUSTOM_FIRMWARE_DIR, sketch_dir):
+        raise HTTPException(status_code=400, detail="Nom de fichier invalide")
 
-    content = await file.read()
+    content = await file.read(MAX_SKETCH_BYTES + 1)
+    if len(content) > MAX_SKETCH_BYTES:
+        raise HTTPException(status_code=413, detail="Fichier trop volumineux (max 1 Mo)")
+    os.makedirs(sketch_dir, exist_ok=True)
     ino_filename = f"{sketch_name}.ino"
     filepath = os.path.join(sketch_dir, ino_filename)
     with open(filepath, "wb") as f:
@@ -538,6 +553,8 @@ async def verify_port(port: str):
     Uses fuser (kernel FD check) as the SOLE authority: if a process holds the
     port open, it's busy (RX reader, gpsd, etc.). Otherwise it's available."""
     import subprocess as _sp
+    if not valid_serial_port(port):
+        raise HTTPException(status_code=400, detail="Port invalide")
     if not os.path.exists(port):
         raise HTTPException(status_code=404, detail=f"Port {port} n'existe pas")
 
@@ -594,6 +611,18 @@ class FlashRequest(BaseModel):
 @router.post("/flash")
 async def flash_device(req: FlashRequest):
     """Compile and flash a sketch to an ESP32. Returns SSE stream of progress."""
+    # Untrusted input: tx_id is written into C source, port/fqbn go to arduino-cli argv.
+    if not valid_tx_id(req.tx_id):
+        raise HTTPException(status_code=400, detail="tx_id invalide (1-16 caracteres: lettres, chiffres, _ -)")
+    if not valid_serial_port(req.port):
+        raise HTTPException(status_code=400, detail="Port invalide (attendu /dev/ttyUSB*, /dev/ttyACM* ou /dev/serial/by-id/*)")
+    if req.fqbn and not valid_fqbn(req.fqbn):
+        raise HTTPException(status_code=400, detail="FQBN invalide")
+    if not valid_sensor_type(req.sensor_type):
+        raise HTTPException(status_code=400, detail="sensor_type invalide")
+    if req.sketch_name and not valid_sketch_name(req.sketch_name):
+        raise HTTPException(status_code=400, detail="sketch_name invalide")
+
     db = await get_db()
 
     # ── SAFETY: fuser check (kernel-level, the SOLE authority) ──
