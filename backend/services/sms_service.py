@@ -36,7 +36,7 @@ async def _http_post(url: str, data: Any = None, headers: dict | None = None, js
                 return e.code, e.read().decode() if e.fp else str(e)
             except Exception as e:
                 return 0, str(e)
-        return await asyncio.get_event_loop().run_in_executor(None, _do)
+        return await asyncio.get_running_loop().run_in_executor(None, _do)
     except Exception as e:
         return 0, str(e)
 
@@ -44,7 +44,8 @@ async def _http_post(url: str, data: Any = None, headers: dict | None = None, js
 async def send_sms_free_mobile(user: str, api_key: str, message: str) -> bool:
     """Send SMS via Free Mobile API (France only, free for subscribers)."""
     import urllib.parse
-    url = f"https://smsapi.free-mobile.fr/sendmsg?user={user}&pass={api_key}&msg={urllib.parse.quote(message)}"
+    query = urllib.parse.urlencode({"user": user, "pass": api_key, "msg": message})
+    url = f"https://smsapi.free-mobile.fr/sendmsg?{query}"
     # Free Mobile API uses GET
     import urllib.request
     try:
@@ -53,9 +54,10 @@ async def send_sms_free_mobile(user: str, api_key: str, message: str) -> bool:
                 with urllib.request.urlopen(url, timeout=10) as resp:
                     return resp.status
             except Exception as e:
-                print(f"[THEIA-SMS] Free Mobile error: {e}")
+                # Never print the exception text: urllib errors can embed the URL (with the API key)
+                print(f"[THEIA-SMS] Free Mobile error: {type(e).__name__}")
                 return 0
-        status = await asyncio.get_event_loop().run_in_executor(None, _do)
+        status = await asyncio.get_running_loop().run_in_executor(None, _do)
         ok = status == 200
         if ok:
             print(f"[THEIA-SMS] Free Mobile SMS sent")
@@ -63,16 +65,18 @@ async def send_sms_free_mobile(user: str, api_key: str, message: str) -> bool:
             print(f"[THEIA-SMS] Free Mobile SMS failed (status={status})")
         return ok
     except Exception as e:
-        print(f"[THEIA-SMS] Free Mobile error: {e}")
+        print(f"[THEIA-SMS] Free Mobile error: {type(e).__name__}")
         return False
 
 
 async def send_sms_twilio(account_sid: str, auth_token: str, from_number: str, to_number: str, message: str) -> bool:
     """Send SMS via Twilio API."""
     import base64
+    import urllib.parse
     url = f"https://api.twilio.com/2010-04-01/Accounts/{account_sid}/Messages.json"
     auth = base64.b64encode(f"{account_sid}:{auth_token}".encode()).decode()
-    data = f"To={to_number}&From={from_number}&Body={message}"
+    # urlencode: a raw "+" (E.164) would become a space, "&" / "=" in the body would inject fields
+    data = urllib.parse.urlencode({"To": to_number, "From": from_number, "Body": message})
     status, body = await _http_post(url, data=data, headers={
         "Authorization": f"Basic {auth}",
         "Content-Type": "application/x-www-form-urlencoded",
@@ -87,7 +91,11 @@ async def send_sms_twilio(account_sid: str, auth_token: str, from_number: str, t
 
 async def send_ntfy(topic: str, title: str, message: str, server: str = "https://ntfy.sh") -> bool:
     """Send notification via ntfy.sh (or self-hosted ntfy)."""
-    url = f"{server}/{topic}"
+    import urllib.parse
+    if urllib.parse.urlparse(server).scheme not in ("http", "https"):
+        print("[THEIA-SMS] ntfy server must be http(s)")
+        return False
+    url = f"{server.rstrip('/')}/{urllib.parse.quote(topic, safe='')}"
     status, body = await _http_post(url, data=message, headers={"Title": title})
     ok = 200 <= status < 300
     if ok:

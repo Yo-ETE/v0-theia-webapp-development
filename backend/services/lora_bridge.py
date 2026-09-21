@@ -17,6 +17,7 @@ import glob
 import json
 import math
 import os
+import re
 import time
 from datetime import datetime
 
@@ -60,6 +61,23 @@ def is_tx_blacklisted(dev_eui: str) -> bool:
     return True
 
 
+# TX identifiers come from radio frames (untrusted, can be noise or a rogue transmitter):
+# only short printable IDs are accepted, everything else is dropped before any DB access.
+_TX_ID_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_-]{0,15}$")
+MAX_LINE_BYTES = 1024
+
+
+def _valid_tx_id(tx_id: str | None) -> bool:
+    return bool(tx_id) and bool(_TX_ID_RE.match(tx_id))
+
+
+def _to_int(value, default: int = 0) -> int:
+    try:
+        return int(float(value))
+    except (TypeError, ValueError):
+        return default
+
+
 class PortReader:
     """Reads one serial port and processes frames."""
 
@@ -82,6 +100,13 @@ class PortReader:
         self._device_last_seen: dict[str, float] = {}
         self._notif_cooldown: dict[tuple[str, str], float] = {}
         self._detection_notif_ts: dict[str, float] = {}
+        self._bg_tasks: set[asyncio.Task] = set()
+
+    def _spawn(self, coro):
+        """Run a slow side effect (push / SMS) without blocking serial ingestion."""
+        task = asyncio.create_task(coro)
+        self._bg_tasks.add(task)
+        task.add_done_callback(self._bg_tasks.discard)
 
     async def _create_notification(self, ntype: str, severity: str, device_id: str | None, device_name: str, message: str):
         """Create a notification with 1-hour anti-spam per (type, device_id)."""
@@ -177,25 +202,49 @@ class PortReader:
             print(f"[THEIA-NOTIF] Error checking notification rules: {e}")
 
     async def start(self):
-        import serial
         self.running = True
+        loop = asyncio.get_running_loop()
         while self.running:
+            ser = None
             try:
+                import serial
                 self.connected_real = os.path.realpath(self.port)
-                ser = await asyncio.get_event_loop().run_in_executor(
+                ser = await loop.run_in_executor(
                     None,
                     lambda: serial.Serial(port=self.port, baudrate=self.baud, timeout=1),
                 )
                 print(f"[THEIA] LoRa reader connected: {self.port} -> {self.connected_real}")
+                buf = b""
                 while self.running:
-                    raw = await asyncio.get_event_loop().run_in_executor(None, ser.readline)
-                    if raw:
-                        line = raw.decode("utf-8", errors="replace").strip()
-                        if line:
-                            await self._process_line(line)
+                    raw = await loop.run_in_executor(None, ser.readline)
+                    if not raw:
+                        continue
+                    buf += raw
+                    if not buf.endswith(b"\n"):
+                        # readline() timed out mid-frame: keep the fragment, the rest arrives next call
+                        if len(buf) > MAX_LINE_BYTES:
+                            buf = b""
+                        continue
+                    line = buf.decode("utf-8", errors="replace").strip()
+                    buf = b""
+                    if not line:
+                        continue
+                    try:
+                        await self._process_line(line)
+                    except Exception as e:
+                        # A bad frame or a DB error must not drop the port: reopening it
+                        # toggles DTR/RTS and resets the ESP32 receiver.
+                        self.packets_err += 1
+                        print(f"[THEIA] LoRa frame error on {self.port}: {e!r} (line: {line[:80]})")
             except Exception as e:
                 print(f"[THEIA] LoRa reader error on {self.port}: {e}")
                 await asyncio.sleep(2)
+            finally:
+                if ser is not None:
+                    try:
+                        ser.close()
+                    except Exception:
+                        pass
 
     def stop(self):
         self.running = False
@@ -226,6 +275,9 @@ class PortReader:
 
         tx_id = parts[0].strip()
         data_str = parts[1].strip()
+        if tx_id and not _valid_tx_id(tx_id):
+            self.packets_err += 1
+            return
 
         # EMPTY frames
         if data_str.startswith("EMPTY"):
@@ -251,56 +303,47 @@ class PortReader:
             )
             return
         # LD45 semicolon format embedded in RX frame: LD45;TXnn;x;y;d;v;battV
-        # Default values - always defined regardless of which branch is taken
-        sensor_type = "ld2450"
-        sensor_status = None
-        charging = False
-        x = 0
-        y = 0
-        d = 0
-        v = 0
-        vbatt = None
-        angle = 0.0
-        presence = False
-
         if data_str.startswith("LD45;"):
             parts = data_str.split(";")
-            if len(parts) >= 6:
-                try:
-                    x = int(parts[2])
-                    y = int(parts[3])
-                    d = int(parts[4])
-                    v = int(parts[5])
-                    vbatt = float(parts[6]) if len(parts) >= 7 else None
-                except (ValueError, IndexError):
-                    self.packets_err += 1
-                    return
-                self.packets_ok += 1
-                angle = math.degrees(math.atan2(x, y)) if (x != 0 or y != 0) else 0.0
+            if len(parts) < 6:
+                self.packets_err += 1
+                return
+            try:
+                x = int(parts[2])
+                y = int(parts[3])
+                d = int(parts[4])
+                v = int(parts[5])
+                vbatt = float(parts[6]) if len(parts) >= 7 else None
+            except (ValueError, IndexError):
+                self.packets_err += 1
+                return
+            self.packets_ok += 1
+            angle = math.degrees(math.atan2(x, y)) if (x != 0 or y != 0) else 0.0
 
-                # Détection type capteur (même logique que _parse_ld45)
-                if x == 0 and y == 0 and d == 1:
-                    sensor_type = "gravity_mw"
+            # Détection type capteur (même logique que _parse_ld45)
+            if x == 0 and y == 0 and d == 1:
+                sensor_type = "gravity_mw"
+                presence = True
+                # Keep d=1 to indicate presence in payload (heatmap needs this)
+            elif x == 0 and y == 0 and d == 0:
+                sensor_type = "gravity_mw"
+                presence = False
+            elif x == 0 and y == d and d > 0:
+                sensor_type = "c4001"
+                presence = True
+            else:
+                sensor_type = "ld2450"
+                presence = (x != 0 or y != 0) and 15 < d < 600
+                if not presence and d > 15:
                     presence = True
-                    # Keep d=1 to indicate presence in payload (heatmap needs this)
-                elif x == 0 and y == 0 and d == 0:
-                    sensor_type = "gravity_mw"
-                    presence = False
-                elif x == 0 and y == d and d > 0:
-                    sensor_type = "c4001"
-                    presence = True
-                else:
-                    sensor_type = "ld2450"
-                    presence = (x != 0 or y != 0) and 15 < d < 600
-                    if not presence and d > 15:
-                        presence = True
 
-        await self._handle_detection(
-            tx_id=tx_id, sensor_type=sensor_type,
-            x=x, y=y, d=d, v=v,
-            angle=angle, presence=presence, vbatt=vbatt,
-            sensor_status=sensor_status, charging=charging,
-        )
+            await self._handle_detection(
+                tx_id=tx_id, sensor_type=sensor_type,
+                x=x, y=y, d=d, v=v,
+                angle=angle, presence=presence, vbatt=vbatt,
+                sensor_status=None, charging=False,
+            )
+            return
 
         # key=value format: x=0 y=0 d=1 v=0 rssi=-45 battTX=4.10
         kv = {}
@@ -385,7 +428,7 @@ class PortReader:
 
         if tx_id:
             cursor = await db.execute(
-                "SELECT id, mission_id, zone, zone_id, zone_label, side, name, type, muted, floor "
+                "SELECT id, mission_id, zone, zone_id, zone_label, side, name, type, muted, floor, sensor_position, orientation "
                 "FROM devices WHERE dev_eui=? AND enabled=1",
                 (tx_id,),
             )
@@ -484,7 +527,6 @@ class PortReader:
         device_name = row["name"] if row else (tx_id or self.port)
         sensor_position = None
         device_orientation = None
-        device_floor = None
         if row:
             try:
                 sensor_position = row["sensor_position"]
@@ -498,12 +540,12 @@ class PortReader:
             # Update device with battery, last_seen, rssi, and sensor_status (for XAVER)
             if sensor_status:
                 await db.execute(
-                    "UPDATE devices SET battery=?, last_seen=?, rssi=?, serial_port=?, sensor_status=? WHERE id=?",
+                    "UPDATE devices SET battery=COALESCE(?, battery), last_seen=?, rssi=?, serial_port=?, sensor_status=? WHERE id=?",
                     (vbatt, now_iso, self.last_rssi, self.port, sensor_status, device_id),
                 )
             else:
                 await db.execute(
-                    "UPDATE devices SET battery=?, last_seen=?, rssi=?, serial_port=? WHERE id=?",
+                    "UPDATE devices SET battery=COALESCE(?, battery), last_seen=?, rssi=?, serial_port=? WHERE id=?",
                     (vbatt, now_iso, self.last_rssi, self.port, device_id),
                 )
             if vbatt is not None and vbatt > 0:
@@ -606,7 +648,7 @@ class PortReader:
                     )
                 if _DEBUG:
                     print(f"[THEIA-DB] INSERT event: d={d} dir={direction} zone_id={zone_id} mission={mission_id}")
-                await self._check_notification_rules(mission_id, device_name or device_id or "", zone_id or "", d, direction if presence else "C")
+                self._spawn(self._check_notification_rules(mission_id, device_name or device_id or "", zone_id or "", d, direction if presence else "C"))
         elif presence and mission_id and not mission_active:
             pass
         elif presence and not mission_id:
@@ -691,6 +733,9 @@ class PortReader:
         except ValueError:
             tx_id = parts[1].strip()
             idx_start = 2
+            if not _valid_tx_id(tx_id):
+                self.packets_err += 1
+                return
 
         try:
             x = int(parts[idx_start])
@@ -770,12 +815,17 @@ class PortReader:
         except json.JSONDecodeError:
             self.packets_err += 1
             return
+        if not isinstance(frame, dict):
+            self.packets_err += 1
+            return
 
-        self.packets_ok += 1
         dev_eui = frame.get("dev_eui", "")
-        rssi = frame.get("rssi", 0)
+        if dev_eui and not _valid_tx_id(str(dev_eui)):
+            self.packets_err += 1
+            return
+        self.packets_ok += 1
         payload = frame.get("payload", {})
-        self.last_rssi = rssi
+        self.last_rssi = _to_int(frame.get("rssi", 0), self.last_rssi)
 
         presence = payload.get("presence", False) if isinstance(payload, dict) else False
         distance = 0
@@ -783,10 +833,10 @@ class PortReader:
         y_val = 0
         v_val = 0
         if isinstance(payload, dict):
-            distance = int(payload.get("distance", 0) or 0)
-            x_val = int(payload.get("x", 0) or 0)
-            y_val = int(payload.get("y", 0) or 0)
-            v_val = int(payload.get("speed", payload.get("v", 0)) or 0)
+            distance = _to_int(payload.get("distance", 0))
+            x_val = _to_int(payload.get("x", 0))
+            y_val = _to_int(payload.get("y", 0))
+            v_val = _to_int(payload.get("speed", payload.get("v", 0)))
 
         angle = math.degrees(math.atan2(x_val, y_val)) if (x_val != 0 or y_val != 0) else 0.0
         sensor_type = "ld2450"
@@ -868,19 +918,15 @@ class LoRaBridge:
             return [LORA_SERIAL_PORT]
         if os.path.exists(self.THEIA_RX_SYMLINK):
             return [self.THEIA_RX_SYMLINK]
-        gps_port = os.getenv("GPS_DEVICE", "")
-        gps_real = ""
-        if gps_port:
-            try:
-                gps_real = os.path.realpath(gps_port)
-            except Exception:
-                gps_real = gps_port
+        # Never open the GPS dongle (gpsd owns it): exclude GPS_DEVICE and the udev symlink
+        gps_reals = set()
+        for gps_port in (os.getenv("GPS_DEVICE", ""), "/dev/theia-gps"):
+            if gps_port and os.path.exists(gps_port):
+                gps_reals.add(os.path.realpath(gps_port))
         found = []
         for pattern in ["/dev/ttyUSB*", "/dev/ttyACM*"]:
             found.extend(sorted(glob.glob(pattern)))
-        if gps_real:
-            found = [p for p in found if os.path.realpath(p) != gps_real]
-        return found
+        return [p for p in found if os.path.realpath(p) not in gps_reals]
 
     async def _device_watchdog(self):
         """Background task: check all devices for offline status every 30s.

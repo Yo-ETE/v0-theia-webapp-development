@@ -3,6 +3,7 @@ THEIA - Web Push Notification Service
 Uses VAPID keys for Web Push API (pywebpush).
 Keys are auto-generated on first run and stored alongside the DB.
 """
+import asyncio
 import os
 import json
 import base64
@@ -12,7 +13,9 @@ from pathlib import Path
 DB_DIR = os.path.dirname(os.getenv("DB_PATH", "/opt/theia/data/theia.db"))
 VAPID_PRIVATE_PATH = os.path.join(DB_DIR, ".theia_vapid_private.pem")
 VAPID_PUBLIC_PATH = os.path.join(DB_DIR, ".theia_vapid_public.txt")
-VAPID_CLAIMS = {"sub": "mailto:theia@localhost"}
+# Some push services (Apple) reject a "localhost" subject: set THEIA_VAPID_SUB=mailto:you@example.com
+VAPID_SUB = os.getenv("THEIA_VAPID_SUB", "mailto:theia@localhost")
+PUSH_TIMEOUT = 10
 
 _vapid_private_key: str | None = None
 _vapid_public_key: str | None = None
@@ -32,7 +35,10 @@ def _generate_vapid_keys():
         serialization.NoEncryption(),
     )
     os.makedirs(DB_DIR, exist_ok=True)
-    Path(VAPID_PRIVATE_PATH).write_bytes(pem)
+    # Private key: owner-only from the first byte (no world-readable window)
+    fd = os.open(VAPID_PRIVATE_PATH, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+    with os.fdopen(fd, "wb") as f:
+        f.write(pem)
 
     # Extract raw public key (uncompressed point, 65 bytes)
     pub_numbers = private_key.public_key().public_numbers()
@@ -64,12 +70,15 @@ def get_vapid_keys() -> tuple[str, str]:
 async def send_push(subscription_info: dict, title: str, body: str, data: dict | None = None, tag: str | None = None):
     """Send a push notification to a single subscription."""
     try:
-        from pywebpush import webpush, WebPushException
+        from pywebpush import webpush
+        from py_vapid import Vapid
     except ImportError:
         print("[THEIA-PUSH] pywebpush not installed, skipping push")
         return False
 
     priv_key, _ = get_vapid_keys()
+    # pywebpush expects a raw/DER key string, a file path or a Vapid object: a PEM string fails to decode
+    vapid = Vapid.from_pem(priv_key.encode())
 
     payload = json.dumps({
         "title": title,
@@ -79,20 +88,27 @@ async def send_push(subscription_info: dict, title: str, body: str, data: dict |
         "icon": "/icon-512x512.jpg",
     })
 
-    try:
+    def _send():
+        # webpush() is blocking (requests): run it off the event loop, with a timeout.
+        # A fresh claims dict per call: pywebpush writes "aud"/"exp" into it, and a shared
+        # dict would send the first push service's audience to all the others.
         webpush(
             subscription_info=subscription_info,
             data=payload,
-            vapid_private_key=priv_key,
-            vapid_claims=VAPID_CLAIMS,
+            vapid_private_key=vapid,
+            vapid_claims={"sub": VAPID_SUB},
             ttl=300,
+            timeout=PUSH_TIMEOUT,
         )
+
+    try:
+        await asyncio.get_running_loop().run_in_executor(None, _send)
         return True
     except Exception as e:
-        error_str = str(e)
-        # 410 Gone = subscription expired, should be removed
-        if "410" in error_str or "Gone" in error_str:
-            print(f"[THEIA-PUSH] Subscription expired (410): {subscription_info.get('endpoint', '')[:60]}")
+        status = getattr(getattr(e, "response", None), "status_code", None)
+        # 404 / 410 = subscription gone, should be removed
+        if status in (404, 410):
+            print(f"[THEIA-PUSH] Subscription expired ({status}): {subscription_info.get('endpoint', '')[:60]}")
             return "expired"
         print(f"[THEIA-PUSH] Error sending push: {e}")
         return False
@@ -111,16 +127,20 @@ async def broadcast_push(title: str, body: str, data: dict | None = None, tag: s
 
     sent = 0
     expired_ids = []
-    for sub in subs:
-        sub_info = {
-            "endpoint": sub["endpoint"],
-            "keys": {"p256dh": sub["p256dh"], "auth": sub["auth"]},
-        }
-        result = await send_push(sub_info, title, body, data, tag)
+    infos = [
+        {"endpoint": s["endpoint"], "keys": {"p256dh": s["p256dh"], "auth": s["auth"]}}
+        for s in subs
+    ]
+    # Send to all subscribers in parallel: one slow endpoint must not delay the others
+    results = await asyncio.gather(
+        *(send_push(info, title, body, data, tag) for info in infos),
+        return_exceptions=True,
+    )
+    for s, result in zip(subs, results):
         if result is True:
             sent += 1
         elif result == "expired":
-            expired_ids.append(sub["id"])
+            expired_ids.append(s["id"])
 
     # Clean up expired subscriptions
     if expired_ids:

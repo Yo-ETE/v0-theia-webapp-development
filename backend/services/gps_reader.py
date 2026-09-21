@@ -12,6 +12,8 @@ GPS_DEVICE = os.getenv("GPS_DEVICE", "/dev/ttyUSB0")
 class GPSReader:
     def __init__(self):
         self._running = False
+        self._connected = False
+        self._fail_count = 0
         self._data: dict = {
             "fix": False,
             "latitude": 0.0,
@@ -43,7 +45,10 @@ class GPSReader:
         """Read from gpsd synchronously."""
         try:
             import gpsd
-            gpsd.connect()
+            if not self._connected:
+                # Connect once: gpsd.connect() opens a new socket each call and never closes the old one
+                gpsd.connect()
+                self._connected = True
             packet = gpsd.get_current()
 
             mode = int(self._safe_val(packet, "mode", 0))
@@ -54,6 +59,7 @@ class GPSReader:
             speed = float(self._safe_val(packet, "speed", 0.0))
             sats = int(self._safe_val(packet, "sats", 0))
             hdop = float(self._safe_val(packet, "hdop", 0.0))
+            self._fail_count = 0
 
             return {
                 "fix": fix,
@@ -66,13 +72,25 @@ class GPSReader:
             }
         except Exception as e:
             print(f"[THEIA] gps_reader error: {e}")
+            # Drop the socket so the next cycle reconnects cleanly
+            try:
+                sock = getattr(gpsd, "gpsd_socket", None)
+                if sock is not None:
+                    sock.close()
+            except Exception:
+                pass
+            self._connected = False
+            self._fail_count += 1
+            if self._fail_count >= 3:
+                # gpsd unreachable for a while: stop advertising the last coordinates as a live fix
+                return {**self._data, "fix": False}
             return self._data
 
     async def start(self, interval: float = 2.0):
         self._running = True
         while self._running:
             try:
-                self._data = await asyncio.get_event_loop().run_in_executor(
+                self._data = await asyncio.get_running_loop().run_in_executor(
                     None, self._read_gpsd
                 )
                 await sse_manager.broadcast("gps_update", self._data)
