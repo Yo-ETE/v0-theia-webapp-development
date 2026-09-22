@@ -1359,7 +1359,7 @@ export default function MapInner({
     )
   }
 
-  const { MapContainer, TileLayer, Polygon, Polyline, CircleMarker, Tooltip } = RL
+  const { MapContainer, TileLayer, Polygon, Polyline, CircleMarker, Tooltip, LayersControl } = RL
 
 
   const sensorMarkers: SensorMarkerData[] = sensorPlacements.map((sp) => {
@@ -1553,12 +1553,28 @@ export default function MapInner({
         className="h-full w-full"
         style={{ minHeight: "300px" }}
       >
-        <TileLayer
-          attribution={'&copy; <a href="https://www.openstreetmap.org/copyright">OSM</a>'}
-          url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
-          maxZoom={22}
-          maxNativeZoom={19}
-        />
+        {/* Base layer switcher: OSM building outlines are crowd-sourced and can lag behind a
+            real extension/renovation for years. Esri satellite is an actual photo, so it's
+            immune to that specific staleness (though the photo itself has its own capture
+            date). Selection persists per-browser (localStorage), not per-mission. */}
+        <LayersControl position="topright">
+          <LayersControl.BaseLayer checked name="Plan (OSM)">
+            <TileLayer
+              attribution={'&copy; <a href="https://www.openstreetmap.org/copyright">OSM</a>'}
+              url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
+              maxZoom={22}
+              maxNativeZoom={19}
+            />
+          </LayersControl.BaseLayer>
+          <LayersControl.BaseLayer name="Satellite (Esri)">
+            <TileLayer
+              attribution={'Tiles &copy; Esri &mdash; Esri, Maxar, Earthstar Geographics, and the GIS User Community'}
+              url="https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}"
+              maxZoom={22}
+              maxNativeZoom={19}
+            />
+          </LayersControl.BaseLayer>
+        </LayersControl>
 
         {/* ── Saved zones ── */}
         {(zones ?? []).map((zone) => {
