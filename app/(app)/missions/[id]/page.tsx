@@ -463,11 +463,15 @@ export default function MissionDetailPage() {
     const devicesInZone = (allDevices ?? []).filter((d) => d.mission_id === id && d.zone_id === zoneId)
     for (const dev of devicesInZone) {
       try {
+        // Fully release the device (not just its zone_id): the zone it lived in is gone,
+        // so leaving mission_id set would strand it "assigned" to this mission with no
+        // zone -- counted in device_count and the assigned-devices list, but invisible
+        // on the map. Match unassignDevice's full clear.
         await updateDevice(dev.id, {
-          zone_id: "", zone_label: "", side: "", sensor_position: 0.5,
+          mission_id: "", zone_id: "", zone_label: "", side: "", floor: null, sensor_position: 0.5,
         } as Partial<import("@/lib/types").Device>)
       } catch (err) {
-        console.warn("[THEIA] Failed to unassign device from zone:", err)
+        console.warn("[THEIA] Failed to unassign device from deleted zone:", err)
       }
     }
     const updatedZones = (mission.zones ?? []).filter((z) => z.id !== zoneId)

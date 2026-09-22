@@ -24,8 +24,11 @@ async def health():
 
 @router.get("/status")
 async def status():
+    # system_monitor.data returns the LIVE shared dict, not a copy: popping "network" out of
+    # it here used to delete it from the real state until the next 5s refresh cycle, so every
+    # other /status poll in between (dashboard, other tabs) saw internet/wifi as disconnected.
     sys_data = system_monitor.data or {}
-    net_data = sys_data.pop("network", {}) if isinstance(sys_data, dict) else {}
+    net_data = sys_data.get("network", {}) if isinstance(sys_data, dict) else {}
     import socket
 
     # Enrich LoRa data with DB fallback for RSSI after restart
