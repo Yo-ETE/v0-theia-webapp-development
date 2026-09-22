@@ -457,7 +457,18 @@ export function FloorManager({
         </div>
         <div className="flex items-center gap-1.5 shrink-0">
           {onResetDetections && (
-            <Button variant="ghost" size="sm" className="h-7 text-[10px] gap-1 text-muted-foreground hover:text-destructive" onClick={onResetDetections}>
+            <Button
+              variant="ghost"
+              size="sm"
+              className="h-7 text-[10px] gap-1 text-muted-foreground hover:text-destructive"
+              onClick={() => {
+                // Wipes the live detection feed/map instantly, no undo: on an active mission
+                // this is exactly the situational-awareness display an operator is relying on.
+                if (!confirm("Effacer le suivi en direct (carte + fil de detection) ? Les evenements restent en base mais disparaissent de l'affichage. Cette action est irreversible."))
+                  return
+                onResetDetections()
+              }}
+            >
               <Trash2 className="h-3 w-3" />
               Reset
             </Button>

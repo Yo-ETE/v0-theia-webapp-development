@@ -99,7 +99,7 @@ class PortReader:
         self._mission_status_cache: dict[str, tuple[str, float]] = {}
         self._device_last_seen: dict[str, float] = {}
         self._notif_cooldown: dict[tuple[str, str], float] = {}
-        self._detection_notif_ts: dict[str, float] = {}
+        self._detection_notif_ts: dict[tuple[str, str], float] = {}  # (mission_id, zone_id or device_name) -> ts
         self._bg_tasks: set[asyncio.Task] = set()
 
     def _spawn(self, coro):
@@ -155,10 +155,16 @@ class PortReader:
 
             cooldown_min = config.get("cooldown_minutes", 5)
             now = time.time()
-            last = self._detection_notif_ts.get(mission_id, 0)
+            # Cooldown per (mission, zone) rather than per mission: a subject moving from one
+            # zone to another during an active incident must still alert immediately, even if
+            # the zone they just left is still within its own cooldown window. Falls back to
+            # device_name for zoneless detections (e.g. floor mode) so they don't all collide
+            # into a single mission-wide bucket.
+            cooldown_key = (mission_id, zone_id or device_name)
+            last = self._detection_notif_ts.get(cooldown_key, 0)
             if now - last < cooldown_min * 60:
                 return
-            self._detection_notif_ts[mission_id] = now
+            self._detection_notif_ts[cooldown_key] = now
 
             mission_name = row["name"] or mission_id
             msg = f"Detection sur {mission_name} - {device_name} ({direction}, {distance}cm)"

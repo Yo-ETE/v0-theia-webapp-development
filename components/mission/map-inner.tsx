@@ -1,6 +1,6 @@
 "use client"
 
-import React, { useEffect, useState, useCallback, useRef } from "react"
+import React, { useEffect, useState, useCallback, useRef, useMemo } from "react"
 import type { Zone, DetectionEvent, LiveDetection } from "@/lib/types"
 import { cn } from "@/lib/utils"
 import type { VisualConfig } from "@/hooks/use-visual-config"
@@ -53,6 +53,40 @@ const SENSOR_SPECS: Record<string, { fovDeg: number; maxRangeM: number; label: s
   xaver:         { fovDeg: 120, maxRangeM: 8,  label: "XAVER 400" },  // Through-wall radar, 120deg FOV, 8m range
   }
 const DEFAULT_SENSOR_SPECS = { fovDeg: 90, maxRangeM: 6, label: "Unknown", presenceOnly: false }
+
+/**
+ * True 2D fix from two depth-only sensors (C4001) that both measured a target at the same
+ * moment: intersect the two circles (center = sensor position, radius = measured distance).
+ * A depth-only sensor has no bearing, so on its own it can only be projected straight along
+ * its axis -- correct if the target happens to be centered on that axis, wrong otherwise.
+ * Averaging two such straight-line guesses (the previous approach) does not converge to the
+ * true position for an off-axis target; intersecting the two range circles does, up to the
+ * usual two-solution ambiguity resolved by the caller (FOV / zone membership).
+ * Returns 0, 1 (tangent circles) or 2 points in meter-space. `noiseM` widens the intersection
+ * test to tolerate real sensor noise (circles that should touch but measured slightly short/long).
+ */
+function circleIntersections(
+  c1: [number, number], r1: number,
+  c2: [number, number], r2: number,
+  noiseM = 0.5,
+): [number, number][] {
+  const dx = c2[0] - c1[0]
+  const dy = c2[1] - c1[1]
+  const d = Math.hypot(dx, dy)
+  if (d < 1e-6) return [] // sensors at the same spot: degenerate, no unique fix
+  if (d > r1 + r2 + noiseM || d < Math.abs(r1 - r2) - noiseM) return [] // circles don't meet
+  const a = (r1 * r1 - r2 * r2 + d * d) / (2 * d)
+  const h = Math.sqrt(Math.max(0, r1 * r1 - a * a)) // clamped: noise can push h^2 slightly negative
+  const mx = c1[0] + (a * dx) / d
+  const my = c1[1] + (a * dy) / d
+  const ux = -dy / d
+  const uy = dx / d
+  if (h < 1e-6) return [[mx, my]] // tangent: single solution
+  return [
+    [mx + h * ux, my + h * uy],
+    [mx - h * ux, my - h * uy],
+  ]
+}
 
 interface SensorPlaceMode {
   zoneId: string
@@ -843,17 +877,10 @@ export default function MapInner({
   const cancelDrawing = useCallback(() => setDrawPoints([]), [])
   const undoLastPoint = useCallback(() => setDrawPoints((p) => p.slice(0, -1)), [])
 
-  if (!mounted || !RL) {
-    return (
-      <div className={cn("relative rounded-lg overflow-hidden border border-border/50 bg-muted/20", className)}>
-        <div className="flex h-full w-full items-center justify-center" style={{ minHeight: "300px" }}>
-          <span className="text-xs text-muted-foreground font-mono animate-pulse">Loading map...</span>
-        </div>
-      </div>
-    )
-  }
-
-  const { MapContainer, TileLayer, Polygon, Polyline, CircleMarker, Tooltip } = RL
+  // Moved above the mounted/RL loading-state early return: heatPoints below is a useMemo
+  // (a hook) and hooks must run unconditionally on every render, in the same order --
+  // this can't sit after a conditional `return` or React throws a hook-count mismatch
+  // the first time `mounted`/`RL` flips true. Nothing here reads RL/mounted/MapContainer.
 
   // Compute zone centroids
   const zoneCentroids: Record<string, [number, number]> = {}
@@ -955,7 +982,16 @@ export default function MapInner({
   // Depth-only sensors have only distance: we use the inward normal for projection.
   // For triangulation with multiple depth-only sensors, we intersect circles.
   type HeatPoint = { lat: number; lon: number; weight: number }
-  const heatPoints: HeatPoint[] = (() => {
+  // Memoized: this walks every event in the mission (grouped into 1s buckets, cross-matched
+  // pairwise for triangulation) on every call. Recomputing it on each render -- as this used
+  // to be a plain IIFE, not useMemo -- was cheap for a short callout but became real, visible
+  // lag on a multi-hour standoff with thousands of accumulated events and the heatmap left on,
+  // since MapInner re-renders on every live detection and periodically otherwise (see the
+  // detection tick effect above). getSideEdge/pointAlongSide/inwardNormalM/toMeters/toLatLon
+  // are pure functions of their arguments (redefined each render, but always agree for the
+  // same input), so they're deliberately left out of the dependency array.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  const heatPoints: HeatPoint[] = useMemo(() => {
     try {
     if (!heatmapMode || !zones.length || events.length === 0) return []
 
@@ -1026,7 +1062,11 @@ export default function MapInner({
 
     // PHASE 1: Build temporal index of distance-based detections for triangulation
     // Group events by timestamp (within 1 second window) to find simultaneous detections
-    const distanceEventsByTime: Record<string, Array<{ ptM: [number, number]; zoneId: string; deviceId: string; ts: number }>> = {}
+    type DistanceEvent = {
+      ptM: [number, number]; zoneId: string; deviceId: string; ts: number
+      sensorM: [number, number]; distM: number; isDepthOnly: boolean
+    }
+    const distanceEventsByTime: Record<string, DistanceEvent[]> = {}
     const TIME_WINDOW_MS = 1000 // 1 second correlation window for precision
 
     for (const evt of filteredEvents) {
@@ -1046,7 +1086,8 @@ export default function MapInner({
       const x_cm = Number(p.x ?? 0)
       const y_cm = Number(p.y ?? 0)
       const dm = dist / 100
-      
+      const isDepthOnly = sensorType === "c4001" || sensorType === "depth_only"
+
       let ptM: [number, number]
       if (x_cm !== 0 || y_cm !== 0) {
         const xm = x_cm / 100
@@ -1060,7 +1101,10 @@ export default function MapInner({
       const ts = new Date(evt.timestamp).getTime()
       const bucket = Math.floor(ts / TIME_WINDOW_MS) * TIME_WINDOW_MS
       if (!distanceEventsByTime[bucket]) distanceEventsByTime[bucket] = []
-      distanceEventsByTime[bucket].push({ ptM, zoneId: evt.zone_id ?? "", deviceId: evt.device_id ?? "", ts })
+      distanceEventsByTime[bucket].push({
+        ptM, zoneId: evt.zone_id ?? "", deviceId: evt.device_id ?? "", ts,
+        sensorM: sg.sensorM, distM: dm, isDepthOnly,
+      })
     }
 
     // PHASE 2: Process all events
@@ -1210,15 +1254,51 @@ export default function MapInner({
         ]
       }
 
+      // True trilateration: two depth-only sensors (no bearing, each only knows its own
+      // range) that fired at the same moment pin the target exactly via circle intersection,
+      // instead of averaging two straight-ahead guesses that are each only correct when the
+      // target happens to sit on that sensor's axis. Only applies to depth-only pairs: an
+      // LD2450's own x/y is already a real fix and doesn't need this.
+      let triangulatedPtM: [number, number] | null = null
+      if (isDepthOnly) {
+        const specs = SENSOR_SPECS[sensorType] ?? DEFAULT_SENSOR_SPECS
+        const effectiveFov = (sg as { effective_fov?: number }).effective_fov ?? specs.fovDeg
+        const fovRad = (effectiveFov / 2) * Math.PI / 180
+        for (const de of simultaneousEvents) {
+          if (!de.isDepthOnly) continue
+          const candidates = circleIntersections(sg.sensorM, dm, de.sensorM, de.distM)
+          if (candidates.length === 0) continue
+          // Keep candidates within this sensor's own FOV cone when possible; otherwise fall
+          // back to the raw candidate set rather than discard a valid fix outright.
+          const inFov = candidates.filter((c) => {
+            const cdx = c[0] - sg.sensorM[0]
+            const cdy = c[1] - sg.sensorM[1]
+            const ang = Math.atan2(cdx * rM[0] + cdy * rM[1], cdx * sg.normalM[0] + cdy * sg.normalM[1])
+            return Math.abs(ang) <= fovRad
+          })
+          const pool = inFov.length > 0 ? inFov : candidates
+          // Tie-break by proximity to this sensor's own naive guess: not itself trustworthy
+          // off-axis, but a reasonable prior for which of the two mirror solutions is real.
+          pool.sort((a, b) =>
+            ((a[0] - ptM[0]) ** 2 + (a[1] - ptM[1]) ** 2) - ((b[0] - ptM[0]) ** 2 + (b[1] - ptM[1]) ** 2)
+          )
+          triangulatedPtM = pool[0]
+          break
+        }
+      }
+      if (triangulatedPtM) ptM = triangulatedPtM
+
       // Snap to a small grid to accumulate weight at the same location
       const gx = Math.round(ptM[0] * 20) / 20  // 5cm grid
       const gy = Math.round(ptM[1] * 20) / 20
       const gk = `${gx},${gy}`
       gridCounts[gk] = (gridCounts[gk] ?? 0) + 1
 
-      // TRIANGULATION: If other sensors detected simultaneously, add weighted centroid point
-      let triangulationBoost = 1.0
-      if (simultaneousEvents.length > 0) {
+      // TRIANGULATION: If other sensors detected simultaneously, add weighted centroid point.
+      // Skipped when a true trilateration fix was already found above -- averaging in the old
+      // naive projections at this point would only pull the exact fix back toward them.
+      let triangulationBoost = triangulatedPtM ? 2.5 : 1.0
+      if (!triangulatedPtM && simultaneousEvents.length > 0) {
         // Calculate average position of all simultaneous detections (including this one)
         let sumX = ptM[0], sumY = ptM[1], count = 1
         for (const de of simultaneousEvents) {
@@ -1267,7 +1347,20 @@ export default function MapInner({
 
     return pts
     } catch (e) { console.warn("[THEIA] heatPoints error:", e); return [] }
-  })()
+  }, [heatmapMode, zones, events, heatmapTimeFilter, sensorPlacements])
+
+  if (!mounted || !RL) {
+    return (
+      <div className={cn("relative rounded-lg overflow-hidden border border-border/50 bg-muted/20", className)}>
+        <div className="flex h-full w-full items-center justify-center" style={{ minHeight: "300px" }}>
+          <span className="text-xs text-muted-foreground font-mono animate-pulse">Loading map...</span>
+        </div>
+      </div>
+    )
+  }
+
+  const { MapContainer, TileLayer, Polygon, Polyline, CircleMarker, Tooltip } = RL
+
 
   const sensorMarkers: SensorMarkerData[] = sensorPlacements.map((sp) => {
     const zone = zones.find((z) => z.id === sp.zone_id)
