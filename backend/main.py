@@ -16,6 +16,7 @@ from backend.database import get_db, close_db, start_retention_job
 from backend.services.system_monitor import system_monitor
 from backend.services.gps_reader import gps_reader
 from backend.services.lora_bridge import lora_bridge
+from backend.services import hotspot_watchdog
 from backend.routers import health, missions, devices, events, logs, stream, tiles, admin, config, notifications, auth, push
 from backend.middleware.auth import AuthMiddleware
 from backend.security import cors_origin_regex
@@ -47,6 +48,11 @@ async def lifespan(app: FastAPI):
     # LoRa bridge: always start -- it auto-scans for USB serial ports
     _tasks.append(asyncio.create_task(lora_bridge.start()))
     print("[THEIA] LoRa bridge started (auto-scan mode)")
+
+    _tasks.append(asyncio.create_task(hotspot_watchdog.run_once()))
+    if hotspot_watchdog.ENABLED:
+        print(f"[THEIA] Auto-hotspot watchdog scheduled (fires after {hotspot_watchdog.DELAY_S:.0f}s "
+              f"if offline and within {hotspot_watchdog.BOOT_WINDOW_S:.0f}s of boot; disable with THEIA_AUTO_HOTSPOT=0)")
 
     start_retention_job()
     print("[THEIA] Data retention job scheduled (events={0}d, logs={1}d, battery={2}d)".format(

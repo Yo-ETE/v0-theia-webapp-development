@@ -23,6 +23,8 @@ logger = logging.getLogger("theia.config")
 
 router = APIRouter(prefix="/api/config")
 
+DATA_DIR = os.getenv("THEIA_DATA_DIR", "/opt/theia/data")
+
 
 # ── Helper: Get active WiFi interface ────────────────────────────────
 def _get_wifi_interface():
@@ -476,107 +478,142 @@ async def hotspot_status():
 async def hotspot_start(body: dict = None):
     """Start WiFi hotspot using hostapd."""
     ssid = (body or {}).get("ssid", "THEIA")
-    password = (body or {}).get("password", "theia1234")
+    password = (body or {}).get("password") or _get_or_create_hotspot_password()
     if not valid_ssid(ssid):
         return {"status": "error", "message": "SSID invalide (1-32 caracteres, sans retour a la ligne)"}
     if not valid_wpa_passphrase(password):
         return {"status": "error", "message": "Mot de passe WiFi invalide (8 a 63 caracteres ASCII)"}
     try:
-        def _start():
-            # Use AP-capable interface instead of just any WiFi interface
-            iface = _get_ap_capable_interface()
-            print(f"[THEIA] Hotspot: starting on interface {iface}", flush=True)
-            if not iface:
-                return {"status": "error", "message": "Aucune interface WiFi trouvee"}
-            
-            # Check if hostapd is installed
-            hostapd_check = subprocess.run(["which", "hostapd"], capture_output=True, timeout=5)
-            if hostapd_check.returncode != 0:
-                return {"status": "error", "message": "hostapd n'est pas installe. Installez avec: sudo apt install hostapd"}
-            
-            # Step 0: Set regulatory domain for proper WiFi transmission
-            subprocess.run(["sudo", "iw", "reg", "set", "FR"], capture_output=True, timeout=5)
-            time.sleep(0.5)
-            
-            # Step 1: Disconnect and clean up
-            print(f"[THEIA] Hotspot: disconnecting {iface} and killing existing processes", flush=True)
-            subprocess.run(["sudo", "nmcli", "device", "disconnect", iface], capture_output=True, timeout=10)
-            time.sleep(0.5)
-            subprocess.run(["sudo", "pkill", "-f", "create_ap"], capture_output=True, timeout=5)
-            subprocess.run(["sudo", "pkill", "hostapd"], capture_output=True, timeout=5)
-            subprocess.run(["sudo", "pkill", "dnsmasq"], capture_output=True, timeout=5)
-            time.sleep(1)
-            
-            # Step 2: Try nmcli hotspot with explicit band/channel for better compatibility
-            print(f"[THEIA] Hotspot: trying nmcli hotspot on {iface}", flush=True)
-            # Use band=bg (2.4GHz) and channel 6 for maximum compatibility
-            result = subprocess.run(
-                ["sudo", "nmcli", "device", "wifi", "hotspot", "ifname", iface, "ssid", ssid, "password", password, "band", "bg", "channel", "6"],
-                capture_output=True, text=True, timeout=30
-            )
-            print(f"[THEIA] Hotspot: nmcli returned {result.returncode}, stdout={result.stdout[:200] if result.stdout else ''}, stderr={result.stderr[:200] if result.stderr else ''}", flush=True)
-            if result.returncode == 0:
-                time.sleep(3)  # Give more time for AP to initialize
-                # Verify hotspot is actually running and visible
-                conn_check = subprocess.run(
-                    ["nmcli", "-t", "-f", "NAME,TYPE", "connection", "show", "--active"],
-                    capture_output=True, text=True, timeout=5
-                )
-                print(f"[THEIA] Hotspot: active connections: {conn_check.stdout}", flush=True)
-                
-                # Check interface mode with iw
-                iw_check = subprocess.run(
-                    ["iw", "dev", iface, "info"],
-                    capture_output=True, text=True, timeout=5
-                )
-                print(f"[THEIA] Hotspot: iw info: {iw_check.stdout}", flush=True)
-                is_ap_mode = "type AP" in iw_check.stdout
-                
-                # Check if the SSID or "Hotspot" appears in active wireless connections
-                if (ssid in conn_check.stdout or "Hotspot" in conn_check.stdout) and "802-11-wireless" in conn_check.stdout:
-                    if is_ap_mode:
-                        return {"status": "success", "message": f"Hotspot '{ssid}' demarre sur {iface} (nmcli)"}
-                    else:
-                        print(f"[THEIA] Hotspot: WARNING - connection active but interface not in AP mode", flush=True)
-                        # Try to continue anyway, maybe it will work
-                        return {"status": "warning", "message": f"Hotspot '{ssid}' cree mais mode AP non confirme sur {iface}"}
-                
-                # nmcli said OK but hotspot not actually running, continue to fallback
-                print(f"[THEIA] Hotspot: nmcli returned 0 but no Hotspot connection active, trying hostapd", flush=True)
-            
-            # Step 3: Configure interface
-            print(f"[THEIA] Hotspot: configuring interface {iface} for AP mode", flush=True)
-            subprocess.run(["sudo", "ip", "link", "set", iface, "down"], capture_output=True, timeout=5)
-            time.sleep(0.5)
-            subprocess.run(["sudo", "ip", "addr", "flush", "dev", iface], capture_output=True, timeout=5)
-            subprocess.run(["sudo", "ip", "addr", "add", "192.168.4.1/24", "dev", iface], capture_output=True, timeout=5)
-            subprocess.run(["sudo", "ip", "link", "set", iface, "up"], capture_output=True, timeout=5)
-            time.sleep(1)
-            
-            # Step 4: Start dnsmasq first (before hostapd, for DHCP)
-            dnsmasq_conf = f"""interface={iface}
+        data = await asyncio.get_event_loop().run_in_executor(None, start_hotspot_blocking, ssid, password)
+        return data
+    except Exception as e:
+        print(f"[THEIA] Hotspot: exception during start: {e}", flush=True)
+        return {"status": "error", "message": str(e)}
+
+
+HOTSPOT_PASSWORD_FILE = os.path.join(DATA_DIR, "hotspot_password.txt")
+
+
+def _get_or_create_hotspot_password() -> str:
+    """Random WPA2 passphrase, persisted so it stays stable across restarts.
+    Never a hardcoded default: this file's source is public, a fixed password would be too."""
+    try:
+        if os.path.isfile(HOTSPOT_PASSWORD_FILE):
+            pw = open(HOTSPOT_PASSWORD_FILE).read().strip()
+            if valid_wpa_passphrase(pw):
+                return pw
+    except OSError:
+        pass
+    import secrets
+    pw = secrets.token_urlsafe(9)
+    try:
+        os.makedirs(os.path.dirname(HOTSPOT_PASSWORD_FILE), exist_ok=True)
+        fd = os.open(HOTSPOT_PASSWORD_FILE, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+        with os.fdopen(fd, "w") as f:
+            f.write(pw)
+    except OSError:
+        pass
+    return pw
+
+
+def start_hotspot_blocking(ssid: str, password: str) -> dict:
+    """Blocking hostapd/nmcli hotspot start. Run this in an executor -- it shells out
+    repeatedly and can take several seconds. Shared by the /hotspot/start route and the
+    boot-time auto-hotspot watchdog (backend/services/hotspot_watchdog.py)."""
+    # Use AP-capable interface instead of just any WiFi interface
+    iface = _get_ap_capable_interface()
+    print(f"[THEIA] Hotspot: starting on interface {iface}", flush=True)
+    if not iface:
+        return {"status": "error", "message": "Aucune interface WiFi trouvee"}
+
+    # Check if hostapd is installed
+    hostapd_check = subprocess.run(["which", "hostapd"], capture_output=True, timeout=5)
+    if hostapd_check.returncode != 0:
+        return {"status": "error", "message": "hostapd n'est pas installe. Installez avec: sudo apt install hostapd"}
+
+    # Step 0: Set regulatory domain for proper WiFi transmission
+    subprocess.run(["sudo", "iw", "reg", "set", "FR"], capture_output=True, timeout=5)
+    time.sleep(0.5)
+
+    # Step 1: Disconnect and clean up
+    print(f"[THEIA] Hotspot: disconnecting {iface} and killing existing processes", flush=True)
+    subprocess.run(["sudo", "nmcli", "device", "disconnect", iface], capture_output=True, timeout=10)
+    time.sleep(0.5)
+    subprocess.run(["sudo", "pkill", "-f", "create_ap"], capture_output=True, timeout=5)
+    subprocess.run(["sudo", "pkill", "hostapd"], capture_output=True, timeout=5)
+    subprocess.run(["sudo", "pkill", "dnsmasq"], capture_output=True, timeout=5)
+    time.sleep(1)
+
+    # Step 2: Try nmcli hotspot with explicit band/channel for better compatibility
+    print(f"[THEIA] Hotspot: trying nmcli hotspot on {iface}", flush=True)
+    # Use band=bg (2.4GHz) and channel 6 for maximum compatibility
+    result = subprocess.run(
+        ["sudo", "nmcli", "device", "wifi", "hotspot", "ifname", iface, "ssid", ssid, "password", password, "band", "bg", "channel", "6"],
+        capture_output=True, text=True, timeout=30
+    )
+    print(f"[THEIA] Hotspot: nmcli returned {result.returncode}, stdout={result.stdout[:200] if result.stdout else ''}, stderr={result.stderr[:200] if result.stderr else ''}", flush=True)
+    if result.returncode == 0:
+        time.sleep(3)  # Give more time for AP to initialize
+        # Verify hotspot is actually running and visible
+        conn_check = subprocess.run(
+            ["nmcli", "-t", "-f", "NAME,TYPE", "connection", "show", "--active"],
+            capture_output=True, text=True, timeout=5
+        )
+        print(f"[THEIA] Hotspot: active connections: {conn_check.stdout}", flush=True)
+
+        # Check interface mode with iw
+        iw_check = subprocess.run(
+            ["iw", "dev", iface, "info"],
+            capture_output=True, text=True, timeout=5
+        )
+        print(f"[THEIA] Hotspot: iw info: {iw_check.stdout}", flush=True)
+        is_ap_mode = "type AP" in iw_check.stdout
+
+        # Check if the SSID or "Hotspot" appears in active wireless connections
+        if (ssid in conn_check.stdout or "Hotspot" in conn_check.stdout) and "802-11-wireless" in conn_check.stdout:
+            if is_ap_mode:
+                return {"status": "success", "message": f"Hotspot '{ssid}' demarre sur {iface} (nmcli)"}
+            else:
+                print(f"[THEIA] Hotspot: WARNING - connection active but interface not in AP mode", flush=True)
+                # Try to continue anyway, maybe it will work
+                return {"status": "warning", "message": f"Hotspot '{ssid}' cree mais mode AP non confirme sur {iface}"}
+
+        # nmcli said OK but hotspot not actually running, continue to fallback
+        print(f"[THEIA] Hotspot: nmcli returned 0 but no Hotspot connection active, trying hostapd", flush=True)
+
+    # Step 3: Configure interface
+    print(f"[THEIA] Hotspot: configuring interface {iface} for AP mode", flush=True)
+    subprocess.run(["sudo", "ip", "link", "set", iface, "down"], capture_output=True, timeout=5)
+    time.sleep(0.5)
+    subprocess.run(["sudo", "ip", "addr", "flush", "dev", iface], capture_output=True, timeout=5)
+    subprocess.run(["sudo", "ip", "addr", "add", "192.168.4.1/24", "dev", iface], capture_output=True, timeout=5)
+    subprocess.run(["sudo", "ip", "link", "set", iface, "up"], capture_output=True, timeout=5)
+    time.sleep(1)
+
+    # Step 4: Start dnsmasq first (before hostapd, for DHCP)
+    dnsmasq_conf = f"""interface={iface}
 dhcp-range=192.168.4.2,192.168.4.254,255.255.255.0,24h
 no-resolv
 bind-interfaces
 """
-            dnsmasq_path = "/tmp/theia_dnsmasq.conf"
-            with open(dnsmasq_path, "w") as f:
-                f.write(dnsmasq_conf)
-            
-            dnsmasq_result = subprocess.run(
-                ["sudo", "dnsmasq", "-C", dnsmasq_path],
-                capture_output=True, text=True, timeout=5
-            )
-            print(f"[THEIA] Hotspot: dnsmasq returned {dnsmasq_result.returncode}", flush=True)
-            time.sleep(1)
-            
-            # Step 5: Try hostapd with multiple drivers
-            drivers = ["nl80211", "rtl871xdrv", "wext"]
-            hostapd_started = False
-            last_error = ""
-            
-            for driver in drivers:
-                hostapd_conf = f"""interface={iface}
+    dnsmasq_path = "/tmp/theia_dnsmasq.conf"
+    with open(dnsmasq_path, "w") as f:
+        f.write(dnsmasq_conf)
+
+    dnsmasq_result = subprocess.run(
+        ["sudo", "dnsmasq", "-C", dnsmasq_path],
+        capture_output=True, text=True, timeout=5
+    )
+    print(f"[THEIA] Hotspot: dnsmasq returned {dnsmasq_result.returncode}", flush=True)
+    time.sleep(1)
+
+    # Step 5: Try hostapd with multiple drivers
+    drivers = ["nl80211", "rtl871xdrv", "wext"]
+    hostapd_started = False
+    last_error = ""
+
+    for driver in drivers:
+        hostapd_conf = f"""interface={iface}
 driver={driver}
 ssid={ssid}
 hw_mode=g
@@ -590,52 +627,46 @@ wpa_passphrase={password}
 wpa_key_mgmt=WPA-PSK
 rsn_pairwise=CCMP
 """
-                conf_path = f"/tmp/theia_hostapd_{driver}.conf"
-                # Holds the WiFi passphrase: owner-only (hostapd is started through sudo, i.e. root)
-                fd = os.open(conf_path, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
-                with os.fdopen(fd, "w") as f:
-                    f.write(hostapd_conf)
-                
-                # Start hostapd in background (-B flag)
-                print(f"[THEIA] Hotspot: trying hostapd with driver {driver}", flush=True)
-                hostapd_result = subprocess.run(
-                    ["sudo", "hostapd", "-B", conf_path],
-                    capture_output=True, text=True, timeout=10
-                )
-                print(f"[THEIA] Hotspot: hostapd {driver} returned {hostapd_result.returncode}, stderr={hostapd_result.stderr[:300] if hostapd_result.stderr else ''}", flush=True)
-                
-                time.sleep(1)
-                
-                # Check if hostapd is running (look for any hostapd process, not just the config file)
-                ps_check = subprocess.run(
-                    ["pgrep", "-a", "hostapd"],
-                    capture_output=True, text=True, timeout=5
-                )
-                
-                if ps_check.returncode == 0 and "hostapd" in ps_check.stdout:
-                    hostapd_started = True
-                    print(f"[THEIA] Hotspot: hostapd started with driver {driver}", flush=True)
-                    break
-                else:
-                    last_error = hostapd_result.stderr.strip() or hostapd_result.stdout.strip() or f"Driver {driver} failed"
-                    print(f"[THEIA] Hotspot: driver {driver} failed - {last_error}", flush=True)
-                    subprocess.run(["sudo", "pkill", "hostapd"], capture_output=True, timeout=5)
-            
-            if hostapd_started:
-                return {"status": "success", "message": f"Hotspot '{ssid}' demarre sur {iface} (192.168.4.1)"}
-            else:
-                # Even if hostapd failed, dnsmasq is running and interface is configured
-                # Return partial success or error depending on dnsmasq
-                if dnsmasq_result.returncode == 0:
-                    return {"status": "warning", "message": f"DHCP demarre ({iface} @ 192.168.4.1) mais hostapd echoue. Erreur: {last_error}"}
-                else:
-                    return {"status": "error", "message": f"Echec hotspot et DHCP. Hostapd: {last_error}"}
-        
-        data = await asyncio.get_event_loop().run_in_executor(None, _start)
-        return data
-    except Exception as e:
-        print(f"[THEIA] Hotspot: exception during start: {e}", flush=True)
-        return {"status": "error", "message": str(e)}
+        conf_path = f"/tmp/theia_hostapd_{driver}.conf"
+        # Holds the WiFi passphrase: owner-only (hostapd is started through sudo, i.e. root)
+        fd = os.open(conf_path, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+        with os.fdopen(fd, "w") as f:
+            f.write(hostapd_conf)
+
+        # Start hostapd in background (-B flag)
+        print(f"[THEIA] Hotspot: trying hostapd with driver {driver}", flush=True)
+        hostapd_result = subprocess.run(
+            ["sudo", "hostapd", "-B", conf_path],
+            capture_output=True, text=True, timeout=10
+        )
+        print(f"[THEIA] Hotspot: hostapd {driver} returned {hostapd_result.returncode}, stderr={hostapd_result.stderr[:300] if hostapd_result.stderr else ''}", flush=True)
+
+        time.sleep(1)
+
+        # Check if hostapd is running (look for any hostapd process, not just the config file)
+        ps_check = subprocess.run(
+            ["pgrep", "-a", "hostapd"],
+            capture_output=True, text=True, timeout=5
+        )
+
+        if ps_check.returncode == 0 and "hostapd" in ps_check.stdout:
+            hostapd_started = True
+            print(f"[THEIA] Hotspot: hostapd started with driver {driver}", flush=True)
+            break
+        else:
+            last_error = hostapd_result.stderr.strip() or hostapd_result.stdout.strip() or f"Driver {driver} failed"
+            print(f"[THEIA] Hotspot: driver {driver} failed - {last_error}", flush=True)
+            subprocess.run(["sudo", "pkill", "hostapd"], capture_output=True, timeout=5)
+
+    if hostapd_started:
+        return {"status": "success", "message": f"Hotspot '{ssid}' demarre sur {iface} (192.168.4.1)"}
+    else:
+        # Even if hostapd failed, dnsmasq is running and interface is configured
+        # Return partial success or error depending on dnsmasq
+        if dnsmasq_result.returncode == 0:
+            return {"status": "warning", "message": f"DHCP demarre ({iface} @ 192.168.4.1) mais hostapd echoue. Erreur: {last_error}"}
+        else:
+            return {"status": "error", "message": f"Echec hotspot et DHCP. Hostapd: {last_error}"}
 
 
 @router.post("/hotspot/stop")
@@ -859,7 +890,6 @@ async def tailscale_exit_node(body: dict):
 # ── Backups ───────────────────────────────────────────────────────
 
 BACKUP_DIR = os.getenv("THEIA_BACKUP_DIR", "/opt/theia/backups")
-DATA_DIR = os.getenv("THEIA_DATA_DIR", "/opt/theia/data")
 
 
 @router.get("/backups")
