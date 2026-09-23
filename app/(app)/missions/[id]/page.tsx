@@ -2229,8 +2229,10 @@ export default function MissionDetailPage() {
                         const otherTs = new Date(other.timestamp).getTime()
                         return Math.abs(detTs - otherTs) <= 1000 // Within 1 second
                       })
-                      // Get TX name from device or tx_id, fallback to zone_label
-                      const txName = det.tx_id ? `TX-${det.tx_id}` : (det.device_name || det.zone_label || "Unknown")
+                      // Get TX name from device or tx_id, fallback to zone_label.
+                      // tx_id already reads "TX01": prefixing it here showed "TX-TX01" in the
+                      // feed while the device list beside it said "TX01".
+                      const txName = det.tx_id || det.device_name || det.zone_label || "Unknown"
                       // Show relative time for expired feed (last detection reference)
                       const showRelativeTime = feedExpired && i === 0
                       const relativeTime = showRelativeTime ? formatRelativeLocal(det.timestamp) : null

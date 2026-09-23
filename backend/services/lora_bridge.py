@@ -468,7 +468,8 @@ class PortReader:
                     dev_type = "microwave_tx"
                 await db.execute(
                     "INSERT INTO devices (id, dev_eui, name, type, serial_port, enabled) VALUES (?, ?, ?, ?, ?, 1)",
-                    (did, tx_id, f"TX-{tx_id}", dev_type, self.port),
+                    # tx_id already reads "TX01"/"XAVER01": prefixing it gave "TX-TX01".
+                    (did, tx_id, tx_id, dev_type, self.port),
                 )
                 await db.execute(
                     "INSERT INTO logs (level, source, message) VALUES (?, ?, ?)",

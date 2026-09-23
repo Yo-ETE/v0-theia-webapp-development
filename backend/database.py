@@ -446,4 +446,39 @@ async def init_tables(db: aiosqlite.Connection):
         await db.execute("ALTER TABLE missions ADD COLUMN notification_config TEXT DEFAULT NULL")
     except Exception:
         pass
+
+    # One-time rename: enrollment used to build the display name as f"TX-{tx_id}", but tx_id
+    # already reads "TX01" / "XAVER01", so every device showed up as "TX-TX01". The name is now
+    # the tx_id itself -- what is written on the node and what the operator says out loud.
+    #
+    # Only auto-generated names are touched: the WHERE clause matches that exact old pattern, so
+    # a device renamed by hand keeps its name. The denormalised copies in notifications and
+    # events are display identity and follow. `logs` is deliberately left alone: it is the audit
+    # trail, and rewriting what it recorded at the time would be worse than a stale spelling.
+    try:
+        cursor = await db.execute(
+            "SELECT dev_eui, name FROM devices WHERE name = 'TX-' || dev_eui"
+        )
+        renames = await cursor.fetchall()
+        for row in renames:
+            old_name, new_name = row["name"], row["dev_eui"]
+            await db.execute("UPDATE devices SET name=? WHERE dev_eui=?", (new_name, new_name))
+            await db.execute(
+                "UPDATE notifications SET device_name=? WHERE device_name=?", (new_name, old_name)
+            )
+            await db.execute(
+                "UPDATE notifications SET message=REPLACE(message, ?, ?) WHERE message LIKE ?",
+                (old_name, new_name, f"{old_name}%"),
+            )
+            await db.execute(
+                "UPDATE events SET device_name=? WHERE device_name=?", (new_name, old_name)
+            )
+        if renames:
+            await db.execute(
+                "INSERT INTO logs (level, source, message) VALUES (?, ?, ?)",
+                ("info", "system", f"Renamed {len(renames)} device(s): dropped the duplicated TX- prefix"),
+            )
+    except Exception as e:
+        print(f"[THEIA] Device name migration skipped: {e}")
+
     await db.commit()

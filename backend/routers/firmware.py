@@ -833,7 +833,8 @@ async def flash_device(req: FlashRequest):
                     "UPDATE devices SET name=?, type=?, serial_port=?, enabled=1, "
                     "mission_id=NULL, zone=NULL, zone_id=NULL, zone_label=NULL, side=NULL "
                     "WHERE dev_eui=?",
-                    (f"TX-{req.tx_id}", dev_type, store_port, req.tx_id),
+                    # tx_id already reads "TX01"/"XAVER01": prefixing it gave "TX-TX01".
+                    (req.tx_id, dev_type, store_port, req.tx_id),
                 )
                 action = "reactive" if not existing["enabled"] else "mis a jour"
             else:
@@ -841,7 +842,7 @@ async def flash_device(req: FlashRequest):
                 did = str(uuid.uuid4())[:8]
                 await db.execute(
                     "INSERT INTO devices (id, dev_eui, name, type, serial_port, enabled) VALUES (?, ?, ?, ?, ?, 1)",
-                    (did, req.tx_id, f"TX-{req.tx_id}", dev_type, store_port),
+                    (did, req.tx_id, req.tx_id, dev_type, store_port),
                 )
                 action = "cree"
 
