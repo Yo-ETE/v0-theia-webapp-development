@@ -28,6 +28,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { cn } from "@/lib/utils"
 import { formatAgeFr, parseAsUTC } from "@/lib/format"
+import { toast } from "sonner"
 
 function formatUptime(seconds: number): string {
   const d = Math.floor(seconds / 86400)
@@ -114,11 +115,18 @@ export default function DashboardPage() {
     if (base) {
       const t = localStorage.getItem("theia_token")
       const headers: Record<string, string> = t ? { Authorization: `Bearer ${t}` } : {}
-      await Promise.all(
-        ids.map((id) =>
-          fetch(`${base}/api/notifications/${id}`, { method: "DELETE", credentials: "include", headers })
+      try {
+        const results = await Promise.all(
+          ids.map((id) =>
+            fetch(`${base}/api/notifications/${id}`, { method: "DELETE", credentials: "include", headers })
+          )
         )
-      )
+        const failed = results.filter((r) => !r.ok).length
+        if (failed > 0) toast.error(`${failed} alerte(s) n'ont pas pu etre ignorees`)
+      } catch {
+        // Silence here meant the card stayed on screen with no explanation.
+        toast.error("Hub injoignable : l'alerte n'a pas ete ignoree")
+      }
       mutateNotifs()
     }
   }
@@ -127,7 +135,13 @@ export default function DashboardPage() {
     const base = getBackendBase()
     if (base) {
       const t = localStorage.getItem("theia_token")
-      await fetch(`${base}/api/notifications/dismiss-all`, { method: "POST", credentials: "include", headers: t ? { Authorization: `Bearer ${t}` } : {} })
+      const headers: Record<string, string> = t ? { Authorization: `Bearer ${t}` } : {}
+      try {
+        const r = await fetch(`${base}/api/notifications/dismiss-all`, { method: "POST", credentials: "include", headers })
+        if (!r.ok) toast.error(`Echec de l'effacement (${r.status})`)
+      } catch {
+        toast.error("Hub injoignable : les alertes n'ont pas ete effacees")
+      }
       mutateNotifs()
     }
   }

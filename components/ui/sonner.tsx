@@ -1,14 +1,14 @@
 'use client'
 
-import { useTheme } from 'next-themes'
 import { Toaster as Sonner, ToasterProps } from 'sonner'
 
+// THEIA is dark-only (`<html className="dark">` is hard-coded and no ThemeProvider is
+// mounted), so asking next-themes for the theme returned undefined and fell back to
+// "system" -- which would have rendered a light toast over a dark ops interface.
 const Toaster = ({ ...props }: ToasterProps) => {
-  const { theme = 'system' } = useTheme()
-
   return (
     <Sonner
-      theme={theme as ToasterProps['theme']}
+      theme="dark"
       className="toaster group"
       style={
         {

@@ -5,6 +5,8 @@ import { AppSidebar } from "@/components/app-sidebar"
 import { TheiaFooter } from "@/components/theia-footer"
 import { TheiaWatermark } from "@/components/theia-watermark"
 import { AuthProvider, useAuth } from "@/lib/auth-context"
+import { ConnectionStatus } from "@/components/connection-status"
+import { Toaster } from "@/components/ui/sonner"
 import { useRouter } from "next/navigation"
 import { useEffect } from "react"
 import { Loader2 } from "lucide-react"
@@ -44,9 +46,11 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
           <SidebarInset className="flex flex-col min-h-screen relative overflow-hidden">
             <TheiaWatermark />
             <div className="relative z-10 flex flex-col flex-1">
+              <ConnectionStatus />
               {children}
               <TheiaFooter />
             </div>
+            <Toaster position="top-right" richColors closeButton />
           </SidebarInset>
         </SidebarProvider>
       </AuthGate>

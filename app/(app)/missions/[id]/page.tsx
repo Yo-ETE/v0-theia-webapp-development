@@ -7,7 +7,7 @@ import { useParams } from "next/navigation"
 import {
   ArrowLeft, Radio, MapPin, Clock, Users, BarChart3, Plus,
   Pencil, Play, Pause, CheckCircle, Trash2, Building2, Home,
-  Activity, Eye, EyeOff, Zap, Timer, Download, Signal, Battery, Wifi, Unlink,
+  Activity, Eye, EyeOff, Zap, Timer, Download, Signal, Battery, Wifi, WifiOff, Unlink,
   Flame, Crosshair, ArrowDownLeft, ArrowUpRight, Bell, BellOff,
   Maximize2, Minimize2, FileImage, Ruler, Palette, RotateCw,
   Volume2, VolumeX, Grid3X3, ArrowLeftRight, Copy, Plug,
@@ -336,7 +336,7 @@ export default function MissionDetailPage() {
     }
   }, [id, mutateEvents, playDetection])
 
-  useSSE(handleSSE)
+  const { connected: sseConnected } = useSSE(handleSSE)
 
   // Load cached detections from localStorage on mount
   // This shows the last known detections when returning to the mission
@@ -1187,6 +1187,16 @@ export default function MissionDetailPage() {
               {liveDetections.length > 0 && (
                 <span className="flex items-center gap-1 text-xs text-success font-mono">
                   <Activity className="h-3 w-3 animate-pulse" />LIVE
+                </span>
+              )}
+              {/* Without this, a dropped SSE connection looks exactly like an empty room:
+                  the map simply stops moving and nothing says why. */}
+              {!sseConnected && mission.status !== "completed" && (
+                <span
+                  className="flex items-center gap-1 text-xs text-destructive font-mono"
+                  title="Le flux temps reel est interrompu. La carte n'est plus alimentee."
+                >
+                  <WifiOff className="h-3 w-3" />FLUX COUPE
                 </span>
               )}
               <div className="flex items-center gap-1.5 ml-auto">
