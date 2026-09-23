@@ -10,6 +10,7 @@ import OccupancyCanvas from "./occupancy-canvas"
 import { buildGrid, type SensorReading } from "@/lib/occupancy-grid"
 import { groupSidesByBearing } from "@/lib/facade-utils"
 import { updateTracks, visibleTracks, trackSpeed, trackHeading, type Track, type Observation } from "@/lib/tracking"
+import { fuseGroup, gateForExtent, circleIntersections, type RawDetection, type Prior } from "@/lib/detection-fusion"
 
 /** Build an arc polygon for FOV visualization (pure function, no hooks) */
 function buildFovArc(
@@ -56,40 +57,6 @@ const SENSOR_SPECS: Record<string, { fovDeg: number; maxRangeM: number; label: s
   xaver:         { fovDeg: 120, maxRangeM: 8,  label: "XAVER 400" },  // Through-wall radar, 120deg FOV, 8m range
   }
 const DEFAULT_SENSOR_SPECS = { fovDeg: 90, maxRangeM: 6, label: "Unknown", presenceOnly: false }
-
-/**
- * True 2D fix from two depth-only sensors (C4001) that both measured a target at the same
- * moment: intersect the two circles (center = sensor position, radius = measured distance).
- * A depth-only sensor has no bearing, so on its own it can only be projected straight along
- * its axis -- correct if the target happens to be centered on that axis, wrong otherwise.
- * Averaging two such straight-line guesses (the previous approach) does not converge to the
- * true position for an off-axis target; intersecting the two range circles does, up to the
- * usual two-solution ambiguity resolved by the caller (FOV / zone membership).
- * Returns 0, 1 (tangent circles) or 2 points in meter-space. `noiseM` widens the intersection
- * test to tolerate real sensor noise (circles that should touch but measured slightly short/long).
- */
-function circleIntersections(
-  c1: [number, number], r1: number,
-  c2: [number, number], r2: number,
-  noiseM = 0.5,
-): [number, number][] {
-  const dx = c2[0] - c1[0]
-  const dy = c2[1] - c1[1]
-  const d = Math.hypot(dx, dy)
-  if (d < 1e-6) return [] // sensors at the same spot: degenerate, no unique fix
-  if (d > r1 + r2 + noiseM || d < Math.abs(r1 - r2) - noiseM) return [] // circles don't meet
-  const a = (r1 * r1 - r2 * r2 + d * d) / (2 * d)
-  const h = Math.sqrt(Math.max(0, r1 * r1 - a * a)) // clamped: noise can push h^2 slightly negative
-  const mx = c1[0] + (a * dx) / d
-  const my = c1[1] + (a * dy) / d
-  const ux = -dy / d
-  const uy = dx / d
-  if (h < 1e-6) return [[mx, my]] // tangent: single solution
-  return [
-    [mx + h * ux, my + h * uy],
-    [mx - h * ux, my - h * uy],
-  ]
-}
 
 interface SensorPlaceMode {
   zoneId: string
@@ -1360,8 +1327,8 @@ export default function MapInner({
   // heading, trail). Presence-only sensors are excluded on purpose: with no distance and no
   // bearing they carry no position to track, and feeding their cone centre in would invent a
   // target where the hardware only says "something, somewhere in here".
-  const liveObservations = useMemo<Observation[]>(() => {
-    const obs: Observation[] = []
+  const rawDetections = useMemo<RawDetection[]>(() => {
+    const out: RawDetection[] = []
     try {
       for (const sp of sensorPlacements) {
         const det = liveByDevice[sp.device_id]
@@ -1386,28 +1353,60 @@ export default function MapInner({
 
         const xCm = Number(det.x ?? 0)
         const yCm = Number(det.y ?? 0)
-        let pt: [number, number]
-        if (xCm !== 0 || yCm !== 0) {
-          pt = [sM[0] + (yCm / 100) * nM[0] + (xCm / 100) * rM[0], sM[1] + (yCm / 100) * nM[1] + (xCm / 100) * rM[1]]
-        } else {
-          pt = [sM[0] + (dist / 100) * nM[0], sM[1] + (dist / 100) * nM[1]]
-        }
+        const hasBearing = xCm !== 0 || yCm !== 0
+        const pt: [number, number] = hasBearing
+          ? [sM[0] + (yCm / 100) * nM[0] + (xCm / 100) * rM[0], sM[1] + (yCm / 100) * nM[1] + (xCm / 100) * rM[1]]
+          : [sM[0] + (dist / 100) * nM[0], sM[1] + (dist / 100) * nM[1]]
+
         const ts = det.timestamp ? new Date(det.timestamp).getTime() : Date.now()
-        obs.push({ x: pt[0], y: pt[1], t: Number.isFinite(ts) ? ts : Date.now(), deviceId: sp.device_id })
+        out.push({
+          deviceId: sp.device_id,
+          t: Number.isFinite(ts) ? ts : Date.now(),
+          sensorM: sM,
+          normalM: nM,
+          distM: dist / 100,
+          hasBearing,
+          pointM: pt,
+        })
       }
     } catch (e) {
       console.warn("[THEIA] tracking projection error:", e)
     }
-    return obs
+    return out
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [liveByDevice, sensorPlacements, zones])
 
+  // Association gate scaled to the space actually being watched: a fixed 3m covers two thirds
+  // of a small room, which would merge two people standing apart.
+  const trackerGateM = useMemo(() => {
+    let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity
+    for (const z of zones) {
+      for (const p of z.polygon ?? []) {
+        const [mx, my] = toMeters(p as [number, number])
+        if (mx < minX) minX = mx
+        if (mx > maxX) maxX = mx
+        if (my < minY) minY = my
+        if (my > maxY) maxY = my
+      }
+    }
+    if (!Number.isFinite(minX) || maxX <= minX) return gateForExtent(NaN)
+    return gateForExtent(Math.hypot(maxX - minX, maxY - minY))
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [zones])
+
   const [tracks, setTracks] = useState<Track[]>([])
+  // Last fused position, so a lone depth-only reading has a better starting point than its own
+  // axis. Sensors do not report in step, so this is the common case, not an edge case.
+  const fusionPriorRef = useRef<Prior | null>(null)
 
   useEffect(() => {
-    if (liveObservations.length === 0) return
-    setTracks((prev) => updateTracks(prev, liveObservations, Date.now()))
-  }, [liveObservations])
+    if (rawDetections.length === 0) return
+    const fused = fuseGroup(rawDetections, fusionPriorRef.current)
+    if (!fused) return
+    fusionPriorRef.current = { x: fused.x, y: fused.y, t: fused.t }
+    const obs: Observation[] = [{ x: fused.x, y: fused.y, t: fused.t, deviceId: fused.deviceIds.join("+") }]
+    setTracks((prev) => updateTracks(prev, obs, Date.now(), { gateM: trackerGateM }))
+  }, [rawDetections, trackerGateM])
 
   // Expiry pass: without this a track would sit on the map forever once detections stop, since
   // the update above only runs when there IS something to feed it.
