@@ -229,6 +229,9 @@ export default function AdminPage() {
   // Hotspot
   const [hotspotStatus, setHotspotStatus] = useState<{ active: boolean; ssid: string; clients: number } | null>(null)
   const [isTogglingHotspot, setIsTogglingHotspot] = useState(false)
+  const [hotspotCreds, setHotspotCreds] = useState<{ ssid: string; password: string } | null>(null)
+  const [hotspotPwDraft, setHotspotPwDraft] = useState("")
+  const [savingHotspotPw, setSavingHotspotPw] = useState(false)
 
   // Git / Version
   const [versionInfo, setVersionInfo] = useState<VersionInfo | null>(null)
@@ -268,6 +271,14 @@ export default function AdminPage() {
   // ── Fetchers ──
 
   const fetchConnectionStatus = useCallback(async () => {
+    // Recovery credentials first, in their own try: they must load even when the wifi or
+    // ethernet probe below throws. A half-broken network stack is exactly the situation where
+    // you are about to need the hotspot passphrase, so it must not depend on those succeeding.
+    try {
+      const creds = await api.get("hotspot/credentials")
+      if (creds?.password) setHotspotCreds(creds)
+    } catch { /* keep whatever was already loaded */ }
+
     try {
       const [wifi, eth, modem, hotspot] = await Promise.all([
         api.get("wifi/status"),
@@ -839,7 +850,9 @@ export default function AdminPage() {
                       onClick={async () => {
                         setIsTogglingHotspot(true)
                         try {
-                          const result = await api.post("hotspot/start", { ssid: "THEIA", password: "theia1234" })
+                          // No credentials in the body: the backend uses the stored passphrase,
+                          // the same one the boot-time auto-hotspot uses and the one shown below.
+                          const result = await api.post("hotspot/start", {})
                           if (result.status === "error" || result.status === "warning") {
                             alert(`Hotspot: ${result.message}`)
                           }
@@ -855,6 +868,70 @@ export default function AdminPage() {
                     >
                       {isTogglingHotspot ? "Demarrage..." : "Demarrer"}
                     </Button>
+                  </div>
+                )}
+
+                {/* Recovery credentials. Shown here on purpose: the hotspot is what you fall
+                    back to when the hub has no network, so the passphrase has to be known
+                    BEFORE that happens -- reading it off the offline hub is not an option. */}
+                {hotspotCreds && (
+                  <div className="pl-6 flex flex-col gap-2 pt-1">
+                    <div className="flex items-center gap-4">
+                      <div>
+                        <p className="text-[10px] text-muted-foreground">SSID de secours</p>
+                        <p className="text-xs font-mono text-foreground">{hotspotCreds.ssid}</p>
+                      </div>
+                      <div>
+                        <p className="text-[10px] text-muted-foreground">Mot de passe</p>
+                        <p className="text-xs font-mono text-foreground">{hotspotCreds.password}</p>
+                      </div>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        className="h-7 text-[10px] gap-1"
+                        onClick={() => navigator.clipboard?.writeText(hotspotCreds.password)}
+                      >
+                        <Copy className="h-3 w-3" />
+                        Copier
+                      </Button>
+                    </div>
+                    <p className="text-[10px] text-muted-foreground">
+                      Notez-le maintenant : sans reseau, c&apos;est ce mot de passe qui permet de rejoindre le hub.
+                      Utilise aussi bien par le demarrage automatique que par le bouton ci-dessus.
+                    </p>
+                    <div className="flex items-center gap-2">
+                      <Input
+                        type="text"
+                        value={hotspotPwDraft}
+                        onChange={(e) => setHotspotPwDraft(e.target.value)}
+                        placeholder="Definir un mot de passe (8 a 63 caracteres)"
+                        className="h-7 text-xs flex-1"
+                      />
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        className="h-7 text-[10px]"
+                        disabled={savingHotspotPw || hotspotPwDraft.length < 8 || hotspotPwDraft.length > 63}
+                        onClick={async () => {
+                          setSavingHotspotPw(true)
+                          try {
+                            const res = await api.post("hotspot/credentials", { password: hotspotPwDraft })
+                            if (res.status === "error") {
+                              alert(`Hotspot: ${res.message}`)
+                            } else {
+                              setHotspotCreds({ ...hotspotCreds, password: hotspotPwDraft })
+                              setHotspotPwDraft("")
+                            }
+                          } catch (e) {
+                            alert(`Erreur: ${e instanceof Error ? e.message : "inconnue"}`)
+                          } finally {
+                            setSavingHotspotPw(false)
+                          }
+                        }}
+                      >
+                        {savingHotspotPw ? "..." : "Enregistrer"}
+                      </Button>
+                    </div>
                   </div>
                 )}
               </div>

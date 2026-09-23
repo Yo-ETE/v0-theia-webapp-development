@@ -477,8 +477,17 @@ async def hotspot_status():
 @router.post("/hotspot/start")
 async def hotspot_start(body: dict = None):
     """Start WiFi hotspot using hostapd."""
-    ssid = (body or {}).get("ssid", "THEIA")
-    password = (body or {}).get("password") or _get_or_create_hotspot_password()
+    ssid = (body or {}).get("ssid") or _auto_hotspot_ssid()
+    password = (body or {}).get("password") or ""
+    # "theia1234" was this file's old hardcoded default and is published in the public repo,
+    # so it is a burned passphrase: ignore it wherever it still comes from (an older cached
+    # frontend build, a script) and fall back to the stored one rather than opening an AP
+    # anyone who read the repo can join.
+    if password == "theia1234":
+        print("[THEIA] Hotspot: ignoring the public default passphrase, using the stored one", flush=True)
+        password = ""
+    if not password:
+        password = _get_or_create_hotspot_password()
     if not valid_ssid(ssid):
         return {"status": "error", "message": "SSID invalide (1-32 caracteres, sans retour a la ligne)"}
     if not valid_wpa_passphrase(password):
@@ -507,13 +516,52 @@ def _get_or_create_hotspot_password() -> str:
     import secrets
     pw = secrets.token_urlsafe(9)
     try:
-        os.makedirs(os.path.dirname(HOTSPOT_PASSWORD_FILE), exist_ok=True)
-        fd = os.open(HOTSPOT_PASSWORD_FILE, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
-        with os.fdopen(fd, "w") as f:
-            f.write(pw)
+        _write_hotspot_password(pw)
     except OSError:
         pass
     return pw
+
+
+def _write_hotspot_password(pw: str) -> None:
+    """Write the passphrase 0600. The mode passed to os.open only applies when the file is
+    created, so chmod as well: a file left over from an earlier version (or an earlier umask)
+    would otherwise keep its old, possibly world-readable, permissions forever."""
+    os.makedirs(os.path.dirname(HOTSPOT_PASSWORD_FILE), exist_ok=True)
+    fd = os.open(HOTSPOT_PASSWORD_FILE, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+    with os.fdopen(fd, "w") as f:
+        f.write(pw)
+    try:
+        os.chmod(HOTSPOT_PASSWORD_FILE, 0o600)
+    except OSError:
+        pass
+
+
+def _auto_hotspot_ssid() -> str:
+    """SSID the boot-time watchdog will use -- same default as the manual start."""
+    return os.getenv("THEIA_AUTO_HOTSPOT_SSID", "THEIA")
+
+
+@router.get("/hotspot/credentials")
+async def hotspot_credentials():
+    """SSID + passphrase shared by the manual button and the boot-time auto-hotspot.
+    The whole point is to read this BEFORE losing connectivity: once the hub is offline the
+    hotspot is the way back in, and a passphrase only readable by SSH-ing into that same
+    offline hub is useless. Admin-only (the /api/config prefix is)."""
+    return {"ssid": _auto_hotspot_ssid(), "password": _get_or_create_hotspot_password()}
+
+
+@router.post("/hotspot/credentials")
+async def set_hotspot_credentials(body: dict):
+    """Replace the generated passphrase with one you can actually remember on site.
+    Stored in the same file the auto-hotspot reads, so both paths stay in sync."""
+    password = (body or {}).get("password", "")
+    if not valid_wpa_passphrase(password):
+        return {"status": "error", "message": "Mot de passe WiFi invalide (8 a 63 caracteres ASCII)"}
+    try:
+        _write_hotspot_password(password)
+    except OSError as e:
+        return {"status": "error", "message": f"Ecriture impossible: {e}"}
+    return {"status": "success", "message": "Mot de passe hotspot enregistre"}
 
 
 def start_hotspot_blocking(ssid: str, password: str) -> dict:
