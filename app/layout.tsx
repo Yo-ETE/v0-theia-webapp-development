@@ -49,6 +49,15 @@ export default function RootLayout({
   return (
     <html lang="fr" className={`dark bg-background ${geistSans.variable} ${geistMono.variable}`}>
       <body className="font-sans antialiased">
+        {/* Applied before React hydrates: reloading in night mode must not flash a bright
+            screen at someone who is standing in the dark. */}
+        <script dangerouslySetInnerHTML={{ __html: `
+          try {
+            if (localStorage.getItem('theia_theme') === 'night') {
+              document.documentElement.dataset.theme = 'night';
+            }
+          } catch (e) {}
+        `}} />
         <script dangerouslySetInnerHTML={{ __html: `
           // Auto-reload on ChunkLoadError (stale cache after Pi rebuild)
           // Uses sessionStorage to prevent infinite reload loops

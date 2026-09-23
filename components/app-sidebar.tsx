@@ -2,6 +2,7 @@
 
 import Link from "next/link"
 import { usePathname, useRouter } from "next/navigation"
+import { NightModeToggle } from "@/components/night-mode-toggle"
 import {
   LayoutDashboard,
   Crosshair,
@@ -136,6 +137,7 @@ export function AppSidebar() {
           <p className="text-2xs text-muted-foreground/50 tracking-wider">
             THEIA Hub Control v1.0
           </p>
+          <NightModeToggle />
           <button
             onClick={async () => {
               if ("serviceWorker" in navigator) {
