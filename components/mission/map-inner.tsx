@@ -6,6 +6,8 @@ import { cn } from "@/lib/utils"
 import type { VisualConfig } from "@/hooks/use-visual-config"
 import { VISUAL_DEFAULTS } from "@/hooks/use-visual-config"
 import HeatmapCanvas from "./heatmap-canvas"
+import OccupancyCanvas from "./occupancy-canvas"
+import { buildGrid, type SensorReading } from "@/lib/occupancy-grid"
 import { groupSidesByBearing } from "@/lib/facade-utils"
 import { updateTracks, visibleTracks, trackSpeed, trackHeading, type Track, type Observation } from "@/lib/tracking"
 
@@ -357,6 +359,9 @@ export default function MapInner({
   const [heatmapRadius, setHeatmapRadius] = useState(2.0)
   // Heatmap time filter: "all" | "1h" | "10m"
   const [heatmapTimeFilter, setHeatmapTimeFilter] = useState<"all" | "1h" | "10m">("all")
+  // Which overlay the heatmap button shows: the historical density map, or the Bayesian
+  // occupancy grid (which also renders what sensors have actively cleared).
+  const [overlayMode, setOverlayMode] = useState<"heatmap" | "occupancy">("heatmap")
   // Keep ref in sync for use in native Leaflet callbacks
   useEffect(() => { localPolyRef.current = localPoly }, [localPoly])
 
@@ -1415,6 +1420,73 @@ export default function MapInner({
 
   const shownTracks = useMemo(() => visibleTracks(tracks), [tracks])
 
+  // ── Occupancy grid ──
+  // Same events the heatmap uses, but read as evidence rather than as dots: each reading also
+  // clears the space the sensor saw through, and a sensor reporting nothing clears its whole
+  // cone. That is what lets the map distinguish "swept, empty" from "never looked at".
+  const occupancyGrid = useMemo(() => {
+    if (!heatmapMode || overlayMode !== "occupancy" || !zones.length) return null
+    try {
+      const now = Date.now()
+      const readings: SensorReading[] = []
+      type SensorSpec = { fovDeg: number; maxRangeM: number; label: string; presenceOnly?: boolean }
+      const geoByDevice: Record<string, { sM: [number, number]; nM: [number, number]; rM: [number, number]; specs: SensorSpec }> = {}
+
+      for (const sp of sensorPlacements) {
+        const zone = zones.find((z) => z.id === sp.zone_id)
+        if (!zone) continue
+        const edge = getSideEdge(zone, sp.side)
+        const centroid = zoneCentroids[zone.id]
+        if (!edge || !centroid) continue
+        const sLL = pointAlongSide(edge[0], edge[1], sp.sensor_position)
+        const rawNM = inwardNormalM(edge[0], edge[1], centroid)
+        const nM: [number, number] = sp.orientation === "outward" ? [-rawNM[0], -rawNM[1]] : rawNM
+        geoByDevice[sp.device_id] = {
+          sM: toMeters(sLL),
+          nM,
+          rM: [nM[1], -nM[0]],
+          specs: SENSOR_SPECS[sp.device_type ?? ""] ?? DEFAULT_SENSOR_SPECS,
+        }
+      }
+
+      for (const evt of events) {
+        const p = evt.payload ?? {}
+        const geo = evt.device_id ? geoByDevice[evt.device_id] : null
+        if (!geo) continue
+        const eTime = new Date(evt.timestamp).getTime()
+        const ageSec = (now - eTime) / 1000
+        if (heatmapTimeFilter === "1h" && ageSec > 3600) continue
+        if (heatmapTimeFilter === "10m" && ageSec > 600) continue
+
+        const sensorType = String(p.sensor_type ?? "")
+        const presenceOnly = geo.specs.presenceOnly || sensorType === "gravity_mw"
+        const dist = Number(p.distance ?? 0)
+        const presence = presenceOnly ? dist === 1 || Boolean(p.presence) : dist > 0
+        const effectiveFov = (geo.specs.fovDeg / 2) * Math.PI / 180
+
+        readings.push({
+          sx: geo.sM[0], sy: geo.sM[1],
+          nx: geo.nM[0], ny: geo.nM[1],
+          rx: geo.rM[0], ry: geo.rM[1],
+          halfFovRad: effectiveFov,
+          maxRangeM: geo.specs.maxRangeM,
+          presence,
+          presenceOnly,
+          distM: presenceOnly ? 0 : dist / 100,
+          targetX: Number(p.x ?? 0) / 100,
+          targetY: Number(p.y ?? 0) / 100,
+        })
+      }
+
+      if (readings.length === 0) return null
+      return buildGrid(readings, 0.5)
+    } catch (e) {
+      console.warn("[THEIA] occupancy grid error:", e)
+      return null
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [heatmapMode, overlayMode, zones, events, heatmapTimeFilter, sensorPlacements])
+
   if (!mounted || !RL) {
     return (
       <div className={cn("relative rounded-lg overflow-hidden border border-border/50 bg-muted/20", className)}>
@@ -2184,8 +2256,16 @@ export default function MapInner({
         points={heatPoints}
         radiusMeters={heatmapRadius}
         opacity={0.85}
-        enabled={heatmapMode && heatPoints.length > 0}
+        enabled={heatmapMode && overlayMode === "heatmap" && heatPoints.length > 0}
         zonePolygons={zones.map(z => z.polygon)}
+      />
+
+      {/* Bayesian occupancy grid overlay (alternative to the heatmap) */}
+      <OccupancyCanvas
+        map={mapInstance}
+        grid={occupancyGrid}
+        toLatLon={toLatLon}
+        enabled={heatmapMode && overlayMode === "occupancy"}
       />
 
       {/* Coords overlay */}
@@ -2314,7 +2394,49 @@ export default function MapInner({
       {/* Heatmap controls and legend */}
       {heatmapMode && (
         <div className="absolute bottom-4 right-4 z-[500] flex flex-col gap-3 rounded-lg bg-card/95 backdrop-blur px-4 py-3 border border-border shadow-lg max-w-sm">
+          {/* Overlay picker: density of past detections vs probability of presence now */}
+          <div className="flex flex-col gap-1.5">
+            <p className="text-xs font-semibold text-foreground">Affichage</p>
+            <div className="flex gap-1">
+              <button
+                onClick={() => setOverlayMode("heatmap")}
+                className={cn(
+                  "flex-1 rounded px-2 py-1 text-[10px] font-medium transition-colors",
+                  overlayMode === "heatmap" ? "bg-primary text-primary-foreground" : "bg-muted text-muted-foreground hover:bg-muted/70",
+                )}
+              >
+                Heatmap
+              </button>
+              <button
+                onClick={() => setOverlayMode("occupancy")}
+                className={cn(
+                  "flex-1 rounded px-2 py-1 text-[10px] font-medium transition-colors",
+                  overlayMode === "occupancy" ? "bg-primary text-primary-foreground" : "bg-muted text-muted-foreground hover:bg-muted/70",
+                )}
+              >
+                Grille d&apos;occupation
+              </button>
+            </div>
+            {overlayMode === "occupancy" && (
+              <div className="flex flex-col gap-1 pt-1">
+                <div className="flex items-center gap-1.5">
+                  <span className="inline-block h-2.5 w-4 rounded-sm" style={{ background: "rgba(255,10,40,0.8)" }} />
+                  <span className="text-[10px] text-muted-foreground">Presence probable</span>
+                </div>
+                <div className="flex items-center gap-1.5">
+                  <span className="inline-block h-2.5 w-4 rounded-sm" style={{ background: "rgba(40,180,255,0.4)" }} />
+                  <span className="text-[10px] text-muted-foreground">Zone balayee, vide</span>
+                </div>
+                <div className="flex items-center gap-1.5">
+                  <span className="inline-block h-2.5 w-4 rounded-sm border border-border" style={{ background: "transparent" }} />
+                  <span className="text-[10px] text-muted-foreground">Jamais observe</span>
+                </div>
+              </div>
+            )}
+          </div>
+
           {/* Radius slider */}
+          {overlayMode === "heatmap" && (
           <div className="flex flex-col gap-1.5">
             <label className="text-xs font-semibold text-foreground">
               Blur Radius: {heatmapRadius.toFixed(1)}m
@@ -2333,8 +2455,10 @@ export default function MapInner({
               <span>5m</span>
             </div>
           </div>
+          )}
 
-          {/* Color legend */}
+          {/* Color legend (heatmap only -- the grid has its own three-state legend above) */}
+          {overlayMode === "heatmap" && (
           <div className="flex flex-col gap-1">
             <p className="text-xs font-semibold text-foreground">Intensity</p>
             <div
@@ -2348,6 +2472,7 @@ export default function MapInner({
               <span>High</span>
             </div>
           </div>
+          )}
 
           {/* Time filter */}
           <div className="flex flex-col gap-1.5">
