@@ -242,17 +242,50 @@
 }
 
 /*
- * Map tiles and uploaded plans are raster images: no token reaches them, and they are by
- * far the brightest thing on the mission screen. Without this the night palette is
- * pointless exactly where it matters most. Greyscale first so the tiles' own colours stop
- * competing, then tint the result red.
+ * Night mode, map surface. Tiles and uploaded plans are raster images -- no token reaches
+ * them, and they are by far the brightest thing on the mission screen, so without this the
+ * palette is pointless exactly where it matters most.
+ *
+ * feColorMatrix, not a filter chain. The first attempt was
+ * `grayscale(1) brightness(.38) sepia(1) hue-rotate(-28deg) saturate(3.2)` and it came out
+ * OLIVE AND BRIGHTER THAN THE UI on a real map: CSS filters apply in sequence, so the
+ * brightness ran before sepia()+saturate() pushed the result back up, and sepia() is
+ * yellow -- saturating it only amplifies the yellow. A colour matrix maps luminance
+ * straight onto a red ramp, which is what "red monochrome" actually means. The weights
+ * (0.28 / 0.07 / 0.045 of luminance) were tuned against the live map until the basemap sat
+ * below the card background instead of above it.
+ *
  * `img` is safe to catch wholesale: the only raster images in the app are plans and maps
  * (the logo and the watermark are inline SVG).
  */
 :root[data-theme="night"] .leaflet-tile,
 :root[data-theme="night"] .leaflet-image-layer,
 :root[data-theme="night"] img {
-  filter: grayscale(1) brightness(0.38) sepia(1) hue-rotate(-28deg) saturate(3.2);
+  filter: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg'><filter id='theia-night' color-interpolation-filters='sRGB'><feColorMatrix type='matrix' values='0.0595 0.2003 0.0202 0 0  0.0149 0.0501 0.0051 0 0  0.0096 0.0322 0.0032 0 0  0 0 0 1 0'/></filter></svg>#theia-night");
+}
+
+/*
+ * Leaflet draws its labels and controls white, and map-inner.tsx writes the label chips'
+ * background as an inline style while building the HTML -- so only an !important rule
+ * reaching the inner span/div can touch them. Measured on the live map: 14 elements at
+ * luminance 1.0, pure white, the brightest pixels on the entire screen in night mode.
+ * With these rules the brightest background on the map drops to 0.003.
+ */
+:root[data-theme="night"] .leaflet-tooltip,
+:root[data-theme="night"] .leaflet-tooltip span,
+:root[data-theme="night"] .leaflet-tooltip div,
+:root[data-theme="night"] .leaflet-marker-icon span,
+:root[data-theme="night"] .leaflet-marker-icon div,
+:root[data-theme="night"] .leaflet-bar a,
+:root[data-theme="night"] .leaflet-control-layers,
+:root[data-theme="night"] .leaflet-control-attribution {
+  background: oklch(0.15 0.035 25) !important;
+  color: oklch(0.72 0.14 40) !important;
+  border-color: oklch(0.34 0.07 25) !important;
+  box-shadow: none !important;
+}
+:root[data-theme="night"] .leaflet-control-attribution a {
+  color: oklch(0.62 0.12 40) !important;
 }
 
 /* Leaflet tooltip styling for zone/segment labels */
