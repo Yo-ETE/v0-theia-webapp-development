@@ -7,6 +7,7 @@ import type { VisualConfig } from "@/hooks/use-visual-config"
 import { VISUAL_DEFAULTS } from "@/hooks/use-visual-config"
 import HeatmapCanvas from "./heatmap-canvas"
 import { groupSidesByBearing } from "@/lib/facade-utils"
+import { updateTracks, visibleTracks, trackSpeed, trackHeading, type Track, type Observation } from "@/lib/tracking"
 
 /** Build an arc polygon for FOV visualization (pure function, no hooks) */
 function buildFovArc(
@@ -1349,6 +1350,71 @@ export default function MapInner({
     } catch (e) { console.warn("[THEIA] heatPoints error:", e); return [] }
   }, [heatmapMode, zones, events, heatmapTimeFilter, sensorPlacements])
 
+  // ── Target tracking ──
+  // Turns the per-frame detection points into persistent tracks (identity, smoothed position,
+  // heading, trail). Presence-only sensors are excluded on purpose: with no distance and no
+  // bearing they carry no position to track, and feeding their cone centre in would invent a
+  // target where the hardware only says "something, somewhere in here".
+  const liveObservations = useMemo<Observation[]>(() => {
+    const obs: Observation[] = []
+    try {
+      for (const sp of sensorPlacements) {
+        const det = liveByDevice[sp.device_id]
+        if (!det?.presence) continue
+        const sensorType = String(det.sensor_type ?? sp.device_type ?? "")
+        const specs = SENSOR_SPECS[sp.device_type ?? ""] ?? DEFAULT_SENSOR_SPECS
+        if (specs.presenceOnly || sensorType === "gravity_mw") continue
+        const dist = Number(det.distance ?? 0)
+        if (!(dist > 0)) continue
+
+        const zone = zones.find((z) => z.id === sp.zone_id)
+        if (!zone) continue
+        const edge = getSideEdge(zone, sp.side)
+        const centroid = zoneCentroids[zone.id]
+        if (!edge || !centroid) continue
+
+        const sLL = pointAlongSide(edge[0], edge[1], sp.sensor_position)
+        const rawNM = inwardNormalM(edge[0], edge[1], centroid)
+        const nM: [number, number] = sp.orientation === "outward" ? [-rawNM[0], -rawNM[1]] : rawNM
+        const rM: [number, number] = [nM[1], -nM[0]]
+        const sM = toMeters(sLL)
+
+        const xCm = Number(det.x ?? 0)
+        const yCm = Number(det.y ?? 0)
+        let pt: [number, number]
+        if (xCm !== 0 || yCm !== 0) {
+          pt = [sM[0] + (yCm / 100) * nM[0] + (xCm / 100) * rM[0], sM[1] + (yCm / 100) * nM[1] + (xCm / 100) * rM[1]]
+        } else {
+          pt = [sM[0] + (dist / 100) * nM[0], sM[1] + (dist / 100) * nM[1]]
+        }
+        const ts = det.timestamp ? new Date(det.timestamp).getTime() : Date.now()
+        obs.push({ x: pt[0], y: pt[1], t: Number.isFinite(ts) ? ts : Date.now(), deviceId: sp.device_id })
+      }
+    } catch (e) {
+      console.warn("[THEIA] tracking projection error:", e)
+    }
+    return obs
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [liveByDevice, sensorPlacements, zones])
+
+  const [tracks, setTracks] = useState<Track[]>([])
+
+  useEffect(() => {
+    if (liveObservations.length === 0) return
+    setTracks((prev) => updateTracks(prev, liveObservations, Date.now()))
+  }, [liveObservations])
+
+  // Expiry pass: without this a track would sit on the map forever once detections stop, since
+  // the update above only runs when there IS something to feed it.
+  useEffect(() => {
+    const id = setInterval(() => {
+      setTracks((prev) => (prev.length ? updateTracks(prev, [], Date.now()) : prev))
+    }, 1000)
+    return () => clearInterval(id)
+  }, [])
+
+  const shownTracks = useMemo(() => visibleTracks(tracks), [tracks])
+
   if (!mounted || !RL) {
     return (
       <div className={cn("relative rounded-lg overflow-hidden border border-border/50 bg-muted/20", className)}>
@@ -2073,6 +2139,41 @@ export default function MapInner({
                 <span style={{ fontSize: 9, fontWeight: 600, color: "#0891b2" }}>P{i + 1}</span>
               </Tooltip>
             </DragMarker>
+          )
+        })}
+
+        {/* ── Target tracks ──
+            The trail is the tactical payload here: a single dot tells you something is there,
+            a trail tells you where it came from and where it is heading. */}
+        {shownTracks.map((tr) => {
+          const posLL = toLatLon([tr.x, tr.y])
+          const trailLL = tr.trail.map((p) => toLatLon([p.x, p.y]))
+          const speed = trackSpeed(tr)
+          const heading = trackHeading(tr)
+          const stale = Date.now() - tr.lastUpdate > 2000
+          const color = stale ? vc.detection_dot_hold : vc.detection_dot_live
+          return (
+            <React.Fragment key={`track-${tr.id}`}>
+              {trailLL.length > 1 && (
+                <Polyline
+                  positions={trailLL}
+                  pathOptions={{ color, weight: 2, opacity: stale ? 0.35 : 0.65, dashArray: "4 3" }}
+                />
+              )}
+              <CircleMarker
+                center={posLL}
+                radius={7}
+                pathOptions={{ color, fillColor: color, fillOpacity: stale ? 0.3 : 0.7, weight: 2 }}
+              >
+                <Tooltip permanent direction="top" offset={[0, -8]}>
+                  <span style={{ fontSize: 9, fontWeight: 700, color }}>
+                    {tr.id}
+                    {speed >= 0.15 ? ` ${speed.toFixed(1)}m/s` : " immobile"}
+                    {heading !== null ? ` ${Math.round(heading)}deg` : ""}
+                  </span>
+                </Tooltip>
+              </CircleMarker>
+            </React.Fragment>
           )
         })}
       </MapContainer>
