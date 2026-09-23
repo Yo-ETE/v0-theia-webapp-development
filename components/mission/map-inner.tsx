@@ -58,6 +58,9 @@ const SENSOR_SPECS: Record<string, { fovDeg: number; maxRangeM: number; label: s
   }
 const DEFAULT_SENSOR_SPECS = { fovDeg: 90, maxRangeM: 6, label: "Unknown", presenceOnly: false }
 
+/** Two readings this far apart still describe the same instant, for fusion purposes. */
+const SIMULTANEOUS_WINDOW_MS = 3000
+
 interface SensorPlaceMode {
   zoneId: string
   side: string
@@ -1401,7 +1404,12 @@ export default function MapInner({
 
   useEffect(() => {
     if (rawDetections.length === 0) return
-    const fused = fuseGroup(rawDetections, fusionPriorRef.current)
+    // liveByDevice keeps each sensor's LAST reading, however old. Fusing a fresh position with
+    // one from ten seconds ago produces a point where nobody is, so only genuinely simultaneous
+    // readings are combined; a stale sensor is simply left out of this fix.
+    const newest = Math.max(...rawDetections.map((d) => d.t))
+    const simultaneous = rawDetections.filter((d) => newest - d.t <= SIMULTANEOUS_WINDOW_MS)
+    const fused = fuseGroup(simultaneous, fusionPriorRef.current)
     if (!fused) return
     fusionPriorRef.current = { x: fused.x, y: fused.y, t: fused.t }
     const obs: Observation[] = [{ x: fused.x, y: fused.y, t: fused.t, deviceId: fused.deviceIds.join("+") }]

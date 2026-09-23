@@ -66,6 +66,14 @@ export interface TrackerOptions {
   coastMs: number
   /** clamp the estimated speed (m/s); a human on foot stays well under this */
   maxSpeedMps: number
+  /**
+   * Below this gap between two fixes, update the position but NOT the velocity.
+   * Backend timestamps have one-second resolution, so two detections can legitimately share a
+   * timestamp: dividing the residual by that ~zero interval sent the estimate straight to the
+   * speed clamp (observed live: every track pinned at 8 m/s in a bedroom). You cannot measure
+   * a speed over no elapsed time; refusing to try is the fix.
+   */
+  minDtForVelocityS: number
   /** trail length (ms) */
   trailMaxAgeMs: number
 }
@@ -80,6 +88,7 @@ export const DEFAULT_TRACKER_OPTIONS: TrackerOptions = {
   maxAgeMs: 6000,
   coastMs: 1500,
   maxSpeedMps: 8,
+  minDtForVelocityS: 0.3,
   trailMaxAgeMs: 20000,
 }
 
@@ -156,15 +165,19 @@ export function updateTracks(
 
     track.x = px + opt.alpha * rx
     track.y = py + opt.alpha * ry
-    track.vx += (opt.beta / dt) * rx
-    track.vy += (opt.beta / dt) * ry
 
-    // Clamp: a bad fix must not launch the track across the map.
-    const speed = Math.hypot(track.vx, track.vy)
-    if (speed > opt.maxSpeedMps) {
-      const k = opt.maxSpeedMps / speed
-      track.vx *= k
-      track.vy *= k
+    // Only touch velocity when enough time actually elapsed (see minDtForVelocityS).
+    if (dt >= opt.minDtForVelocityS) {
+      track.vx += (opt.beta / dt) * rx
+      track.vy += (opt.beta / dt) * ry
+
+      // Clamp: a bad fix must not launch the track across the map.
+      const speed = Math.hypot(track.vx, track.vy)
+      if (speed > opt.maxSpeedMps) {
+        const k = opt.maxSpeedMps / speed
+        track.vx *= k
+        track.vy *= k
+      }
     }
 
     track.lastUpdate = tObs
