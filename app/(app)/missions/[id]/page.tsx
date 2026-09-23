@@ -10,7 +10,7 @@ import {
   Activity, Eye, EyeOff, Zap, Timer, Download, Signal, Battery, Wifi, WifiOff, Unlink,
   Flame, Crosshair, ArrowDownLeft, ArrowUpRight, Bell, BellOff,
   Maximize2, Minimize2, FileImage, Ruler, Palette, RotateCw,
-  Volume2, VolumeX, Grid3X3, ArrowLeftRight, Copy, Plug,
+  Volume2, VolumeX, Grid3X3, ArrowLeftRight, Copy, Plug, AlertTriangle,
 } from "lucide-react"
 import { TopHeader } from "@/components/top-header"
 import { useAuth } from "@/lib/auth-context"
@@ -63,6 +63,9 @@ import { groupSidesByBearing } from "@/lib/facade-utils"
 const IDLE_POLL_MS = 30000
 const SSE_DOWN_POLL_MS = 5000
 const AFTER_DETECTION_SYNC_MS = 8000
+
+/** How many events the console loads. Past this the backend drops the OLDEST ones. */
+const EVENTS_LIMIT = 10000
 
 const ZONE_COLORS = ["#3b82f6", "#ef4444", "#22c55e", "#f59e0b", "#8b5cf6", "#ec4899", "#06b6d4", "#f97316"]
 const ZONE_TYPES = [
@@ -122,9 +125,11 @@ export default function MissionDetailPage() {
   const [eventsPollMs, setEventsPollMs] = useState(SSE_DOWN_POLL_MS)
   const { data: events, mutate: mutateEvents } = useEvents({
     mission_id: id,
-    limit: 10000,
+    limit: EVENTS_LIMIT,
     refreshInterval: eventsPollMs,
   })
+  // Hitting the cap exactly is the only signal the API gives that older events were dropped.
+  const historyTruncated = (events?.length ?? 0) >= EVENTS_LIMIT
   const { data: allDevices, mutate: mutateDevices } = useDevices({ refreshInterval: 10000 })
 
   // Force fresh device list on mount (in case devices were unassigned on another page)
@@ -1213,6 +1218,19 @@ export default function MissionDetailPage() {
               <span className="flex items-center gap-1 text-xs text-muted-foreground">
                 <BarChart3 className="h-3 w-3" />{Math.max(eventList.length, mission.event_count ?? 0)} events
               </span>
+              {/* The history query is ORDER BY timestamp DESC LIMIT 10000, so past the cap it
+                  is the OLDEST events that fall off -- and the heatmap and the occupancy grid
+                  are built from that list. On a long mission the grid would quietly forget the
+                  rooms swept first, and show them as never visited. Say so rather than let the
+                  operator read a stale grid as fact. */}
+              {historyTruncated && (
+                <span
+                  className="flex items-center gap-1 text-xs text-warning font-mono"
+                  title={`Seuls les ${EVENTS_LIMIT} evenements les plus recents sont charges. La heatmap et la grille d'occupation ignorent ce qui precede.`}
+                >
+                  <AlertTriangle className="h-3 w-3" />HISTORIQUE TRONQUE
+                </span>
+              )}
               {mission.status === "active" && (
                 <span className="flex items-center gap-1 text-xs text-destructive font-mono">
                   <span className="h-2 w-2 rounded-full bg-destructive animate-pulse" />REC
