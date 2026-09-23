@@ -2111,9 +2111,12 @@ export default function MissionDetailPage() {
                 </CardContent>
               </Card>
 
-              {/* Live detection feed -- only visible on Live tab */}
+              {/* Live detection feed -- only visible on Live tab.
+                  `order-first` puts it above Zones and Assigned Devices: it is the only panel
+                  in this column that answers "is someone there, right now", and it used to sit
+                  last, below the fold, while two configuration panels took the top of the screen. */}
               {activeTab === "live" && (
-                <Card className="border-border/50 bg-card flex-1">
+                <Card className="border-border/50 bg-card order-first">
                   <CardHeader className="pb-2">
                     <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
                       <CardTitle className="text-xs flex items-center gap-1.5 shrink-0">
@@ -2211,7 +2214,7 @@ export default function MissionDetailPage() {
                       </div>
                     </div>
                   </CardHeader>
-                  <CardContent ref={feedRef} className="flex flex-col gap-1 max-h-64 overflow-y-auto">
+                  <CardContent ref={feedRef} className="flex flex-col gap-1 max-h-[40vh] overflow-y-auto">
                     {displayDetections.length === 0 ? (
                       <p className="text-xs text-muted-foreground py-2 text-center">
                         En attente de detections...

@@ -1,7 +1,7 @@
 "use client"
 
 import { backendOrigin } from "@/lib/backend"
-import { useRef } from "react"
+import { useMemo, useRef } from "react"
 import {
   Cpu,
   MemoryStick,
@@ -27,6 +27,7 @@ import { useStatus, useNotifications, type Notification } from "@/hooks/use-api"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { cn } from "@/lib/utils"
+import { formatAgeFr, parseAsUTC } from "@/lib/format"
 
 function formatUptime(seconds: number): string {
   const d = Math.floor(seconds / 86400)
@@ -72,16 +73,52 @@ export default function DashboardPage() {
   }
   const smoothRssi = rssiEmaRef.current
 
-  // Filter only warning/critical non-dismissed
-  const alerts = (allNotifs ?? []).filter(
-    (n: Notification) => (n.severity === "warning" || n.severity === "critical") && n.dismissed === 0
-  )
+  /*
+   * One card per (alert type, device) -- not per notification row.
+   *
+   * The backend re-notifies an unchanged condition once an hour, so a battery that stays
+   * low all morning produced one card per hour: the dashboard showed nine cards for two
+   * sensors, all saying the same thing, pushing CPU / network / GPS below the fold. What
+   * an operator needs is the current state of each problem, not its history.
+   *
+   * Keeping the MOST RECENT of each group also fixes the case where the same sensor showed
+   * "batterie faible (3.32V)" and "batterie critique (2.94V)" side by side: only the latest
+   * reading is still true.
+   */
+  const alerts = useMemo(() => {
+    const active = (allNotifs ?? []).filter(
+      (n: Notification) => (n.severity === "warning" || n.severity === "critical") && n.dismissed === 0
+    )
+    const groups = new Map<string, { latest: Notification; ids: number[] }>()
+    for (const n of active) {
+      const key = `${n.type}::${n.device_id ?? n.device_name ?? ""}`
+      const g = groups.get(key)
+      if (!g) {
+        groups.set(key, { latest: n, ids: [n.id] })
+        continue
+      }
+      g.ids.push(n.id)
+      if (parseAsUTC(n.created_at).getTime() > parseAsUTC(g.latest.created_at).getTime()) g.latest = n
+    }
+    // Critical first, then most recently seen.
+    return [...groups.values()].sort((a, b) => {
+      if (a.latest.severity !== b.latest.severity) return a.latest.severity === "critical" ? -1 : 1
+      return parseAsUTC(b.latest.created_at).getTime() - parseAsUTC(a.latest.created_at).getTime()
+    })
+  }, [allNotifs])
 
-  const handleDismiss = async (id: number) => {
+  // Dismiss the whole run, not just the row on screen -- otherwise the card reappears
+  // as soon as SWR revalidates and surfaces the next-most-recent duplicate.
+  const handleDismiss = async (ids: number[]) => {
     const base = getBackendBase()
     if (base) {
       const t = localStorage.getItem("theia_token")
-      await fetch(`${base}/api/notifications/${id}`, { method: "DELETE", credentials: "include", headers: t ? { Authorization: `Bearer ${t}` } : {} })
+      const headers: Record<string, string> = t ? { Authorization: `Bearer ${t}` } : {}
+      await Promise.all(
+        ids.map((id) =>
+          fetch(`${base}/api/notifications/${id}`, { method: "DELETE", credentials: "include", headers })
+        )
+      )
       mutateNotifs()
     }
   }
@@ -174,14 +211,14 @@ export default function DashboardPage() {
                 </button>
               </div>
               <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 lg:grid-cols-3">
-                {alerts.map((n: Notification) => (
+                {alerts.map(({ latest: n, ids }) => (
                   <Card
-                    key={n.id}
+                    key={`${n.type}::${n.device_id ?? n.device_name ?? ""}`}
                     className={cn(
                       "border-l-2",
                       n.severity === "critical"
                         ? "border-l-destructive bg-destructive/5"
-                        : "border-l-amber-500 bg-warning/5"
+                        : "border-l-warning bg-warning/5"
                     )}
                   >
                     <CardContent className="flex items-center gap-3 px-3 py-2.5">
@@ -195,14 +232,21 @@ export default function DashboardPage() {
                         <p className="text-xs font-medium text-foreground truncate">
                           {n.message}
                         </p>
-                        {n.device_name && (
-                          <p className="text-xs text-muted-foreground font-mono">
-                            {n.device_name}
-                          </p>
-                        )}
+                        <p className="text-xs text-muted-foreground font-mono flex items-center gap-1.5">
+                          {n.device_name && <span className="truncate">{n.device_name}</span>}
+                          {ids.length > 1 && (
+                            <span
+                              className="shrink-0 rounded bg-muted px-1 text-2xs"
+                              title={`${ids.length} signalements, dernier il y a ${formatAgeFr(n.created_at)}`}
+                            >
+                              x{ids.length}
+                            </span>
+                          )}
+                        </p>
                       </div>
                       <button
-                        onClick={() => handleDismiss(n.id)}
+                        onClick={() => handleDismiss(ids)}
+                        aria-label={`Ignorer l'alerte : ${n.message}`}
                         className="shrink-0 text-muted-foreground/40 hover:text-destructive transition-colors cursor-pointer p-1"
                       >
                         <X className="h-3 w-3" />

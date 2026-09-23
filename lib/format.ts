@@ -104,7 +104,7 @@ export const eventTypeConfig: Record<
  * The backend (Python/SQLite) stores timestamps in UTC.
  * We add "Z" suffix to force UTC interpretation.
  */
-function parseAsUTC(ts: string): Date {
+export function parseAsUTC(ts: string): Date {
   if (!ts) return new Date(NaN)
   // If already has timezone indicator, parse directly
   if (ts.includes("Z") || /[+-]\d{2}:\d{2}$/.test(ts)) {
@@ -163,6 +163,18 @@ export function formatRelative(iso: string): string {
   const hours = Math.floor(mins / 60)
   if (hours < 24) return `${hours}h ago`
   return `${Math.floor(hours / 24)}d ago`
+}
+
+/** Age of a database timestamp, in French, for UI copy: "maintenant", "12min", "3h", "2j". */
+export function formatAgeFr(iso: string): string {
+  const diff = Date.now() - parseAsUTC(iso).getTime()
+  if (!Number.isFinite(diff)) return ""
+  const mins = Math.floor(diff / 60000)
+  if (mins < 1) return "maintenant"
+  if (mins < 60) return `${mins}min`
+  const hours = Math.floor(mins / 60)
+  if (hours < 24) return `${hours}h`
+  return `${Math.floor(hours / 24)}j`
 }
 
 /** Format relative time for timestamps that are already in local Paris time (e.g. SSE live data) */
