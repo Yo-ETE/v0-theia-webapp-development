@@ -153,6 +153,21 @@
   body {
     @apply bg-background text-foreground;
   }
+
+  /*
+   * iOS zooms the page in whenever a form control smaller than 16px takes focus, and it
+   * does not zoom back out. The usual workaround is to lock the viewport scale, which is
+   * what THEIA did -- at the cost of pinch-zoom on a plan or a map, outdoors, on a tablet.
+   * Sizing the controls at 16px on touch pointers removes the cause instead of the symptom,
+   * so the scale lock could be lifted. Pointer-coarse only: desktop density is unchanged.
+   */
+  @media (pointer: coarse) {
+    input,
+    select,
+    textarea {
+      font-size: 16px;
+    }
+  }
 }
 
 /* Leaflet: keep below dialogs */

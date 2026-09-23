@@ -33,7 +33,12 @@ export const viewport: Viewport = {
   themeColor: "#1a1a2e",
   width: "device-width",
   initialScale: 1,
-  maximumScale: 1,
+  // Pinch-zoom stays available: on a tablet in the field, being unable to magnify a
+  // building plan or a cluster of detections is a real handicap. The usual reason to
+  // lock the scale is iOS zooming in when a small input takes focus -- globals.css
+  // handles that by sizing form controls at 16px on touch pointers instead.
+  maximumScale: 5,
+  userScalable: true,
 }
 
 export default function RootLayout({
