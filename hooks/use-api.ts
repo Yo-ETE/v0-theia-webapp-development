@@ -85,7 +85,18 @@ export function useDevices(opts?: { refreshInterval?: number; includeDisabled?: 
   })
 }
 
-export function useEvents(params?: { mission_id?: string; limit?: number; event_type?: string }) {
+export function useEvents(params?: {
+  mission_id?: string
+  limit?: number
+  event_type?: string
+  /**
+   * Overrides the 5s default. This request re-downloads the mission's whole event history
+   * every time -- 415 events already weigh 204KB, and it grows for the length of the
+   * mission -- so a caller that also has a live SSE feed should slow it right down and let
+   * SSE carry the new detections. See the mission console.
+   */
+  refreshInterval?: number
+}) {
   const qs = new URLSearchParams()
   if (params?.mission_id) qs.set("mission_id", params.mission_id)
   if (params?.event_type) qs.set("event_type", params.event_type)
@@ -94,8 +105,7 @@ export function useEvents(params?: { mission_id?: string; limit?: number; event_
   return useSWR<import("@/lib/types").DetectionEvent[]>(
     `/api/events${q ? `?${q}` : ""}`,
     fetcher,
-    // Refresh every 5s to pick up new DB events.
-    { refreshInterval: 5000, revalidateOnFocus: true },
+    { refreshInterval: params?.refreshInterval ?? 5000, revalidateOnFocus: true },
   )
 }
 

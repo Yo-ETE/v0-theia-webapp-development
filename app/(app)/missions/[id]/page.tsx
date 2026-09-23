@@ -48,6 +48,22 @@ import { cn } from "@/lib/utils"
 import type { Zone, Floor, DetectionEvent, LiveDetection } from "@/lib/types"
 import { groupSidesByBearing } from "@/lib/facade-utils"
 
+/*
+ * Two different cadences, because freshness and cost peak at opposite moments.
+ *
+ * Live markers, tracks and the Detection Feed come straight off SSE and are never affected
+ * by any of this. But the heatmap and the occupancy grid are built from `events`, the
+ * polled history -- so slowing the poll down would make a room you just swept stay
+ * "unknown" on the grid for longer, which is the opposite of useful.
+ *
+ * So: the periodic poll goes slow, because polling while nothing is happening is pure
+ * waste; and a detection arriving on the stream pulls the history promptly, because that is
+ * exactly when the overlays have something new to show.
+ */
+const IDLE_POLL_MS = 30000
+const SSE_DOWN_POLL_MS = 5000
+const AFTER_DETECTION_SYNC_MS = 8000
+
 const ZONE_COLORS = ["#3b82f6", "#ef4444", "#22c55e", "#f59e0b", "#8b5cf6", "#ec4899", "#06b6d4", "#f97316"]
 const ZONE_TYPES = [
   { value: "facade", label: "Facade / Wall" },
@@ -95,7 +111,20 @@ function getSideDistanceM(polygon: [number, number][], side: string, sensorPos: 
 export default function MissionDetailPage() {
   const { id } = useParams<{ id: string }>()
   const { data: mission, isLoading, mutate } = useMission(id)
-  const { data: events, mutate: mutateEvents } = useEvents({ mission_id: id, limit: 10000 })
+  /*
+   * This query re-downloads the mission's entire event history on every tick, and it grows
+   * for as long as the mission runs -- measured on the hub at 415 events / 204KB / 130ms,
+   * repeated every 5s, including through long stretches where nothing moved. The periodic
+   * poll backs off to 30s while the stream is healthy and returns to 5s the moment it
+   * drops; the stream itself pulls the history when a detection actually arrives.
+   * Declared as state because `sseConnected` comes from a hook further down.
+   */
+  const [eventsPollMs, setEventsPollMs] = useState(SSE_DOWN_POLL_MS)
+  const { data: events, mutate: mutateEvents } = useEvents({
+    mission_id: id,
+    limit: 10000,
+    refreshInterval: eventsPollMs,
+  })
   const { data: allDevices, mutate: mutateDevices } = useDevices({ refreshInterval: 10000 })
 
   // Force fresh device list on mount (in case devices were unassigned on another page)
@@ -295,7 +324,10 @@ export default function MissionDetailPage() {
   }, [allDevices])
 
   // SSE handler: accumulate live detections for this mission
-  const sseCountRef = useRef(0)
+  // Last time the full history was re-pulled because of the live stream. Time-based, not
+  // detection-counted: counting ties the cost of a 200KB+ refetch to how busy the scene is,
+  // so a crowded room paid the most while a quiet one still paid every 5s for nothing.
+  const lastEventsSyncRef = useRef(0)
   const handleSSE = useCallback((event: { type: string; data: Record<string, unknown> }) => {
     if (event.type !== "detection") return
     const d = event.data as unknown as LiveDetection
@@ -319,8 +351,9 @@ export default function MissionDetailPage() {
       // Play detection sound (throttled to 1x / 2s)
       playDetection()
       // Periodically refresh DB events list so history tab stays in sync
-      sseCountRef.current += 1
-      if (sseCountRef.current % 10 === 0) {
+      const now = Date.now()
+      if (now - lastEventsSyncRef.current >= AFTER_DETECTION_SYNC_MS) {
+        lastEventsSyncRef.current = now
         mutateEvents()
       }
     }
@@ -337,6 +370,12 @@ export default function MissionDetailPage() {
   }, [id, mutateEvents, playDetection])
 
   const { connected: sseConnected } = useSSE(handleSSE)
+
+  // Back the history poll off while the stream carries the live detections (see the
+  // comment on eventsPollMs), and speed it back up the moment the stream drops.
+  useEffect(() => {
+    setEventsPollMs(sseConnected ? IDLE_POLL_MS : SSE_DOWN_POLL_MS)
+  }, [sseConnected])
 
   // Load cached detections from localStorage on mount
   // This shows the last known detections when returning to the mission
