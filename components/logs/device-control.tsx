@@ -146,21 +146,21 @@ export function DeviceControl() {
       {networkStatus && (
         <div className={`flex items-center justify-between p-3 rounded-lg border ${
           networkStatus.is_allowed 
-            ? "bg-green-500/10 border-green-500/30" 
-            : "bg-red-500/10 border-red-500/30"
+            ? "bg-success/10 border-success/30" 
+            : "bg-destructive/10 border-destructive/30"
         }`}>
           <div className="flex items-center gap-2">
             {networkStatus.is_allowed ? (
-              <Wifi className="h-4 w-4 text-green-500" />
+              <Wifi className="h-4 w-4 text-success" />
             ) : (
-              <WifiOff className="h-4 w-4 text-red-500" />
+              <WifiOff className="h-4 w-4 text-destructive" />
             )}
             <span className="text-sm">
               Network: <span className="font-mono text-xs">{networkStatus.current}</span>
               {networkStatus.is_allowed ? (
-                <span className="ml-2 text-green-600">Authorized</span>
+                <span className="ml-2 text-success">Authorized</span>
               ) : (
-                <span className="ml-2 text-red-600">Not authorized - Commands blocked</span>
+                <span className="ml-2 text-destructive">Not authorized - Commands blocked</span>
               )}
             </span>
           </div>
@@ -179,7 +179,7 @@ export function DeviceControl() {
         {nodes.map((node) => {
           const commands = node.node_type === "xaver" ? XAVER_COMMANDS : HUB_COMMANDS
           const isOnline = node.online === 1
-          const statusColor = isOnline ? "bg-green-500" : "bg-gray-400"
+          const statusColor = isOnline ? "bg-success" : "bg-gray-400"
           const canExecute = networkStatus?.is_allowed || node.node_type === "hub"
           
           return (
@@ -195,7 +195,7 @@ export function DeviceControl() {
                     {node.ip_address || node.hostname}
                   </p>
                   {node.last_seen && (
-                    <p className="text-[10px] text-muted-foreground">
+                    <p className="text-xs text-muted-foreground">
                       Last seen: {formatLastSeen(node.last_seen)}
                     </p>
                   )}
@@ -225,13 +225,13 @@ export function DeviceControl() {
 
       {/* Command output */}
       {result && (
-        <Card className={result.success ? "border-green-500/50" : "border-red-500/50"}>
+        <Card className={result.success ? "border-success/50" : "border-destructive/50"}>
           <CardHeader className="pb-2">
             <CardTitle className="text-sm flex items-center gap-2">
               {result.success ? (
-                <CheckCircle className="h-4 w-4 text-green-500" />
+                <CheckCircle className="h-4 w-4 text-success" />
               ) : (
-                <AlertCircle className="h-4 w-4 text-red-500" />
+                <AlertCircle className="h-4 w-4 text-destructive" />
               )}
               {result.device.toUpperCase()} Output
               {result.target && (

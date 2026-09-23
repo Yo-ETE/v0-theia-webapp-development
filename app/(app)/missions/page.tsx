@@ -75,7 +75,7 @@ function MissionCard({
               </CardDescription>
             </div>
             <div className="flex items-center gap-1">
-              <Badge variant="outline" className={cn("text-[9px] px-1.5 py-0", statusCfg.className)}>
+              <Badge variant="outline" className={cn("text-2xs px-1.5 py-0", statusCfg.className)}>
                 {statusCfg.label}
               </Badge>
               {showMenu && (
@@ -134,7 +134,7 @@ function MissionCard({
           </div>
         </CardHeader>
         <CardContent className="pb-4">
-          <div className="flex items-center gap-4 text-[11px] text-muted-foreground">
+          <div className="flex items-center gap-4 text-xs text-muted-foreground">
             <span className="flex items-center gap-1">
               <Radio className="h-3 w-3" />
               {mission.device_count} TX
@@ -147,7 +147,7 @@ function MissionCard({
               {mission.location}
             </span>
           </div>
-          <div className="mt-2 flex items-center justify-between text-[10px] text-muted-foreground">
+          <div className="mt-2 flex items-center justify-between text-xs text-muted-foreground">
             <span>Created {formatDate(mission.created_at)}</span>
             <span>Updated {formatRelative(mission.updated_at)}</span>
           </div>
@@ -173,10 +173,10 @@ function MissionGroups({ missions, onAction, canEdit, canDelete }: { missions: M
       {grouped.map(group => (
         <div key={group.status}>
           <div className="flex items-center gap-2 mb-2">
-            <Badge variant="outline" className={cn("text-[9px] px-1.5 py-0", group.cfg.className)}>
+            <Badge variant="outline" className={cn("text-2xs px-1.5 py-0", group.cfg.className)}>
               {group.cfg.label}
             </Badge>
-            <span className="text-[10px] text-muted-foreground font-medium">
+            <span className="text-xs text-muted-foreground font-medium">
               {group.label} ({group.items.length})
             </span>
           </div>
@@ -203,7 +203,7 @@ function ArchivedSection({ missions, onAction, canEdit, canDelete }: { missions:
         <button className="flex items-center gap-2 text-muted-foreground hover:text-foreground transition-colors">
           {isOpen ? <ChevronDown className="h-4 w-4" /> : <ChevronRight className="h-4 w-4" />}
           <Archive className="h-4 w-4" />
-          <span className="text-[11px] uppercase tracking-widest">
+          <span className="text-xs uppercase tracking-widest">
             Archivees ({archivedMissions.length})
           </span>
         </button>
@@ -278,7 +278,7 @@ export default function MissionsPage() {
       <main className="flex-1 overflow-auto p-4">
         <div className="flex flex-col gap-4">
           <div className="flex items-center justify-between">
-            <h2 className="text-[11px] uppercase tracking-widest text-muted-foreground">
+            <h2 className="text-xs uppercase tracking-widest text-muted-foreground">
               {activeMissions.length} missions
             </h2>
             {canCreate && (

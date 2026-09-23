@@ -195,11 +195,11 @@ export default function LogsPage() {
                 </SelectContent>
               </Select>
             </div>
-            <Badge variant="outline" className="text-[10px] border-border">
+            <Badge variant="outline" className="text-xs border-border">
               {systemLogs.length} lignes
             </Badge>
             {systemLoading && (
-              <span className="text-[10px] text-muted-foreground animate-pulse">Chargement...</span>
+              <span className="text-xs text-muted-foreground animate-pulse">Chargement...</span>
             )}
           </div>
           )}
@@ -210,7 +210,7 @@ export default function LogsPage() {
             <CardHeader className="pb-2">
               <CardTitle className="flex items-center gap-2 text-sm">
                 Log Entries
-                <Badge variant="outline" className="text-[10px] border-border">
+                <Badge variant="outline" className="text-xs border-border">
                   {logs?.length ?? 0} entries
                 </Badge>
               </CardTitle>
@@ -220,7 +220,7 @@ export default function LogsPage() {
                 <div className="h-96 animate-pulse m-4 rounded bg-muted" />
               ) : (
                 <ScrollArea className="h-[calc(100vh-320px)]">
-                  <div className="font-mono text-[12px] leading-relaxed">
+                  <div className="font-mono text-sm leading-relaxed">
                     {logs?.map((log) => {
                       const lvlCfg = logLevelConfig[log.level] ?? logLevelConfig.info
                       return (
@@ -240,7 +240,7 @@ export default function LogsPage() {
                           </span>
                           <Badge
                             variant="outline"
-                            className="ml-2 mr-3 text-[9px] px-1 py-0 border-border shrink-0 self-start"
+                            className="ml-2 mr-3 text-2xs px-1 py-0 border-border shrink-0 self-start"
                           >
                             {log.source}
                           </Badge>
@@ -281,14 +281,14 @@ export default function LogsPage() {
                 <div className="h-96 animate-pulse m-4 rounded bg-muted" />
               ) : (
                 <ScrollArea className="h-[calc(100vh-320px)]">
-                  <div className="font-mono text-[11px] leading-5 p-1">
+                  <div className="font-mono text-xs leading-5 p-1">
                     {systemLogs.map((line, i) => (
                       <div
                         key={i}
                         className={cn(
                           "px-3 py-0.5 hover:bg-muted/30 transition-colors whitespace-pre-wrap break-all",
                           line.includes("ERROR") && "text-destructive bg-destructive/5",
-                          line.includes("WARNING") && "text-amber-500",
+                          line.includes("WARNING") && "text-warning",
                           line.includes("[ERROR]") && "text-destructive",
                         )}
                       >

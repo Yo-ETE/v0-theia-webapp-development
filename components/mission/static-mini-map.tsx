@@ -79,7 +79,7 @@ export function StaticMiniMap({ lat, lon, zoom = 16, className, label }: StaticM
       {/* Label overlay */}
       {label && (
         <div className="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-background/80 to-transparent px-3 py-2 z-10">
-          <p className="text-[10px] font-medium text-foreground truncate">{label}</p>
+          <p className="text-xs font-medium text-foreground truncate">{label}</p>
         </div>
       )}
     </div>

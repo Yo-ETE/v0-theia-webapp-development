@@ -140,12 +140,13 @@ export function FirmwareManager() {
   }
 
   const sensorBadge = (type: string) => {
-    if (type === "ld2450") return <Badge variant="outline" className="text-[9px] border-blue-500/30 text-blue-400">LD2450</Badge>
-    if (type === "c4001") return <Badge variant="outline" className="text-[9px] border-amber-500/30 text-amber-400">C4001</Badge>
-    if (type === "gravity_mw") return <Badge variant="outline" className="text-[9px] border-purple-500/30 text-purple-400">MW V2</Badge>
-    if (type === "xaver") return <Badge variant="outline" className="text-[9px] border-red-500/30 text-red-400">XAVER</Badge>
-    if (type === "rx") return <Badge variant="outline" className="text-[9px] border-green-500/30 text-green-400">RX</Badge>
-    return <Badge variant="outline" className="text-[9px]">Custom</Badge>
+    // Sensor types are categorical, not a severity scale -- chart tokens, not status colors.
+    if (type === "ld2450") return <Badge variant="outline" className="text-2xs border-chart-2/30 text-chart-2">LD2450</Badge>
+    if (type === "c4001") return <Badge variant="outline" className="text-2xs border-chart-3/30 text-chart-3">C4001</Badge>
+    if (type === "gravity_mw") return <Badge variant="outline" className="text-2xs border-chart-5/30 text-chart-5">MW V2</Badge>
+    if (type === "xaver") return <Badge variant="outline" className="text-2xs border-chart-4/30 text-chart-4">XAVER</Badge>
+    if (type === "rx") return <Badge variant="outline" className="text-2xs border-chart-1/30 text-chart-1">RX</Badge>
+    return <Badge variant="outline" className="text-2xs">Custom</Badge>
   }
 
   return (
@@ -193,13 +194,13 @@ export function FirmwareManager() {
                       <FileCode className="h-4 w-4 text-muted-foreground shrink-0" />
                       <div className="min-w-0">
                         <p className="text-xs font-medium text-foreground truncate">{s.name}</p>
-                        <p className="text-[10px] text-muted-foreground">{s.file}</p>
+                        <p className="text-xs text-muted-foreground">{s.file}</p>
                       </div>
                     </div>
                     <div className="flex items-center gap-2 shrink-0">
                       {sensorBadge(s.sensor_type)}
                       {s.is_template && (
-                        <Badge variant="secondary" className="text-[9px]">Template</Badge>
+                        <Badge variant="secondary" className="text-2xs">Template</Badge>
                       )}
                       <Button
                         size="sm"
@@ -236,7 +237,7 @@ export function FirmwareManager() {
               <FileCode className="h-4 w-4" />
               {viewSketch?.name || "Chargement..."}
               {viewSketch && (
-                <Badge variant="outline" className="text-[9px] ml-2">{viewSketch.file}</Badge>
+                <Badge variant="outline" className="text-2xs ml-2">{viewSketch.file}</Badge>
               )}
             </DialogTitle>
             <DialogDescription className="sr-only">Code source du firmware</DialogDescription>
@@ -266,7 +267,7 @@ export function FirmwareManager() {
                     </>
                   )}
                 </div>
-                <span className="text-[10px] text-muted-foreground">
+                <span className="text-xs text-muted-foreground">
                   {(editMode ? editContent : viewSketch.content).split("\n").length} lignes
                 </span>
               </div>
@@ -278,13 +279,13 @@ export function FirmwareManager() {
                     onChange={(e) => setEditContent(e.target.value)}
                     spellCheck={false}
                     className={cn(
-                      "w-full h-full min-h-[400px] p-3 text-[11px] font-mono leading-5",
+                      "w-full h-full min-h-[400px] p-3 text-xs font-mono leading-5",
                       "bg-transparent text-foreground resize-none outline-none",
                       "selection:bg-primary/20"
                     )}
                   />
                 ) : (
-                  <pre className="p-3 text-[11px] font-mono leading-5 text-foreground/90 whitespace-pre overflow-x-auto">
+                  <pre className="p-3 text-xs font-mono leading-5 text-foreground/90 whitespace-pre overflow-x-auto">
                     {viewSketch.content}
                   </pre>
                 )}

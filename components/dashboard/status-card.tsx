@@ -45,14 +45,14 @@ export function StatusCard({
           <Icon className={cn("h-5 w-5", statusStyles[status])} />
         </div>
         <div className="flex-1 min-w-0">
-          <p className="text-[11px] uppercase tracking-wider text-muted-foreground">
+          <p className="text-xs uppercase tracking-wider text-muted-foreground">
             {title}
           </p>
           <p className={cn("text-lg font-semibold font-mono tabular-nums", statusStyles[status])}>
             {value}
           </p>
           {subtitle && (
-            <p className="text-[11px] text-muted-foreground truncate">{subtitle}</p>
+            <p className="text-xs text-muted-foreground truncate">{subtitle}</p>
           )}
         </div>
       </CardContent>

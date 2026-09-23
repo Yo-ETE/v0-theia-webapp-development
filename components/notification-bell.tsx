@@ -45,8 +45,8 @@ function notifIcon(type: string) {
 function severityColor(severity: string) {
   switch (severity) {
     case "critical": return "text-destructive"
-    case "warning": return "text-amber-500"
-    case "info": return "text-emerald-500"
+    case "warning": return "text-warning"
+    case "info": return "text-success"
     default: return "text-muted-foreground"
   }
 }
@@ -103,7 +103,7 @@ export function NotificationBell() {
             <BellOff className="h-4 w-4 text-muted-foreground" />
           )}
           {count > 0 && (
-            <span className="absolute -top-0.5 -right-0.5 flex items-center justify-center h-4 min-w-[16px] px-1 rounded-full bg-destructive text-destructive-foreground text-[9px] font-bold">
+            <span className="absolute -top-0.5 -right-0.5 flex items-center justify-center h-4 min-w-[16px] px-1 rounded-full bg-destructive text-destructive-foreground text-2xs font-bold">
               {count > 99 ? "99+" : count}
             </span>
           )}
@@ -123,7 +123,7 @@ export function NotificationBell() {
             {count > 0 && (
               <button
                 onClick={handleReadAll}
-                className="text-[10px] text-primary hover:underline cursor-pointer px-1"
+                className="text-xs text-primary hover:underline cursor-pointer px-1"
               >
                 Tout lire
               </button>
@@ -131,7 +131,7 @@ export function NotificationBell() {
             {items.length > 0 && (
               <button
                 onClick={handleDismissAll}
-                className="text-[10px] text-muted-foreground hover:text-foreground cursor-pointer px-1"
+                className="text-xs text-muted-foreground hover:text-foreground cursor-pointer px-1"
               >
                 Tout effacer
               </button>
@@ -158,8 +158,8 @@ export function NotificationBell() {
                   {notifIcon(n.type)}
                 </div>
                 <div className="flex-1 min-w-0">
-                  <p className="text-[11px] text-foreground leading-tight">{n.message}</p>
-                  <p className="text-[9px] text-muted-foreground mt-0.5">
+                  <p className="text-xs text-foreground leading-tight">{n.message}</p>
+                  <p className="text-2xs text-muted-foreground mt-0.5">
                     {n.device_name && <span className="font-mono">{n.device_name}</span>}
                     {n.device_name && " \u00b7 "}
                     {timeAgo(n.created_at)}

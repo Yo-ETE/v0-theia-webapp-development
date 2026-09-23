@@ -114,7 +114,7 @@ function RssiTooltip({ active, payload, label }: { active?: boolean; payload?: A
   if (!active || !payload?.length) return null
   return (
     <div className="rounded-md border border-border bg-popover px-3 py-2 shadow-md">
-      <p className="text-[10px] text-muted-foreground mb-1">{label}</p>
+      <p className="text-xs text-muted-foreground mb-1">{label}</p>
       {payload.map((p, i) => (
         <div key={i} className="flex items-center gap-2 text-xs">
           <span className="h-2 w-2 rounded-full" style={{ backgroundColor: p.color }} />
@@ -249,7 +249,7 @@ export function RssiChart() {
                 key={p.hours}
                 onClick={() => setHours(p.hours)}
                 className={cn(
-                  "px-2 py-0.5 rounded text-[10px] font-medium transition-colors",
+                  "px-2 py-0.5 rounded text-xs font-medium transition-colors",
                   hours === p.hours
                     ? "bg-primary text-primary-foreground"
                     : "bg-muted text-muted-foreground hover:bg-muted/80"
@@ -268,7 +268,7 @@ export function RssiChart() {
             <button
               onClick={showAll}
               className={cn(
-                "px-2 py-0.5 rounded text-[10px] font-medium transition-colors",
+                "px-2 py-0.5 rounded text-xs font-medium transition-colors",
                 selectedDevices === "all"
                   ? "bg-primary text-primary-foreground"
                   : "bg-muted text-muted-foreground hover:bg-muted/80"
@@ -293,7 +293,7 @@ export function RssiChart() {
                     toggleDevice(dev.eui)
                   }}
                   className={cn(
-                    "flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-medium transition-all",
+                    "flex items-center gap-1 px-2 py-0.5 rounded text-xs font-medium transition-all",
                     visible
                       ? "bg-muted ring-1 text-foreground"
                       : "bg-muted/40 text-muted-foreground/50"
@@ -320,7 +320,7 @@ export function RssiChart() {
           <div className="flex flex-col items-center justify-center h-[220px] text-xs text-muted-foreground gap-2">
             <Signal className="h-8 w-8 text-muted-foreground/40" />
             <p>{"Aucune donnee RSSI pour cette periode"}</p>
-            <p className="text-[10px]">{"Les donnees s'accumuleront des que les capteurs transmettront."}</p>
+            <p className="text-xs">{"Les donnees s'accumuleront des que les capteurs transmettront."}</p>
           </div>
         ) : (
           <>
@@ -389,21 +389,21 @@ export function RssiChart() {
                   >
                     <span className="h-2.5 w-2.5 rounded-full shrink-0" style={{ backgroundColor: dev.color }} />
                     <div className="flex-1 min-w-0">
-                      <p className="text-[10px] font-medium text-foreground truncate">{dev.name}</p>
+                      <p className="text-xs font-medium text-foreground truncate">{dev.name}</p>
                       <div className="flex items-center gap-2 mt-0.5">
-                        <span className={cn("font-mono text-[11px] font-semibold", qualityColor)}>
+                        <span className={cn("font-mono text-xs font-semibold", qualityColor)}>
                           {analysis.current} dBm
                         </span>
-                        <Badge variant="outline" className={cn("text-[8px] px-1 py-0", qualityBorder, qualityColor)}>
+                        <Badge variant="outline" className={cn("text-2xs px-1 py-0", qualityBorder, qualityColor)}>
                           {analysis.quality === "excellent" ? "Excellent" : analysis.quality === "good" ? "Bon" : analysis.quality === "weak" ? "Faible" : "Mauvais"}
                         </Badge>
                       </div>
                     </div>
                     <div className="text-right shrink-0">
-                      <div className="flex items-center gap-0.5 text-[9px] text-muted-foreground">
+                      <div className="flex items-center gap-0.5 text-2xs text-muted-foreground">
                         <span className="font-mono">min {analysis.min} / max {analysis.max}</span>
                       </div>
-                      <div className="flex items-center gap-0.5 text-[9px] text-muted-foreground mt-0.5">
+                      <div className="flex items-center gap-0.5 text-2xs text-muted-foreground mt-0.5">
                         {analysis.trend > 1 ? (
                           <><TrendingUp className="h-2.5 w-2.5 text-success" /><span className="text-success">+{analysis.trend} dB</span></>
                         ) : analysis.trend < -1 ? (
@@ -413,12 +413,12 @@ export function RssiChart() {
                         )}
                       </div>
                       {analysis.currentSnr != null && (
-                        <div className="text-[9px] text-muted-foreground mt-0.5">
+                        <div className="text-2xs text-muted-foreground mt-0.5">
                           SNR: <span className="font-mono">{analysis.currentSnr} dB</span>
                         </div>
                       )}
                       {analysis.disconnections > 0 && (
-                        <div className="flex items-center gap-0.5 text-[9px] text-warning mt-0.5" title="Nombre de gaps detectes">
+                        <div className="flex items-center gap-0.5 text-2xs text-warning mt-0.5" title="Nombre de gaps detectes">
                           <WifiOff className="h-2.5 w-2.5" />
                           <span className="font-mono">{analysis.disconnections}</span>
                         </div>

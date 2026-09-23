@@ -2277,7 +2277,7 @@ export default function MapInner({
 
       {/* Coords overlay */}
       <div className="absolute bottom-2 left-2 z-[500] rounded bg-card/90 backdrop-blur px-2 py-1 shadow-sm">
-        <span className="font-mono text-[10px] text-foreground/70">
+        <span className="font-mono text-xs text-foreground/70">
           {centerLat.toFixed(5)}, {centerLon.toFixed(5)} z{zoom}
         </span>
       </div>
@@ -2298,7 +2298,7 @@ export default function MapInner({
                   key={t.id}
                   onClick={() => setEditTool(t.id)}
                   className={cn(
-                    "flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-[11px] font-semibold transition-all min-h-[34px]",
+                    "flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-xs font-semibold transition-all min-h-[34px]",
                     editTool === t.id
                       ? "text-white shadow-sm"
                       : "text-muted-foreground hover:text-foreground bg-transparent"
@@ -2313,7 +2313,7 @@ export default function MapInner({
                 </button>
               ))}
               <div className="w-px h-5 bg-border/50 mx-0.5" />
-              <span className="text-[9px] font-mono text-amber-500/80 px-1">{localPoly.length}pts {area.toFixed(1)}m2</span>
+              <span className="text-2xs font-mono text-amber-500/80 px-1">{localPoly.length}pts {area.toFixed(1)}m2</span>
             </div>
           </div>
         )
@@ -2365,10 +2365,10 @@ export default function MapInner({
       {/* Sensor placement mode overlay */}
       {sensorPlaceMode && (
         <div className="absolute top-2 left-2 z-[500] rounded bg-cyan-950/90 backdrop-blur px-3 py-2 border border-cyan-500/40 shadow-lg max-w-xs">
-          <p className="text-[11px] font-semibold text-cyan-300 font-mono">
+          <p className="text-xs font-semibold text-cyan-300 font-mono">
             PLACE {sensorPlaceMode.deviceName}
           </p>
-          <p className="text-[10px] text-cyan-200/70 mt-0.5">
+          <p className="text-xs text-cyan-200/70 mt-0.5">
             Click on side [{sensorPlaceMode.side}] to position the sensor.
           </p>
         </div>
@@ -2382,14 +2382,14 @@ export default function MapInner({
           <div className="absolute top-2 right-2 z-[500] flex gap-1.5">
             {liveCount > 0 && (
               <div className="rounded bg-green-600/90 backdrop-blur px-2.5 py-1.5 shadow-lg">
-                <span className="text-[10px] font-mono font-bold text-white">
+                <span className="text-xs font-mono font-bold text-white">
                   {liveCount} ACTIVE
                 </span>
               </div>
             )}
             {staleCount > 0 && (
               <div className="rounded bg-amber-500/80 backdrop-blur px-2.5 py-1.5 shadow-lg">
-                <span className="text-[10px] font-mono font-bold text-white">
+                <span className="text-xs font-mono font-bold text-white">
                   {staleCount} LAST
                 </span>
               </div>
@@ -2408,7 +2408,7 @@ export default function MapInner({
               <button
                 onClick={() => setOverlayMode("heatmap")}
                 className={cn(
-                  "flex-1 rounded px-2 py-1 text-[10px] font-medium transition-colors",
+                  "flex-1 rounded px-2 py-1 text-xs font-medium transition-colors",
                   overlayMode === "heatmap" ? "bg-primary text-primary-foreground" : "bg-muted text-muted-foreground hover:bg-muted/70",
                 )}
               >
@@ -2417,7 +2417,7 @@ export default function MapInner({
               <button
                 onClick={() => setOverlayMode("occupancy")}
                 className={cn(
-                  "flex-1 rounded px-2 py-1 text-[10px] font-medium transition-colors",
+                  "flex-1 rounded px-2 py-1 text-xs font-medium transition-colors",
                   overlayMode === "occupancy" ? "bg-primary text-primary-foreground" : "bg-muted text-muted-foreground hover:bg-muted/70",
                 )}
               >
@@ -2428,15 +2428,15 @@ export default function MapInner({
               <div className="flex flex-col gap-1 pt-1">
                 <div className="flex items-center gap-1.5">
                   <span className="inline-block h-2.5 w-4 rounded-sm" style={{ background: "rgba(255,10,40,0.8)" }} />
-                  <span className="text-[10px] text-muted-foreground">Presence probable</span>
+                  <span className="text-xs text-muted-foreground">Presence probable</span>
                 </div>
                 <div className="flex items-center gap-1.5">
                   <span className="inline-block h-2.5 w-4 rounded-sm" style={{ background: "rgba(40,180,255,0.4)" }} />
-                  <span className="text-[10px] text-muted-foreground">Zone balayee, vide</span>
+                  <span className="text-xs text-muted-foreground">Zone balayee, vide</span>
                 </div>
                 <div className="flex items-center gap-1.5">
                   <span className="inline-block h-2.5 w-4 rounded-sm border border-border" style={{ background: "transparent" }} />
-                  <span className="text-[10px] text-muted-foreground">Jamais observe</span>
+                  <span className="text-xs text-muted-foreground">Jamais observe</span>
                 </div>
               </div>
             )}
@@ -2457,7 +2457,7 @@ export default function MapInner({
               onChange={(e) => setHeatmapRadius(parseFloat(e.target.value))}
               className="w-full h-2 bg-muted rounded-lg appearance-none cursor-pointer accent-cyan-600"
             />
-            <div className="text-[10px] text-muted-foreground flex justify-between">
+            <div className="text-xs text-muted-foreground flex justify-between">
               <span>0.5m</span>
               <span>5m</span>
             </div>
@@ -2474,7 +2474,7 @@ export default function MapInner({
                 background: "linear-gradient(to right, #0369a1, #0d9488, #16a34a, #ca8a04, #dc2626)",
               }}
             />
-            <div className="text-[10px] text-muted-foreground flex justify-between">
+            <div className="text-xs text-muted-foreground flex justify-between">
               <span>Low</span>
               <span>High</span>
             </div>
@@ -2487,19 +2487,19 @@ export default function MapInner({
             <div className="flex gap-1">
               <button
                 onClick={() => setHeatmapTimeFilter("10m")}
-                className={`text-[11px] px-2 py-1 rounded border transition-colors ${heatmapTimeFilter === "10m" ? "bg-cyan-600 text-white border-cyan-600" : "bg-muted border-border hover:bg-muted-foreground/20"}`}
+                className={`text-xs px-2 py-1 rounded border transition-colors ${heatmapTimeFilter === "10m" ? "bg-cyan-600 text-white border-cyan-600" : "bg-muted border-border hover:bg-muted-foreground/20"}`}
               >
                 10m
               </button>
               <button
                 onClick={() => setHeatmapTimeFilter("1h")}
-                className={`text-[11px] px-2 py-1 rounded border transition-colors ${heatmapTimeFilter === "1h" ? "bg-cyan-600 text-white border-cyan-600" : "bg-muted border-border hover:bg-muted-foreground/20"}`}
+                className={`text-xs px-2 py-1 rounded border transition-colors ${heatmapTimeFilter === "1h" ? "bg-cyan-600 text-white border-cyan-600" : "bg-muted border-border hover:bg-muted-foreground/20"}`}
               >
                 1h
               </button>
               <button
                 onClick={() => setHeatmapTimeFilter("all")}
-                className={`text-[11px] px-2 py-1 rounded border transition-colors ${heatmapTimeFilter === "all" ? "bg-cyan-600 text-white border-cyan-600" : "bg-muted border-border hover:bg-muted-foreground/20"}`}
+                className={`text-xs px-2 py-1 rounded border transition-colors ${heatmapTimeFilter === "all" ? "bg-cyan-600 text-white border-cyan-600" : "bg-muted border-border hover:bg-muted-foreground/20"}`}
               >
                 All
               </button>

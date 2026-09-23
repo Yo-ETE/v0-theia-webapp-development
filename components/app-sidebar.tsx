@@ -67,7 +67,7 @@ export function AppSidebar() {
               <span className="text-sm font-semibold tracking-wider text-sidebar-foreground">
                 THEIA
               </span>
-              <span className="text-[10px] uppercase tracking-widest text-muted-foreground">
+              <span className="text-xs uppercase tracking-widest text-muted-foreground">
                 Hub Control
               </span>
             </div>
@@ -81,7 +81,7 @@ export function AppSidebar() {
 
       <SidebarContent>
         <SidebarGroup>
-          <SidebarGroupLabel className="text-[10px] uppercase tracking-widest text-muted-foreground">
+          <SidebarGroupLabel className="text-xs uppercase tracking-widest text-muted-foreground">
             Navigation
           </SidebarGroupLabel>
           <SidebarGroupContent>
@@ -118,7 +118,7 @@ export function AppSidebar() {
             </div>
             <div className="flex flex-col min-w-0 flex-1">
               <span className="text-xs font-medium text-sidebar-foreground truncate">{user.username}</span>
-              <span className="text-[9px] text-muted-foreground uppercase tracking-wider">{user.role}</span>
+              <span className="text-2xs text-muted-foreground uppercase tracking-wider">{user.role}</span>
             </div>
             <button
               onClick={async () => {
@@ -133,7 +133,7 @@ export function AppSidebar() {
           </div>
         )}
         <div className="flex items-center justify-between">
-          <p className="text-[9px] text-muted-foreground/50 tracking-wider">
+          <p className="text-2xs text-muted-foreground/50 tracking-wider">
             THEIA Hub Control v1.0
           </p>
           <button
@@ -151,7 +151,7 @@ export function AppSidebar() {
               url.searchParams.set("_t", String(Date.now()))
               window.location.replace(url.toString())
             }}
-            className="flex items-center gap-1 text-[9px] text-muted-foreground/50 hover:text-foreground transition-colors min-h-[32px] min-w-[32px] justify-center rounded"
+            className="flex items-center gap-1 text-2xs text-muted-foreground/50 hover:text-foreground transition-colors min-h-[32px] min-w-[32px] justify-center rounded"
             title="Vider le cache et recharger"
           >
             <RefreshCw className="h-3 w-3" />

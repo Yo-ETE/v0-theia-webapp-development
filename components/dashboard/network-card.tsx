@@ -26,18 +26,18 @@ export function NetworkCard({ network }: { network: NetworkInfo }) {
             <span className="text-xs text-muted-foreground">Tailscale</span>
             <div className="flex items-center gap-2">
               <span className="font-mono text-xs text-foreground">{network.tailscale_ip}</span>
-              <Badge variant="outline" className="border-success/30 bg-success/10 text-success text-[9px] px-1 py-0">
+              <Badge variant="outline" className="border-success/30 bg-success/10 text-success text-2xs px-1 py-0">
                 VPN
               </Badge>
             </div>
           </div>
         )}
         <div className="mt-1 border-t border-border/50 pt-2">
-          <p className="text-[10px] uppercase tracking-wider text-muted-foreground mb-1.5">Interfaces</p>
+          <p className="text-xs uppercase tracking-wider text-muted-foreground mb-1.5">Interfaces</p>
           {Object.entries(network.interfaces).map(([iface, ip]) => (
             <div key={iface} className="flex items-center justify-between py-0.5">
-              <span className="font-mono text-[11px] text-muted-foreground">{iface}</span>
-              <span className="font-mono text-[11px] text-foreground">{ip}</span>
+              <span className="font-mono text-xs text-muted-foreground">{iface}</span>
+              <span className="font-mono text-xs text-foreground">{ip}</span>
             </div>
           ))}
         </div>

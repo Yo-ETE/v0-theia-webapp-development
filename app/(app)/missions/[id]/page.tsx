@@ -1158,7 +1158,7 @@ export default function MissionDetailPage() {
           {/* Mission info bar */}
           <Card className="border-border/50 bg-card py-3">
             <CardContent className="flex flex-wrap items-center gap-x-3 gap-y-1 px-4">
-              <Badge variant="outline" className={cn("text-[10px] px-1.5 py-0", statusCfg.className)}>
+              <Badge variant="outline" className={cn("text-xs px-1.5 py-0", statusCfg.className)}>
                 {statusCfg.label}
               </Badge>
               <span className="flex items-center gap-1 text-xs text-muted-foreground">
@@ -1175,12 +1175,12 @@ export default function MissionDetailPage() {
                 <BarChart3 className="h-3 w-3" />{Math.max(eventList.length, mission.event_count ?? 0)} events
               </span>
               {mission.status === "active" && (
-                <span className="flex items-center gap-1 text-xs text-red-500 font-mono">
-                  <span className="h-2 w-2 rounded-full bg-red-500 animate-pulse" />REC
+                <span className="flex items-center gap-1 text-xs text-destructive font-mono">
+                  <span className="h-2 w-2 rounded-full bg-destructive animate-pulse" />REC
                 </span>
               )}
               {mission.status === "paused" && (
-                <span className="flex items-center gap-1 text-xs text-orange-400 font-mono">
+                <span className="flex items-center gap-1 text-xs text-warning font-mono">
                   <Pause className="h-3 w-3" />PAUSED
                 </span>
               )}
@@ -1191,27 +1191,27 @@ export default function MissionDetailPage() {
               )}
               <div className="flex items-center gap-1.5 ml-auto">
                 {canControl && mission.status === "draft" && (isFloorMode ? missionFloors.length > 0 : (isPlanMode ? !!planImageUrl : zones.length > 0)) && (
-                  <Button size="sm" className="h-7 text-[10px] gap-1" onClick={() => changeStatus("active")} disabled={statusUpdating}>
+                  <Button size="sm" className="h-7 text-xs gap-1" onClick={() => changeStatus("active")} disabled={statusUpdating}>
                     <Play className="h-3 w-3" />Activate
                   </Button>
                 )}
                 {canControl && mission.status === "active" && (
                   <>
-                    <Button variant="outline" size="sm" className="min-h-[36px] text-[10px] gap-1 px-3" onClick={() => changeStatus("paused")} disabled={statusUpdating}>
+                    <Button variant="outline" size="sm" className="min-h-[36px] text-xs gap-1 px-3" onClick={() => changeStatus("paused")} disabled={statusUpdating}>
                       <Pause className="h-3.5 w-3.5" />Pause
                     </Button>
-                    <Button variant="outline" size="sm" className="min-h-[36px] text-[10px] gap-1 px-3" onClick={() => changeStatus("completed")} disabled={statusUpdating}>
+                    <Button variant="outline" size="sm" className="min-h-[36px] text-xs gap-1 px-3" onClick={() => changeStatus("completed")} disabled={statusUpdating}>
                       <CheckCircle className="h-3.5 w-3.5" />Complete
                     </Button>
                   </>
                 )}
                 {canControl && mission.status === "paused" && (
-                  <Button size="sm" className="min-h-[36px] text-[10px] gap-1 px-3" onClick={() => changeStatus("active")} disabled={statusUpdating}>
+                  <Button size="sm" className="min-h-[36px] text-xs gap-1 px-3" onClick={() => changeStatus("active")} disabled={statusUpdating}>
                     <Play className="h-3.5 w-3.5" />Resume
                   </Button>
                 )}
                 {mission.started_at && (
-                  <span className="flex items-center gap-1 text-[10px] text-muted-foreground">
+                  <span className="flex items-center gap-1 text-xs text-muted-foreground">
                     <Clock className="h-3 w-3" />{formatRelative(mission.started_at)}
                   </span>
                 )}
@@ -1230,7 +1230,7 @@ export default function MissionDetailPage() {
                     <Button
                       variant={showFov ? "default" : "outline"}
                       size="sm"
-                      className="min-h-[36px] text-[10px] px-2.5 gap-1"
+                      className="min-h-[36px] text-xs px-2.5 gap-1"
                       onClick={() => setShowFov(!showFov)}
                     >
                       {showFov ? <EyeOff className="h-3.5 w-3.5" /> : <Eye className="h-3.5 w-3.5" />}
@@ -1241,7 +1241,7 @@ export default function MissionDetailPage() {
                     <Button
                       variant={showGrid ? "default" : "outline"}
                       size="sm"
-                      className="min-h-[36px] text-[10px] px-2.5 gap-1"
+                      className="min-h-[36px] text-xs px-2.5 gap-1"
                       onClick={() => setShowGrid(!showGrid)}
                       title="Afficher carroyage A-Q / 1-12"
                     >
@@ -1253,7 +1253,7 @@ export default function MissionDetailPage() {
                     <Button
                       variant={estimatePosition ? "default" : "outline"}
                       size="sm"
-                      className="min-h-[36px] text-[10px] px-2.5 gap-1"
+                      className="min-h-[36px] text-xs px-2.5 gap-1"
                       onClick={() => setEstimatePosition(!estimatePosition)}
                       disabled={missionDevices.length < 2 && !(timelapseMode && sensorPlacements.length >= 2)}
                     >
@@ -1262,13 +1262,13 @@ export default function MissionDetailPage() {
                     </Button>
                   )}
                   {liveDetections.length > 0 && (
-                    <span className="text-[9px] font-mono text-success animate-pulse ml-1">LIVE</span>
+                    <span className="text-2xs font-mono text-success animate-pulse ml-1">LIVE</span>
                   )}
                 </div>
                 <Button
                   variant="outline"
                   size="sm"
-                  className="min-h-[36px] text-[10px] px-2.5 gap-1"
+                  className="min-h-[36px] text-xs px-2.5 gap-1"
                   onClick={() => setFullMapMode(false)}
                 >
                   <Minimize2 className="h-3.5 w-3.5" />
@@ -1278,11 +1278,11 @@ export default function MissionDetailPage() {
 
           {/* Sensor placement banner */}
           {sensorPlaceMode && (
-            <div className="flex items-center justify-between gap-2 rounded-lg border border-cyan-500/50 bg-cyan-500/10 px-3 py-2 mb-2">
-              <p className="text-xs text-cyan-300">
+            <div className="flex items-center justify-between gap-2 rounded-lg border border-info/50 bg-info/10 px-3 py-2 mb-2">
+              <p className="text-xs text-info">
                 Cliquer sur une facade pour placer <span className="font-semibold">{sensorPlaceMode.deviceName}</span>
               </p>
-              <Button variant="ghost" size="sm" className="h-7 px-2 text-[10px] text-cyan-400" onClick={() => setSensorPlaceMode(null)}>Annuler</Button>
+              <Button variant="ghost" size="sm" className="h-7 px-2 text-xs text-info" onClick={() => setSensorPlaceMode(null)}>Annuler</Button>
             </div>
           )}
           {isPlanMode ? (
@@ -1370,38 +1370,38 @@ export default function MissionDetailPage() {
                       )} />
                       <div className="flex-1 min-w-0">
                         <div className="flex items-center gap-1.5">
-                          <span className="text-[10px] font-semibold text-foreground font-mono">{d.dev_eui || d.name}</span>
+                          <span className="text-xs font-semibold text-foreground font-mono">{d.dev_eui || d.name}</span>
                           {d.zone_label && (
-                            <span className="text-[9px] text-muted-foreground truncate">{d.zone_label} [{getDisplaySide(d.zone_id, d.side)}]</span>
+                            <span className="text-2xs text-muted-foreground truncate">{d.zone_label} [{getDisplaySide(d.zone_id, d.side)}]</span>
                           )}
                         </div>
                         <div className="flex items-center gap-2 mt-0.5">
                           {hasPresence ? (
-                            <span className="text-[10px] font-mono text-warning font-semibold">
+                            <span className="text-xs font-mono text-warning font-semibold">
                               {det!.sensor_type === "gravity_mw" 
                                 ? "PRESENCE"
                                 : `${det!.distance}cm ${det!.direction}`
                               }
                             </span>
                           ) : det ? (
-                            <span className="text-[9px] font-mono text-success">RAS</span>
+                            <span className="text-2xs font-mono text-success">RAS</span>
                           ) : (
-                            <span className="text-[9px] font-mono text-muted-foreground/50">--</span>
+                            <span className="text-2xs font-mono text-muted-foreground/50">--</span>
                           )}
                           {rssi != null && (
-                            <span className="text-[9px] font-mono text-muted-foreground flex items-center gap-0.5">
+                            <span className="text-2xs font-mono text-muted-foreground flex items-center gap-0.5">
                               <Signal className="h-2.5 w-2.5" />{rssi}dBm
                             </span>
                         )}
                         {vbatt != null && vbatt > 0 && (
-                          <span className="text-[9px] font-mono text-muted-foreground flex items-center gap-0.5">
-                            {det?.charging ? <Plug className="h-2.5 w-2.5 text-cyan-400" /> : <Battery className="h-2.5 w-2.5" />}{Number(vbatt).toFixed(2)}V
+                          <span className="text-2xs font-mono text-muted-foreground flex items-center gap-0.5">
+                            {det?.charging ? <Plug className="h-2.5 w-2.5 text-info" /> : <Battery className="h-2.5 w-2.5" />}{Number(vbatt).toFixed(2)}V
                           </span>
                         )}
                         </div>
                       </div>
                       {det?.timestamp && (
-                        <span className="text-[8px] font-mono text-muted-foreground shrink-0">
+                        <span className="text-2xs font-mono text-muted-foreground shrink-0">
                           {formatTimeLocal(det.timestamp)}
                         </span>
                       )}
@@ -1498,16 +1498,16 @@ export default function MissionDetailPage() {
                   />
                   {/* Sensor placement banner */}
                   {sensorPlaceMode && (
-                    <div className="flex items-center justify-between gap-2 rounded-lg border border-cyan-500/50 bg-cyan-500/10 px-3 py-2">
-                      <p className="text-xs text-cyan-300">
+                    <div className="flex items-center justify-between gap-2 rounded-lg border border-info/50 bg-info/10 px-3 py-2">
+                      <p className="text-xs text-info">
                         Cliquer sur une facade pour placer <span className="font-semibold">{sensorPlaceMode.deviceName}</span>
                       </p>
-                      <Button variant="ghost" size="sm" className="h-7 px-2 text-[10px] text-cyan-400" onClick={() => setSensorPlaceMode(null)}>Annuler</Button>
+                      <Button variant="ghost" size="sm" className="h-7 px-2 text-xs text-info" onClick={() => setSensorPlaceMode(null)}>Annuler</Button>
                     </div>
                   )}
                   {/* Upload / re-upload / delete plan image */}
-                  <div className="flex items-center justify-between gap-2 rounded-lg border border-amber-500/30 bg-amber-500/10 px-3 py-2">
-                    <p className="text-xs text-amber-300">
+                  <div className="flex items-center justify-between gap-2 rounded-lg border border-warning/30 bg-warning/10 px-3 py-2">
+                    <p className="text-xs text-warning">
                       {mission?.plan_image ? "Remplacer ou supprimer le plan" : "Aucun plan importe pour cette mission"}
                     </p>
                     <div className="flex items-center gap-1.5 shrink-0">
@@ -1540,14 +1540,14 @@ export default function MissionDetailPage() {
                             }
                           }}
                         />
-                        <span className="inline-flex items-center gap-1.5 rounded-md bg-primary px-3 py-1.5 text-[10px] font-medium text-primary-foreground hover:bg-primary/90 transition-colors">
+                        <span className="inline-flex items-center gap-1.5 rounded-md bg-primary px-3 py-1.5 text-xs font-medium text-primary-foreground hover:bg-primary/90 transition-colors">
                           <FileImage className="h-3 w-3" />
                           {mission?.plan_image ? "Remplacer" : "Importer"}
                         </span>
                       </label>
                       {mission?.plan_image && (
                         <button
-                          className="inline-flex items-center gap-1 rounded-md bg-destructive/20 border border-destructive/30 px-2.5 py-1.5 text-[10px] text-destructive hover:bg-destructive/30 transition-colors cursor-pointer"
+                          className="inline-flex items-center gap-1 rounded-md bg-destructive/20 border border-destructive/30 px-2.5 py-1.5 text-xs text-destructive hover:bg-destructive/30 transition-colors cursor-pointer"
                           onClick={async () => {
                             if (!confirm("Supprimer le plan de cette mission ?")) return
                             try {
@@ -1588,7 +1588,7 @@ export default function MissionDetailPage() {
                     <Button
                       variant="outline"
                       size="sm"
-                      className="absolute top-2 right-2 z-[1000] min-h-[32px] text-[10px] px-2 gap-1 bg-background/80 backdrop-blur-sm"
+                      className="absolute top-2 right-2 z-[1000] min-h-[32px] text-xs px-2 gap-1 bg-background/80 backdrop-blur-sm"
                       onClick={() => setFullMapMode(true)}
                     >
                       <Maximize2 className="h-3.5 w-3.5" />
@@ -1641,18 +1641,18 @@ export default function MissionDetailPage() {
             <>
           {/* Sensor placement banner (normal map) */}
           {sensorPlaceMode && (
-            <div className="flex items-center justify-between gap-2 rounded-lg border border-cyan-500/50 bg-cyan-500/10 px-3 py-2 mb-2">
-              <p className="text-xs text-cyan-300">
+            <div className="flex items-center justify-between gap-2 rounded-lg border border-info/50 bg-info/10 px-3 py-2 mb-2">
+              <p className="text-xs text-info">
                 Cliquer sur une facade pour placer <span className="font-semibold">{sensorPlaceMode.deviceName}</span>
               </p>
-              <Button variant="ghost" size="sm" className="h-7 px-2 text-[10px] text-cyan-400" onClick={() => setSensorPlaceMode(null)}>Annuler</Button>
+              <Button variant="ghost" size="sm" className="h-7 px-2 text-xs text-info" onClick={() => setSensorPlaceMode(null)}>Annuler</Button>
             </div>
           )}
           <div className="relative">
           <Button
             variant="outline"
             size="sm"
-            className="absolute top-2 right-2 z-[1000] min-h-[32px] text-[10px] px-2 gap-1 bg-background/80 backdrop-blur-sm"
+            className="absolute top-2 right-2 z-[1000] min-h-[32px] text-xs px-2 gap-1 bg-background/80 backdrop-blur-sm"
             onClick={() => setFullMapMode(true)}
           >
           <Maximize2 className="h-3.5 w-3.5" />
@@ -1703,7 +1703,7 @@ export default function MissionDetailPage() {
                           <Button
                             variant={showFov ? "default" : "outline"}
                             size="sm"
-                            className="min-h-[36px] text-[10px] px-2.5 gap-1"
+                            className="min-h-[36px] text-xs px-2.5 gap-1"
                             onClick={() => setShowFov(!showFov)}
                           >
                             {showFov ? <EyeOff className="h-3.5 w-3.5" /> : <Eye className="h-3.5 w-3.5" />}
@@ -1714,7 +1714,7 @@ export default function MissionDetailPage() {
                           <Button
                             variant={showGrid ? "default" : "outline"}
                             size="sm"
-                            className="min-h-[36px] text-[10px] px-2.5 gap-1"
+                            className="min-h-[36px] text-xs px-2.5 gap-1"
                             onClick={() => setShowGrid(!showGrid)}
                             title="Afficher carroyage A-Q / 1-12"
                           >
@@ -1726,7 +1726,7 @@ export default function MissionDetailPage() {
                   <Button
                     variant={estimatePosition ? "default" : "outline"}
                     size="sm"
-                    className="min-h-[36px] text-[10px] px-2.5 gap-1"
+                    className="min-h-[36px] text-xs px-2.5 gap-1"
                     onClick={() => setEstimatePosition(!estimatePosition)}
                   >
                     <Crosshair className="h-3.5 w-3.5" />
@@ -1784,7 +1784,7 @@ export default function MissionDetailPage() {
                         key={level}
                         onClick={() => setSelectedFloor(level)}
                         className={cn(
-                          "px-2 py-1 text-[10px] rounded transition-colors",
+                          "px-2 py-1 text-xs rounded transition-colors",
                           selectedFloor === level 
                             ? "bg-primary text-primary-foreground" 
                             : "bg-muted/50 text-muted-foreground hover:bg-muted"
@@ -1795,7 +1795,7 @@ export default function MissionDetailPage() {
                     ))}
                     <button
                       onClick={() => setSelectedFloor(Math.max(...floorLevels) + 1)}
-                      className="px-2 py-1 text-[10px] rounded bg-muted/30 text-muted-foreground hover:bg-muted"
+                      className="px-2 py-1 text-xs rounded bg-muted/30 text-muted-foreground hover:bg-muted"
                       title="Ajouter un etage"
                     >
                       +
@@ -1807,7 +1807,7 @@ export default function MissionDetailPage() {
                           const nextFloor = Math.max(...floorLevels) + 1
                           setDuplicateFloorDialog({ sourceFloor: selectedFloor, targetFloor: nextFloor })
                         }}
-                        className="px-2 py-1 text-[10px] rounded bg-muted/30 text-muted-foreground hover:bg-muted flex items-center gap-1"
+                        className="px-2 py-1 text-xs rounded bg-muted/30 text-muted-foreground hover:bg-muted flex items-center gap-1"
                         title={`Dupliquer les zones de ${floorLabels[selectedFloor] ?? `Niveau ${selectedFloor}`} vers un nouvel etage`}
                       >
                         <Copy className="h-3 w-3" />
@@ -1817,7 +1817,7 @@ export default function MissionDetailPage() {
                     <button
                       onClick={() => setAutoSwitchFloor(!autoSwitchFloor)}
                       className={cn(
-                        "px-2 py-1 text-[10px] rounded transition-colors flex items-center gap-1",
+                        "px-2 py-1 text-xs rounded transition-colors flex items-center gap-1",
                         autoSwitchFloor 
                           ? "bg-primary/20 text-primary" 
                           : "bg-muted/30 text-muted-foreground hover:bg-muted"
@@ -1832,7 +1832,7 @@ export default function MissionDetailPage() {
                 <CardContent className="flex flex-col gap-2">
                   {/* Calibration status (plan mode only) */}
                   {isPlanMode && (
-                    <div className="flex items-center gap-2 text-[10px]">
+                    <div className="flex items-center gap-2 text-xs">
                       <Ruler className="h-3 w-3 text-muted-foreground shrink-0" />
                       {mission?.plan_scale ? (
                         <span className="text-success">
@@ -1868,12 +1868,12 @@ export default function MissionDetailPage() {
                         <div className="flex-1 min-w-0">
                           <p className="text-xs font-medium text-foreground truncate">{zone.label}</p>
                           <div className="flex items-center gap-1 flex-wrap">
-                            <span className="text-[10px] text-muted-foreground">{zone.type}</span>
+                            <span className="text-xs text-muted-foreground">{zone.type}</span>
                             {zone.polygon?.length >= 3 && (() => {
                               // Show grouped facade letters from bearing analysis (A, B, C, D)
                               const { labels: gl } = groupSidesByBearing(zone.polygon)
                               const faces = Object.keys(gl).sort()
-                              return <span className="text-[9px] font-mono text-primary">[{faces.join(" ")}]</span>
+                              return <span className="text-2xs font-mono text-primary">[{faces.join(" ")}]</span>
                             })()}
                           </div>
                           {/* Fixed-height detection row to prevent layout shift */}
@@ -1881,7 +1881,7 @@ export default function MissionDetailPage() {
                             {zoneDetection ? (
                               <>
                                 {zoneDetection.presence ? (
-                                  <span className="text-[9px] font-mono text-warning font-semibold flex items-center gap-0.5">
+                                  <span className="text-2xs font-mono text-warning font-semibold flex items-center gap-0.5">
                                     <Eye className="h-2.5 w-2.5" />
                                     {zoneDetection.sensor_type === "gravity_mw" 
                                       ? "PRESENCE"
@@ -1889,22 +1889,22 @@ export default function MissionDetailPage() {
                                     }
                                   </span>
                                 ) : (
-                                  <span className="text-[9px] font-mono text-success flex items-center gap-0.5">
+                                  <span className="text-2xs font-mono text-success flex items-center gap-0.5">
                                     <EyeOff className="h-2.5 w-2.5" />RAS
                                   </span>
                                 )}
                                 {zoneDetection.rssi != null && (
-                                  <span className="text-[9px] font-mono text-muted-foreground">
+                                  <span className="text-2xs font-mono text-muted-foreground">
                                     {zoneDetection.rssi}dBm
                                   </span>
                                 )}
                               </>
                             ) : (
-                              <span className="text-[9px] font-mono text-muted-foreground/50">--</span>
+                              <span className="text-2xs font-mono text-muted-foreground/50">--</span>
                             )}
                           </div>
                         </div>
-                        <span className="text-[10px] text-muted-foreground font-mono">{missionDevices.filter(d => d.zone_id === zone.id).length} TX</span>
+                        <span className="text-xs text-muted-foreground font-mono">{missionDevices.filter(d => d.zone_id === zone.id).length} TX</span>
                         <div className="flex items-center shrink-0">
                           {canEdit && (
                             <>
@@ -1963,11 +1963,11 @@ export default function MissionDetailPage() {
                       <div key={d.id} className={cn("flex flex-col gap-1 text-xs rounded-md px-1 py-1.5 transition-opacity", isMuted && "opacity-40")}>
                         {/* Row 1: info */}
                         <div className="flex items-center gap-2 min-w-0">
-                          <div className={cn("h-2 w-2 rounded-full shrink-0", d.status === "online" ? "bg-emerald-500" : d.status === "idle" ? "bg-amber-500" : "bg-muted-foreground/30")} title={d.status ?? "unknown"} />
+                          <div className={cn("h-2 w-2 rounded-full shrink-0", d.status === "online" ? "bg-success" : d.status === "idle" ? "bg-warning" : "bg-muted-foreground/30")} title={d.status ?? "unknown"} />
                           <div className="flex-1 min-w-0">
                             <div className="flex flex-wrap items-center gap-1">
                               <span className={cn("font-mono text-foreground", isMuted && "line-through")}>{d.name}</span>
-                              <span className="text-[8px] font-medium px-1.5 py-0.5 rounded bg-muted text-muted-foreground">
+                              <span className="text-2xs font-medium px-1.5 py-0.5 rounded bg-muted text-muted-foreground">
                                 {{ microwave_tx: "LD2450", tx_microwave: "LD2450", c4001: "C4001", gravity_mw: "MW V2", xaver: "XAVER" }[d.type ?? ""] ?? "TX"}
                               </span>
                               {/* XAVER status indicator - show if sensor_status exists */}
@@ -1987,7 +1987,7 @@ export default function MissionDetailPage() {
                                 />
                               )}
                               {det && (
-                                <span className={cn("text-[9px] font-mono font-semibold", det.presence ? "text-warning" : "text-success")}>
+                                <span className={cn("text-2xs font-mono font-semibold", det.presence ? "text-warning" : "text-success")}>
                                   {det.presence 
                                     ? (det.sensor_type === "gravity_mw" ? "PRESENCE" : `${det.distance}cm`)
                                     : "RAS"
@@ -1995,14 +1995,14 @@ export default function MissionDetailPage() {
                                 </span>
                               )}
                             </div>
-                            <div className="flex flex-wrap items-center gap-x-2 gap-y-0 text-[10px] text-muted-foreground">
+                            <div className="flex flex-wrap items-center gap-x-2 gap-y-0 text-xs text-muted-foreground">
                               <span>
                                 {d.zone_label || (d.floor != null ? `Etage ${d.floor}` : "---")}
                                 {d.side && <span className="text-primary ml-0.5">[{getDisplaySide(d.zone_id, d.side)}]</span>}
                                 {wallDist && <span className="ml-0.5">{wallDist}</span>}
                               </span>
                               {rssiVal != null && rssiVal !== 0 && (
-                                <span className={cn("font-mono", (rssiVal as number) >= -70 ? "text-emerald-500" : (rssiVal as number) >= -85 ? "text-amber-500" : "text-red-500")}>
+                                <span className={cn("font-mono", (rssiVal as number) >= -70 ? "text-success" : (rssiVal as number) >= -85 ? "text-warning" : "text-destructive")}>
                                   {Math.round(rssiVal as number)}dBm
                                 </span>
                               )}
@@ -2049,7 +2049,7 @@ export default function MissionDetailPage() {
                               "shrink-0 p-1 min-h-[36px] min-w-[36px] flex items-center justify-center rounded transition-colors cursor-pointer",
                               (d.orientation ?? "inward") === "inward"
                                 ? "text-primary hover:bg-primary/10"
-                                : "text-orange-400 hover:bg-orange-400/10"
+                                : "text-warning hover:bg-warning/10"
                             )}
                             title={`Detection: ${(d.orientation ?? "inward") === "inward" ? "interieur" : "exterieur"}`}
                           >
@@ -2069,7 +2069,7 @@ export default function MissionDetailPage() {
                             }}
                             className={cn(
                               "shrink-0 p-1 min-h-[36px] min-w-[36px] flex items-center justify-center rounded transition-colors cursor-pointer",
-                              isMuted ? "text-amber-500 hover:bg-amber-500/10" : "text-muted-foreground/40 hover:bg-muted"
+                              isMuted ? "text-warning hover:bg-warning/10" : "text-muted-foreground/40 hover:bg-muted"
                             )}
                             title={isMuted ? "Reactiver les detections" : "Mettre en sourdine"}
                           >
@@ -2120,7 +2120,7 @@ export default function MissionDetailPage() {
                         <Zap className="h-3 w-3 text-warning" />
                         Detection Feed
                         {feedExpired && displayDetections.length > 0 && (
-                          <span className="text-[9px] text-muted-foreground font-normal ml-1">(derniere detection)</span>
+                          <span className="text-2xs text-muted-foreground font-normal ml-1">(derniere detection)</span>
                         )}
                       </CardTitle>
                       <div className="flex items-center gap-2 flex-wrap">
@@ -2131,13 +2131,13 @@ export default function MissionDetailPage() {
                           </span>
                         )}
                         {!feedExpired && displayDetections.length > 0 && (
-                          <span className="text-[9px] text-primary font-medium uppercase tracking-wider">LIVE</span>
+                          <span className="text-2xs text-primary font-medium uppercase tracking-wider">LIVE</span>
                         )}
                         {missionDevices.length > 1 && (
                           <select
                             value={feedDeviceFilter}
                             onChange={e => setFeedDeviceFilter(e.target.value)}
-                            className="h-7 rounded border border-border bg-background px-1.5 text-[10px] text-foreground focus:outline-none focus:ring-1 focus:ring-primary"
+                            className="h-7 rounded border border-border bg-background px-1.5 text-xs text-foreground focus:outline-none focus:ring-1 focus:ring-primary"
                           >
                             <option value="all">Tous ({missionDevices.length})</option>
                             {floorFilteredDevices.map(d => (
@@ -2149,7 +2149,7 @@ export default function MissionDetailPage() {
                           <Button
                             variant={showFov ? "default" : "outline"}
                             size="sm"
-                            className="min-h-[36px] text-[10px] px-2.5 gap-1"
+                            className="min-h-[36px] text-xs px-2.5 gap-1"
                             onClick={() => setShowFov(!showFov)}
                             title="Afficher couverture theorique des capteurs"
                           >
@@ -2161,7 +2161,7 @@ export default function MissionDetailPage() {
                           <Button
                             variant={showGrid ? "default" : "outline"}
                             size="sm"
-                            className="min-h-[36px] text-[10px] px-2.5 gap-1"
+                            className="min-h-[36px] text-xs px-2.5 gap-1"
                             onClick={() => setShowGrid(!showGrid)}
                             title="Afficher carroyage A-Q / 1-12"
                           >
@@ -2173,7 +2173,7 @@ export default function MissionDetailPage() {
                           <Button
                             variant={estimatePosition ? "default" : "outline"}
                             size="sm"
-                            className="min-h-[36px] text-[10px] px-2.5 gap-1"
+                            className="min-h-[36px] text-xs px-2.5 gap-1"
                             onClick={() => setEstimatePosition(!estimatePosition)}
                             disabled={missionDevices.length < 2 && !(timelapseMode && sensorPlacements.length >= 2)}
                             title="Estimate position from multiple sensors"
@@ -2189,7 +2189,7 @@ export default function MissionDetailPage() {
                               <Button
                                 variant={hasMissionOverrides ? "default" : "outline"}
                                 size="sm"
-                                className="min-h-[36px] text-[10px] px-2.5 gap-1"
+                                className="min-h-[36px] text-xs px-2.5 gap-1"
                                 title="Apparence visuelle"
                               >
                                 <Palette className="h-3.5 w-3.5" />
@@ -2206,7 +2206,7 @@ export default function MissionDetailPage() {
                           </Popover>
                         )}
                         {liveDetections.length > 0 && (
-                          <span className="text-[9px] font-mono text-success animate-pulse">LIVE</span>
+                          <span className="text-2xs font-mono text-success animate-pulse">LIVE</span>
                         )}
                       </div>
                     </div>
@@ -2216,7 +2216,7 @@ export default function MissionDetailPage() {
                       <p className="text-xs text-muted-foreground py-2 text-center">
                         En attente de detections...
                         <br />
-                        <span className="text-[10px]">Les detections apparaitront ici en temps reel</span>
+                        <span className="text-xs">Les detections apparaitront ici en temps reel</span>
                       </p>
                     ) : displayDetections.map((det, i) => {
                       // Check if this presence-only detection is triangulated with a distance-based detection
@@ -2247,60 +2247,60 @@ export default function MissionDetailPage() {
                         )} />
                         <div className="flex-1 min-w-0">
                           <div className="flex items-center gap-1.5">
-                            <span className="text-[10px] font-semibold text-foreground">
+                            <span className="text-xs font-semibold text-foreground">
                               {txName}
                             </span>
                             {det.side && (
-                              <span className="text-[9px] font-mono font-bold text-primary">
+                              <span className="text-2xs font-mono font-bold text-primary">
                                 [{det.side}]
                               </span>
                             )}
-                            <span className="text-[9px] text-muted-foreground font-mono ml-auto shrink-0">
+                            <span className="text-2xs text-muted-foreground font-mono ml-auto shrink-0">
                               {showRelativeTime ? relativeTime : formatTimeLocal(det.timestamp)}
                             </span>
                           </div>
                           <div className="flex items-center gap-2 mt-0.5 flex-wrap">
                             {det.presence ? (
-                              <Badge variant="outline" className="text-[8px] px-1 py-0 border-warning/30 bg-warning/10 text-warning">
+                              <Badge variant="outline" className="text-2xs px-1 py-0 border-warning/30 bg-warning/10 text-warning">
                                 PRESENCE
                               </Badge>
                             ) : (
-                              <Badge variant="outline" className="text-[8px] px-1 py-0 border-success/30 bg-success/10 text-success">
+                              <Badge variant="outline" className="text-2xs px-1 py-0 border-success/30 bg-success/10 text-success">
                                 RAS
                               </Badge>
                             )}
                             {isTriangulated && (
-                              <Badge variant="outline" className="text-[8px] px-1 py-0 border-primary/50 bg-primary/10 text-primary">
+                              <Badge variant="outline" className="text-2xs px-1 py-0 border-primary/50 bg-primary/10 text-primary">
                                 TRIANGULE
                               </Badge>
                             )}
-                            <span className="text-[9px] font-mono text-muted-foreground">
+                            <span className="text-2xs font-mono text-muted-foreground">
                               {det.sensor_type === "gravity_mw" 
                                 ? (det.distance === 1 ? "Presence" : "---")
                                 : `${det.distance}cm`
                               }
                             </span>
                             {(det.speed ?? 0) > 0 && (
-                              <span className="text-[9px] font-mono text-muted-foreground">
+                              <span className="text-2xs font-mono text-muted-foreground">
                                 {det.speed}cm/s
                               </span>
                             )}
-                            <span className="text-[9px] font-mono text-muted-foreground">
+                            <span className="text-2xs font-mono text-muted-foreground">
                               {det.direction === "G" ? "Gauche" : det.direction === "D" ? "Droite" : "Centre"}
                             </span>
                             {det.rssi != null && (
-                              <span className="text-[9px] font-mono text-muted-foreground">
+                              <span className="text-2xs font-mono text-muted-foreground">
                                 {det.rssi}dBm
                               </span>
                             )}
                             {det.vbatt_tx != null && (
-                              <span className="text-[9px] font-mono text-muted-foreground flex items-center gap-0.5">
-                                {det.charging && <Plug className="h-2 w-2 text-cyan-400" />}
+                              <span className="text-2xs font-mono text-muted-foreground flex items-center gap-0.5">
+                                {det.charging && <Plug className="h-2 w-2 text-info" />}
                                 {det.vbatt_tx.toFixed(2)}V
                               </span>
                             )}
                           </div>
-                          <span className="text-[9px] text-muted-foreground/60">{det.zone_label || det.device_name}</span>
+                          <span className="text-2xs text-muted-foreground/60">{det.zone_label || det.device_name}</span>
                         </div>
                       </div>
                     )})}
@@ -2322,7 +2322,7 @@ export default function MissionDetailPage() {
                     <Button
                       variant={showFov ? "default" : "outline"}
                       size="sm"
-                      className="min-h-[32px] text-[10px] px-2.5 gap-1"
+                      className="min-h-[32px] text-xs px-2.5 gap-1"
                       onClick={() => setShowFov(!showFov)}
                       title="Afficher couverture theorique des capteurs"
                     >
@@ -2334,7 +2334,7 @@ export default function MissionDetailPage() {
                     <Button
                       variant={showGrid ? "default" : "outline"}
                       size="sm"
-                      className="min-h-[32px] text-[10px] px-2.5 gap-1"
+                      className="min-h-[32px] text-xs px-2.5 gap-1"
                       onClick={() => setShowGrid(!showGrid)}
                       title="Afficher carroyage A-Q / 1-12"
                     >
@@ -2345,7 +2345,7 @@ export default function MissionDetailPage() {
                   {!isFloorMode && (
                   <Button
                     variant={heatmapMode ? "default" : "outline"} size="sm"
-                    className="min-h-[32px] text-[10px] px-2.5 gap-1"
+                    className="min-h-[32px] text-xs px-2.5 gap-1"
                     disabled={floorFilteredEvents.length === 0}
                     onClick={() => setHeatmapMode(!heatmapMode)}
                   >
@@ -2354,7 +2354,7 @@ export default function MissionDetailPage() {
                   )}
                   <Button
                     variant="destructive" size="sm"
-                    className="min-h-[32px] text-[10px] px-2.5 gap-1"
+                    className="min-h-[32px] text-xs px-2.5 gap-1"
                     disabled={floorFilteredEvents.length === 0}
                     onClick={async () => {
                       if (!confirm("Purger tous les events de cette mission ?")) return
@@ -2374,7 +2374,7 @@ export default function MissionDetailPage() {
                   </Button>
                   <Button
                     variant="outline" size="sm"
-                    className="min-h-[32px] text-[10px] px-2.5 gap-1"
+                    className="min-h-[32px] text-xs px-2.5 gap-1"
                     disabled={floorFilteredEvents.length === 0}
                     onClick={() => {
                       const csv = [
@@ -2446,8 +2446,8 @@ export default function MissionDetailPage() {
                   return (
                     <div className="mb-4 p-3 rounded-lg bg-muted/20 border border-border/30">
                       <div className="flex items-center justify-between mb-2">
-                        <span className="text-[10px] font-mono text-muted-foreground uppercase tracking-wider">Activity Timeline</span>
-                        <span className="text-[10px] font-mono text-muted-foreground">
+                        <span className="text-xs font-mono text-muted-foreground uppercase tracking-wider">Activity Timeline</span>
+                        <span className="text-xs font-mono text-muted-foreground">
                           {startLabel} - {endLabel}
                         </span>
                       </div>
@@ -2462,9 +2462,9 @@ export default function MissionDetailPage() {
                         ))}
                       </div>
                       <div className="flex justify-between mt-1">
-                        <span className="text-[8px] font-mono text-muted-foreground">{startLabel}</span>
-                        <span className="text-[8px] font-mono text-primary font-medium">{floorFilteredEvents.length} total</span>
-                        <span className="text-[8px] font-mono text-muted-foreground">{endLabel}</span>
+                        <span className="text-2xs font-mono text-muted-foreground">{startLabel}</span>
+                        <span className="text-2xs font-mono text-primary font-medium">{floorFilteredEvents.length} total</span>
+                        <span className="text-2xs font-mono text-muted-foreground">{endLabel}</span>
                       </div>
                     </div>
                   )
@@ -2505,22 +2505,22 @@ export default function MissionDetailPage() {
                               <span className="text-xs font-semibold text-foreground">{s.label}</span>
                               <span className="font-mono text-sm font-bold text-foreground">{s.count} det.</span>
                             </div>
-                            <div className="text-[10px] text-muted-foreground mb-2">
+                            <div className="text-xs text-muted-foreground mb-2">
                               {Math.round(s.totalDist / s.count)}cm avg | {s.devices.size} TX
                             </div>
                             {/* Direction distribution (G / C / D) */}
                             {(s.dirG > 0 || s.dirD > 0) && (
                               <div className="mb-2">
                                 <div className="flex items-center gap-1 mb-1">
-                                  <span className="text-[8px] text-muted-foreground">Position:</span>
-                                  <span className="text-[9px] font-mono text-blue-400">G:{s.dirG}</span>
-                                  <span className="text-[9px] font-mono text-success">C:{s.dirC}</span>
-                                  <span className="text-[9px] font-mono text-orange-400">D:{s.dirD}</span>
+                                  <span className="text-2xs text-muted-foreground">Position:</span>
+                                  <span className="text-2xs font-mono text-chart-2">G:{s.dirG}</span>
+                                  <span className="text-2xs font-mono text-chart-1">C:{s.dirC}</span>
+                                  <span className="text-2xs font-mono text-chart-3">D:{s.dirD}</span>
                                 </div>
                                 <div className="flex h-1.5 gap-px rounded-sm overflow-hidden">
-                                  {s.dirG > 0 && <div className="bg-blue-400 rounded-sm" style={{ flex: s.dirG }} />}
-                                  {s.dirC > 0 && <div className="bg-success rounded-sm" style={{ flex: s.dirC }} />}
-                                  {s.dirD > 0 && <div className="bg-orange-400 rounded-sm" style={{ flex: s.dirD }} />}
+                                  {s.dirG > 0 && <div className="bg-chart-2 rounded-sm" style={{ flex: s.dirG }} />}
+                                  {s.dirC > 0 && <div className="bg-chart-1 rounded-sm" style={{ flex: s.dirC }} />}
+                                  {s.dirD > 0 && <div className="bg-chart-3 rounded-sm" style={{ flex: s.dirD }} />}
                                 </div>
                               </div>
                             )}
@@ -2533,7 +2533,7 @@ export default function MissionDetailPage() {
                                 const color = t < 0.33 ? "#22c55e" : t < 0.66 ? "#eab308" : "#ef4444"
                                 return (
                                   <div key={i} className="flex-1 flex flex-col items-center justify-end gap-0.5">
-                                    {cnt > 0 && <span className="text-[8px] text-muted-foreground font-mono">{cnt}</span>}
+                                    {cnt > 0 && <span className="text-2xs text-muted-foreground font-mono">{cnt}</span>}
                                     <div
                                       className="w-full rounded-t-sm"
                                       style={{ height: `${h}%`, backgroundColor: color, opacity: 0.8, minHeight: cnt > 0 ? 3 : 0 }}
@@ -2544,7 +2544,7 @@ export default function MissionDetailPage() {
                             </div>
                             <div className="flex gap-0.5 mt-0.5">
                               {BAND_LABELS.map((lbl, i) => (
-                                <div key={i} className="flex-1 text-center text-[7px] text-muted-foreground/60">{lbl}</div>
+                                <div key={i} className="flex-1 text-center text-2xs text-muted-foreground/60">{lbl}</div>
                               ))}
                             </div>
                           </div>
@@ -2560,14 +2560,14 @@ export default function MissionDetailPage() {
                     <Table>
                       <TableHeader>
                         <TableRow className="border-border/50">
-                          <TableHead className="text-[10px]">Time</TableHead>
-                          <TableHead className="text-[10px]">Type</TableHead>
-                          <TableHead className="text-[10px]">Device</TableHead>
-                          <TableHead className="text-[10px]">Zone</TableHead>
-                          <TableHead className="text-[10px]">Distance</TableHead>
-                          <TableHead className="text-[10px]">Direction</TableHead>
-                          <TableHead className="text-[10px]">Speed</TableHead>
-                          <TableHead className="text-[10px]">RSSI</TableHead>
+                          <TableHead className="text-xs">Time</TableHead>
+                          <TableHead className="text-xs">Type</TableHead>
+                          <TableHead className="text-xs">Device</TableHead>
+                          <TableHead className="text-xs">Zone</TableHead>
+                          <TableHead className="text-xs">Distance</TableHead>
+                          <TableHead className="text-xs">Direction</TableHead>
+                          <TableHead className="text-xs">Speed</TableHead>
+                          <TableHead className="text-xs">RSSI</TableHead>
                         </TableRow>
                       </TableHeader>
                       <TableBody>
@@ -2576,21 +2576,21 @@ export default function MissionDetailPage() {
                           const dir = String(p.direction ?? "C")
                           return (
                             <TableRow key={evt.id} className="border-border/30">
-                              <TableCell className="font-mono text-[11px] text-muted-foreground">{formatDateTime(evt.timestamp)}</TableCell>
-                              <TableCell className="font-mono text-[10px] text-muted-foreground">{evt.type ?? "detection"}</TableCell>
+                              <TableCell className="font-mono text-xs text-muted-foreground">{formatDateTime(evt.timestamp)}</TableCell>
+                              <TableCell className="font-mono text-xs text-muted-foreground">{evt.type ?? "detection"}</TableCell>
                               <TableCell className="font-mono text-xs text-foreground">{evt.device_name}</TableCell>
                               <TableCell className="text-xs text-muted-foreground">{evt.zone_label ?? "---"}</TableCell>
-                              <TableCell className="font-mono text-[11px] text-foreground">
+                              <TableCell className="font-mono text-xs text-foreground">
                                 {p.sensor_type === "gravity_mw" 
                                   ? (p.distance === 1 ? "Presence" : "---")
                                   : (p.distance ? `${p.distance}cm` : "---")
                                 }
                               </TableCell>
-                              <TableCell className="font-mono text-[11px] text-foreground">
+                              <TableCell className="font-mono text-xs text-foreground">
                                 {dir === "G" ? "Gauche" : dir === "D" ? "Droite" : "Centre"}
                               </TableCell>
-                              <TableCell className="font-mono text-[11px] text-muted-foreground">{Number(p.speed) > 0 ? `${p.speed}cm/s` : "---"}</TableCell>
-                              <TableCell className="font-mono text-[11px] text-foreground">{evt.rssi !== null ? `${evt.rssi}dBm` : "---"}</TableCell>
+                              <TableCell className="font-mono text-xs text-muted-foreground">{Number(p.speed) > 0 ? `${p.speed}cm/s` : "---"}</TableCell>
+                              <TableCell className="font-mono text-xs text-foreground">{evt.rssi !== null ? `${evt.rssi}dBm` : "---"}</TableCell>
                             </TableRow>
                           )
                         })}
@@ -2621,14 +2621,14 @@ export default function MissionDetailPage() {
                     <Table>
                       <TableHeader>
                         <TableRow className="border-border/50">
-                          <TableHead className="text-[10px]">Name</TableHead>
-                          <TableHead className="text-[10px]">TX ID</TableHead>
-                          <TableHead className="text-[10px]">Status</TableHead>
-                          <TableHead className="text-[10px]">Zone / Side</TableHead>
-                          <TableHead className="text-[10px]">RSSI</TableHead>
-                          <TableHead className="text-[10px]">Battery</TableHead>
-                          <TableHead className="text-[10px]">Last Seen</TableHead>
-                          <TableHead className="text-[10px]">Action</TableHead>
+                          <TableHead className="text-xs">Name</TableHead>
+                          <TableHead className="text-xs">TX ID</TableHead>
+                          <TableHead className="text-xs">Status</TableHead>
+                          <TableHead className="text-xs">Zone / Side</TableHead>
+                          <TableHead className="text-xs">RSSI</TableHead>
+                          <TableHead className="text-xs">Battery</TableHead>
+                          <TableHead className="text-xs">Last Seen</TableHead>
+                          <TableHead className="text-xs">Action</TableHead>
                         </TableRow>
                       </TableHeader>
                       <TableBody>
@@ -2637,9 +2637,9 @@ export default function MissionDetailPage() {
                           return (
                             <TableRow key={device.id} className="border-border/30">
                               <TableCell className="font-mono text-xs font-medium text-foreground">{device.name}</TableCell>
-                              <TableCell className="font-mono text-[11px] text-muted-foreground">{device.dev_eui || device.hw_id || "---"}</TableCell>
+                              <TableCell className="font-mono text-xs text-muted-foreground">{device.dev_eui || device.hw_id || "---"}</TableCell>
                               <TableCell>
-                                <Badge variant="outline" className={cn("text-[9px] px-1 py-0", sCfg.className)}>
+                                <Badge variant="outline" className={cn("text-2xs px-1 py-0", sCfg.className)}>
                                   <span className={cn("mr-1 h-1.5 w-1.5 rounded-full inline-block", sCfg.dot)} />
                                   {sCfg.label}
                                 </Badge>
@@ -2664,10 +2664,10 @@ export default function MissionDetailPage() {
                                   </div>
                                 ) : <span className="text-xs text-muted-foreground">---</span>}
                               </TableCell>
-                              <TableCell className="text-[11px] text-muted-foreground">{device.last_seen ? formatRelativeLocal(device.last_seen) : "Never"}</TableCell>
+                              <TableCell className="text-xs text-muted-foreground">{device.last_seen ? formatRelativeLocal(device.last_seen) : "Never"}</TableCell>
                               <TableCell>
                                 {canUnassign && (
-                                  <Button variant="ghost" size="sm" className="h-6 text-[10px] px-2 text-destructive hover:text-destructive/80" onClick={() => unassignDevice(device.id)}>
+                                  <Button variant="ghost" size="sm" className="h-6 text-xs px-2 text-destructive hover:text-destructive/80" onClick={() => unassignDevice(device.id)}>
                                     <Unlink className="mr-1 h-3 w-3" />Remove
                                   </Button>
                                 )}
@@ -2695,11 +2695,11 @@ export default function MissionDetailPage() {
                     <Table>
                       <TableHeader>
                         <TableRow className="border-border/50">
-                          <TableHead className="text-[10px]">Name</TableHead>
-                          <TableHead className="text-[10px]">TX ID</TableHead>
-                          <TableHead className="text-[10px]">Type</TableHead>
-                          <TableHead className="text-[10px]">Status</TableHead>
-                          <TableHead className="text-[10px]">Action</TableHead>
+                          <TableHead className="text-xs">Name</TableHead>
+                          <TableHead className="text-xs">TX ID</TableHead>
+                          <TableHead className="text-xs">Type</TableHead>
+                          <TableHead className="text-xs">Status</TableHead>
+                          <TableHead className="text-xs">Action</TableHead>
                         </TableRow>
                       </TableHeader>
                       <TableBody>
@@ -2709,17 +2709,17 @@ export default function MissionDetailPage() {
                           return (
                             <TableRow key={device.id} className="border-border/30">
                               <TableCell className="font-mono text-xs font-medium text-foreground">{device.name}</TableCell>
-                              <TableCell className="font-mono text-[11px] text-muted-foreground">{device.dev_eui || device.hw_id || "---"}</TableCell>
-                              <TableCell className="text-[11px] text-muted-foreground">
+                              <TableCell className="font-mono text-xs text-muted-foreground">{device.dev_eui || device.hw_id || "---"}</TableCell>
+                              <TableCell className="text-xs text-muted-foreground">
                                 {device.type || "TX"}
-                                {isElsewhere && <Badge variant="outline" className="ml-1 text-[8px] px-1 py-0 text-warning border-warning/30">other mission</Badge>}
+                                {isElsewhere && <Badge variant="outline" className="ml-1 text-2xs px-1 py-0 text-warning border-warning/30">other mission</Badge>}
                               </TableCell>
                               <TableCell>
-                                <Badge variant="outline" className={cn("text-[9px] px-1 py-0", sCfg.className)}>{sCfg.label}</Badge>
+                                <Badge variant="outline" className={cn("text-2xs px-1 py-0", sCfg.className)}>{sCfg.label}</Badge>
                               </TableCell>
                               <TableCell>
                                 <div className="flex items-center gap-1">
-                                  <Button variant="outline" size="sm" className="h-6 text-[10px] px-2" onClick={async () => {
+                                  <Button variant="outline" size="sm" className="h-6 text-xs px-2" onClick={async () => {
                                     await updateDevice(device.id, {
                                       mission_id: id,
                                       zone_id: "",
@@ -2734,7 +2734,7 @@ export default function MissionDetailPage() {
                                     <Signal className="mr-1 h-3 w-3" />{isElsewhere ? "Reassign" : "Assign"}
                                   </Button>
                                   {isElsewhere && canUnassign && (
-                                    <Button variant="ghost" size="sm" className="h-6 text-[10px] px-2 text-destructive hover:text-destructive/80" onClick={() => unassignDevice(device.id)}>
+                                    <Button variant="ghost" size="sm" className="h-6 text-xs px-2 text-destructive hover:text-destructive/80" onClick={() => unassignDevice(device.id)}>
                                       <Unlink className="mr-1 h-3 w-3" />Remove
                                     </Button>
                                   )}
@@ -2853,8 +2853,8 @@ export default function MissionDetailPage() {
                     return (
                       <div key={groupKey} className="flex items-center gap-2">
                         <div className="flex flex-col items-center shrink-0 w-10">
-                          <span className="text-xs font-mono font-bold text-cyan-600">{groupKey}</span>
-                          <span className="text-[9px] text-muted-foreground font-mono">
+                          <span className="text-xs font-mono font-bold text-info">{groupKey}</span>
+                          <span className="text-2xs text-muted-foreground font-mono">
                             {segmentLetters.length > 1
                               ? segmentLetters.join(",")
                               : `seg ${segmentLetters[0]}`}
@@ -2872,12 +2872,12 @@ export default function MissionDetailPage() {
                     )
                   })}
                 </div>
-                <p className="text-[9px] text-muted-foreground">
+                <p className="text-2xs text-muted-foreground">
                   Les segments paralleles sont regroupes automatiquement sous la meme face.
                 </p>
               </div>
             )}
-            <p className="text-[10px] text-muted-foreground font-mono">
+            <p className="text-xs text-muted-foreground font-mono">
               {pendingPolygon?.length ?? 0} points - {Object.keys(sideLabels).length} faces - {Object.values(sideLabels).filter(Boolean).length} labeled
             </p>
           </div>
@@ -2924,7 +2924,7 @@ export default function MissionDetailPage() {
                 <Label className="text-xs text-muted-foreground">
                   Faces ({Object.keys(editSideLabels).length} faces)
                 </Label>
-                <p className="text-[9px] text-muted-foreground">
+                <p className="text-2xs text-muted-foreground">
                   Les segments paralleles sont regroupes par face automatiquement.
                 </p>
                 <div className="flex flex-col gap-2">
@@ -2936,8 +2936,8 @@ export default function MissionDetailPage() {
                     return (
                       <div key={groupKey} className="flex items-center gap-2">
                         <div className="flex flex-col items-center shrink-0 w-10">
-                          <span className="text-xs font-mono font-bold text-cyan-600">{groupKey}</span>
-                          <span className="text-[9px] text-muted-foreground font-mono">
+                          <span className="text-xs font-mono font-bold text-info">{groupKey}</span>
+                          <span className="text-2xs text-muted-foreground font-mono">
                             {segmentLetters.length > 1 ? segmentLetters.join(",") : `seg ${segmentLetters[0] ?? groupKey}`}
                           </span>
                         </div>
@@ -3014,7 +3014,7 @@ export default function MissionDetailPage() {
                       <Radio className="h-4 w-4 text-primary shrink-0" />
                       <div className="flex-1 min-w-0">
                         <p className="text-xs font-mono font-medium text-foreground">{device.name}</p>
-                        <p className="text-[10px] text-muted-foreground">
+                        <p className="text-xs text-muted-foreground">
                           {device.dev_eui || device.serial_port || device.hw_id || "no port"}
                           {isElsewhere && (
                             <span className="text-warning ml-1">(other mission)</span>
@@ -3023,11 +3023,11 @@ export default function MissionDetailPage() {
                       </div>
                       <div className="flex items-center gap-1">
                         {device.battery && (
-                          <span className="text-[9px] text-muted-foreground font-mono">{device.battery}V</span>
+                          <span className="text-2xs text-muted-foreground font-mono">{device.battery}V</span>
                         )}
                         <Badge 
                           variant={device.status === "online" ? "default" : "outline"} 
-                          className={cn("text-[9px] px-1 py-0", device.status === "online" ? "bg-emerald-500/20 text-emerald-400 border-emerald-500/30" : device.status === "offline" ? "text-muted-foreground" : "")}
+                          className={cn("text-2xs px-1 py-0", device.status === "online" ? "bg-success/20 text-success border-success/30" : device.status === "offline" ? "text-muted-foreground" : "")}
                         >
                           {device.status ?? "unknown"}
                         </Badge>
@@ -3068,7 +3068,7 @@ export default function MissionDetailPage() {
                         }}
                         className="flex items-center gap-3 rounded border border-border/50 p-3 text-left hover:bg-muted/30 transition-colors"
                       >
-                        <span className="text-sm font-mono font-bold text-cyan-500 w-6 text-center">A</span>
+                        <span className="text-sm font-mono font-bold text-info w-6 text-center">A</span>
                         <span className="text-xs text-foreground">Façade A (ligne)</span>
                       </button>
                     )
@@ -3094,7 +3094,7 @@ export default function MissionDetailPage() {
                       }}
                       className="flex items-center gap-3 rounded border border-border/50 p-3 text-left hover:bg-muted/30 transition-colors"
                     >
-                      <span className="text-sm font-mono font-bold text-cyan-500 w-6 text-center">{groupLabel}</span>
+                      <span className="text-sm font-mono font-bold text-info w-6 text-center">{groupLabel}</span>
                       <span className="text-xs text-foreground">Façade {groupLabel}</span>
                     </button>
                   ))
@@ -3151,7 +3151,7 @@ export default function MissionDetailPage() {
                     })}
                     className="w-full h-2 bg-muted rounded-lg appearance-none cursor-pointer accent-primary"
                   />
-                  <div className="flex justify-between text-[9px] text-muted-foreground">
+                  <div className="flex justify-between text-2xs text-muted-foreground">
                     <span>2m (parpaing)</span>
                     <span>6m (PVC)</span>
                     <span>12m (libre)</span>
@@ -3175,7 +3175,7 @@ export default function MissionDetailPage() {
                     })}
                     className="w-full h-2 bg-muted rounded-lg appearance-none cursor-pointer accent-primary"
                   />
-                  <div className="flex justify-between text-[9px] text-muted-foreground">
+                  <div className="flex justify-between text-2xs text-muted-foreground">
                     <span>20° (bois epais)</span>
                     <span>50° (porte)</span>
                     <span>72° (libre)</span>
@@ -3198,7 +3198,7 @@ export default function MissionDetailPage() {
                           ...gravityConfigDialog,
                           config: { effectiveRange: preset.range, effectiveFov: preset.fov },
                         })}
-                        className="text-[10px] px-2 py-1 rounded border border-border/50 hover:bg-muted/50 transition-colors"
+                        className="text-xs px-2 py-1 rounded border border-border/50 hover:bg-muted/50 transition-colors"
                       >
                         {preset.label}
                       </button>
@@ -3271,7 +3271,7 @@ function VisualConfigPopover({
         <p className="text-xs font-semibold text-foreground">Apparence</p>
         <button
           onClick={resetAll}
-          className="flex items-center gap-1 text-[10px] text-muted-foreground hover:text-foreground transition-colors"
+          className="flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground transition-colors"
           title={hasMissionOverrides ? "Revenir aux parametres globaux" : "Reinitialiser les valeurs par defaut"}
         >
           <RotateCw className="h-3 w-3" />
@@ -3299,11 +3299,11 @@ function VisualConfigPopover({
                   className="absolute inset-0 h-full w-full cursor-pointer opacity-0"
                 />
               </label>
-              <span className="text-[10px] text-muted-foreground truncate flex-1">{label}</span>
+              <span className="text-xs text-muted-foreground truncate flex-1">{label}</span>
               {isCustom && (
                 <button
                   onClick={() => updateConfig(key, VISUAL_DEFAULTS[key])}
-                  className="text-[9px] text-muted-foreground/60 hover:text-foreground transition-colors shrink-0"
+                  className="text-2xs text-muted-foreground/60 hover:text-foreground transition-colors shrink-0"
                   title="Reinitialiser"
                 >
                   <RotateCw className="h-2.5 w-2.5" />
@@ -3330,12 +3330,12 @@ function VisualConfigPopover({
                 onChange={(e) => updateConfig(key, String(parseInt(e.target.value) / 100))}
                 className="w-20 accent-primary h-1"
               />
-              <span className="text-[10px] text-muted-foreground truncate flex-1">{label}</span>
-              <span className="text-[10px] font-mono text-muted-foreground w-8 text-right">{Math.round(val * 100)}%</span>
+              <span className="text-xs text-muted-foreground truncate flex-1">{label}</span>
+              <span className="text-xs font-mono text-muted-foreground w-8 text-right">{Math.round(val * 100)}%</span>
               {isCustom && (
                 <button
                   onClick={() => updateConfig(key, VISUAL_DEFAULTS[key])}
-                  className="text-[9px] text-muted-foreground/60 hover:text-foreground transition-colors shrink-0"
+                  className="text-2xs text-muted-foreground/60 hover:text-foreground transition-colors shrink-0"
                   title="Reinitialiser"
                 >
                   <RotateCw className="h-2.5 w-2.5" />
@@ -3348,7 +3348,7 @@ function VisualConfigPopover({
 
       {/* FOV toggle */}
       <div className="flex items-center justify-between pt-1 border-t border-border/30">
-        <span className="text-[10px] text-muted-foreground">FOV visible par defaut</span>
+        <span className="text-xs text-muted-foreground">FOV visible par defaut</span>
         <Switch
           checked={(raw.fov_default_visible ?? VISUAL_DEFAULTS.fov_default_visible) === "true"}
           onCheckedChange={(v) => updateConfig("fov_default_visible", v ? "true" : "false")}

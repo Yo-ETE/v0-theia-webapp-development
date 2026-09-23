@@ -89,7 +89,7 @@ function PermissionEditor({
     <div className="flex flex-col gap-3">
       {/* Presets */}
       <div className="flex flex-wrap gap-2">
-        <span className="text-[10px] text-muted-foreground uppercase tracking-wider font-medium self-center mr-1">Presets :</span>
+        <span className="text-xs text-muted-foreground uppercase tracking-wider font-medium self-center mr-1">Presets :</span>
         {Object.entries(PERMISSION_PRESETS).map(([key, preset]) => (
           <button
             key={key}
@@ -97,7 +97,7 @@ function PermissionEditor({
             onClick={() => onApplyPreset(key)}
             disabled={disabled}
             className={cn(
-              "flex items-center gap-1.5 rounded-md px-2 py-1 text-[10px] border transition-colors",
+              "flex items-center gap-1.5 rounded-md px-2 py-1 text-xs border transition-colors",
               "border-border text-muted-foreground hover:bg-secondary/50",
               disabled && "opacity-50 cursor-not-allowed"
             )}
@@ -119,7 +119,7 @@ function PermissionEditor({
           
           return (
             <div key={category} className="rounded-md border border-border/50 bg-muted/10 p-2">
-              <p className="text-[10px] font-medium text-foreground mb-2 uppercase tracking-wider">{category}</p>
+              <p className="text-xs font-medium text-foreground mb-2 uppercase tracking-wider">{category}</p>
               <div className="flex flex-col gap-1">
                 {categoryPerms.map(([key, info]) => {
                   const permKey = key as keyof UserPermissions
@@ -148,7 +148,7 @@ function PermissionEditor({
                         disabled={disabled}
                         className="sr-only"
                       />
-                      <span className="text-[11px] text-foreground">{info.label}</span>
+                      <span className="text-xs text-foreground">{info.label}</span>
                     </label>
                   )
                 })}
@@ -368,7 +368,7 @@ export function UserManagement() {
             </p>
             <div className="grid grid-cols-2 gap-3">
               <div className="flex flex-col gap-1.5">
-                <Label htmlFor="new-username" className="text-[10px] text-muted-foreground uppercase tracking-wider">Identifiant</Label>
+                <Label htmlFor="new-username" className="text-xs text-muted-foreground uppercase tracking-wider">Identifiant</Label>
                 <Input
                   id="new-username"
                   name="new-username"
@@ -380,7 +380,7 @@ export function UserManagement() {
                 />
               </div>
               <div className="flex flex-col gap-1.5">
-                <Label htmlFor="new-password" className="text-[10px] text-muted-foreground uppercase tracking-wider">Mot de passe</Label>
+                <Label htmlFor="new-password" className="text-xs text-muted-foreground uppercase tracking-wider">Mot de passe</Label>
                 <Input
                   id="new-password"
                   name="new-password"
@@ -394,7 +394,7 @@ export function UserManagement() {
               </div>
             </div>
             <div className="flex items-center gap-3">
-              <span id="role-label" className="text-[10px] text-muted-foreground uppercase tracking-wider font-medium">Role :</span>
+              <span id="role-label" className="text-xs text-muted-foreground uppercase tracking-wider font-medium">Role :</span>
               <div className="flex gap-2" role="radiogroup" aria-labelledby="role-label">
                 <button
                   type="button"
@@ -427,7 +427,7 @@ export function UserManagement() {
                 <button
                   type="button"
                   onClick={() => setShowPermissions(!showPermissions)}
-                  className="flex items-center gap-1 text-[10px] text-muted-foreground hover:text-foreground transition-colors ml-auto"
+                  className="flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground transition-colors ml-auto"
                 >
                   <Settings2 className="h-3 w-3" />
                   Permissions
@@ -449,18 +449,18 @@ export function UserManagement() {
 
             {/* Tailscale access info */}
             <div className="rounded-md border border-border/50 bg-muted/30 p-3 flex flex-col gap-2">
-              <p className="text-[10px] font-medium text-foreground flex items-center gap-1.5">
+              <p className="text-xs font-medium text-foreground flex items-center gap-1.5">
                 <Network className="h-3 w-3 text-primary" />
                 Acces reseau (Tailscale)
               </p>
-              <p className="text-[10px] text-muted-foreground leading-relaxed">
+              <p className="text-xs text-muted-foreground leading-relaxed">
                 {"Pour acceder au dashboard, l'utilisateur doit etre sur votre reseau Tailscale. Invitez-le depuis la console admin Tailscale :"}
               </p>
               <a
                 href="https://login.tailscale.com/admin/users"
                 target="_blank"
                 rel="noopener noreferrer"
-                className="inline-flex items-center gap-1.5 text-[11px] font-medium text-primary hover:underline w-fit"
+                className="inline-flex items-center gap-1.5 text-xs font-medium text-primary hover:underline w-fit"
               >
                 <ExternalLink className="h-3 w-3" />
                 Ouvrir Tailscale Admin (inviter un utilisateur)
@@ -502,14 +502,14 @@ export function UserManagement() {
                   <div className="flex flex-col min-w-0 flex-1">
                     <div className="flex items-center gap-2">
                       <span className="text-sm font-medium text-foreground">{u.username}</span>
-                      <Badge variant={u.role === "admin" ? "default" : "secondary"} className="text-[9px] uppercase">
+                      <Badge variant={u.role === "admin" ? "default" : "secondary"} className="text-2xs uppercase">
                         {u.role}
                       </Badge>
                       {u.id === currentUser?.id && (
-                        <Badge variant="outline" className="text-[9px]">vous</Badge>
+                        <Badge variant="outline" className="text-2xs">vous</Badge>
                       )}
                     </div>
-                    <span className="text-[10px] text-muted-foreground">
+                    <span className="text-xs text-muted-foreground">
                       {u.last_login ? `Derniere connexion: ${u.last_login}` : "Jamais connecte"}
                     </span>
                   </div>

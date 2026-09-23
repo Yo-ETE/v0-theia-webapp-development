@@ -45,7 +45,7 @@ export function AlertList({ alerts }: { alerts: Alert[] }) {
         <CardTitle className="flex items-center gap-2 text-sm">
           Alerts
           {activeAlerts.length > 0 && (
-            <Badge variant="outline" className="border-destructive/30 bg-destructive/10 text-destructive text-[10px]">
+            <Badge variant="outline" className="border-destructive/30 bg-destructive/10 text-destructive text-xs">
               {activeAlerts.length} active
             </Badge>
           )}
@@ -74,13 +74,13 @@ export function AlertList({ alerts }: { alerts: Alert[] }) {
                 <div className="flex-1 min-w-0">
                   <p className="text-xs text-foreground">{alert.message}</p>
                   <div className="mt-1 flex items-center gap-2">
-                    <Badge variant="outline" className={cn("text-[9px] px-1 py-0", config.badge)}>
+                    <Badge variant="outline" className={cn("text-2xs px-1 py-0", config.badge)}>
                       {alert.severity.toUpperCase()}
                     </Badge>
-                    <span className="text-[10px] text-muted-foreground">
+                    <span className="text-xs text-muted-foreground">
                       {alert.source}
                     </span>
-                    <span className="text-[10px] text-muted-foreground">
+                    <span className="text-xs text-muted-foreground">
                       {formatRelativeTime(alert.timestamp)}
                     </span>
                   </div>

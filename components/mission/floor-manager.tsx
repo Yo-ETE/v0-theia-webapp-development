@@ -336,14 +336,14 @@ export function FloorManager({
           style={{ borderTopColor: color, borderTopWidth: 3 }}>
           <div className="flex items-center gap-2">
             <div
-              className="h-5 w-5 rounded flex items-center justify-center text-[10px] font-bold text-white shrink-0"
+              className="h-5 w-5 rounded flex items-center justify-center text-xs font-bold text-white shrink-0"
               style={{ backgroundColor: color }}
             >
               {floor.level}
             </div>
             <span className="text-xs font-semibold text-foreground">{floor.label}</span>
             {hasLive && (
-              <Badge variant="outline" className="h-4 text-[8px] px-1 border-success/50 text-success gap-0.5">
+              <Badge variant="outline" className="h-4 text-2xs px-1 border-success/50 text-success gap-0.5">
                 <Activity className="h-2 w-2 animate-pulse" />
                 {live.count}
               </Badge>
@@ -374,7 +374,7 @@ export function FloorManager({
           {floorDevices.length === 0 ? (
             <button
               onClick={() => { setAssignDialog(floor.level); setSelectedDevice("") }}
-              className="flex items-center justify-center gap-1.5 py-3 text-[10px] text-muted-foreground hover:text-primary transition-colors border border-dashed border-border/50 rounded"
+              className="flex items-center justify-center gap-1.5 py-3 text-xs text-muted-foreground hover:text-primary transition-colors border border-dashed border-border/50 rounded"
             >
               <Plus className="h-3 w-3" />
               Assigner un TX
@@ -389,7 +389,7 @@ export function FloorManager({
                 <div
                   key={dev.id}
                   className={cn(
-                    "flex items-center justify-between rounded px-2 py-1 text-[10px]",
+                    "flex items-center justify-between rounded px-2 py-1 text-xs",
                     "border border-border/40 bg-secondary/20",
                     devLive?.presence && "border-success/40 bg-success/5"
                   )}
@@ -404,15 +404,15 @@ export function FloorManager({
                   <div className="flex items-center gap-1">
                     {devLive?.presence && (
                       <>
-                        <span className="text-success font-semibold text-[9px]">
+                        <span className="text-success font-semibold text-2xs">
                           {typeof devLive.distance === "number" ? `${(devLive.distance / 100).toFixed(1)}m` : "DETECT"}
                         </span>
                         <span className={cn(
-                          "text-[8px] font-mono px-1 py-0.5 rounded",
+                          "text-2xs font-mono px-1 py-0.5 rounded",
                           angleToPosition(devLive.angle != null ? Number(devLive.angle) : undefined) === "G"
-                            ? "bg-blue-500/20 text-blue-400"
+                            ? "bg-chart-2/20 text-chart-2"
                             : angleToPosition(devLive.angle != null ? Number(devLive.angle) : undefined) === "D"
-                            ? "bg-orange-500/20 text-orange-400"
+                            ? "bg-chart-3/20 text-chart-3"
                             : "bg-muted text-muted-foreground"
                         )}>
                           {positionLabel(angleToPosition(devLive.angle != null ? Number(devLive.angle) : undefined))}
@@ -434,7 +434,7 @@ export function FloorManager({
 
           {/* Event count */}
           {floorEvents.length > 0 && (
-            <p className="text-[9px] text-muted-foreground mt-auto pt-1 border-t border-border/20">
+            <p className="text-2xs text-muted-foreground mt-auto pt-1 border-t border-border/20">
               {floorEvents.length} detection{floorEvents.length > 1 ? "s" : ""}
             </p>
           )}
@@ -460,7 +460,7 @@ export function FloorManager({
             <Button
               variant="ghost"
               size="sm"
-              className="h-7 text-[10px] gap-1 text-muted-foreground hover:text-destructive"
+              className="h-7 text-xs gap-1 text-muted-foreground hover:text-destructive"
               onClick={() => {
                 // Wipes the live detection feed/map instantly, no undo: on an active mission
                 // this is exactly the situational-awareness display an operator is relying on.
@@ -473,7 +473,7 @@ export function FloorManager({
               Reset
             </Button>
           )}
-          <Button variant="outline" size="sm" className="h-7 text-[10px] gap-1" onClick={openAddDialog}>
+          <Button variant="outline" size="sm" className="h-7 text-xs gap-1" onClick={openAddDialog}>
             <Plus className="h-3 w-3" />
             {mode === "floor" ? "Ajouter Etage" : "Ajouter Troncon"}
           </Button>
@@ -532,14 +532,14 @@ export function FloorManager({
                         <div className="absolute inset-0 bg-success/5 animate-pulse pointer-events-none rounded-sm" />
                       )}
                       <div
-                        className="h-5 w-5 rounded-sm flex items-center justify-center text-[9px] font-bold text-white shrink-0 relative z-10"
+                        className="h-5 w-5 rounded-sm flex items-center justify-center text-2xs font-bold text-white shrink-0 relative z-10"
                         style={{ backgroundColor: color }}
                       >
                         {floor.level}
                       </div>
                       <div className="flex-1 min-w-0 relative z-10">
-                        <p className="text-[10px] font-medium text-foreground truncate">{floor.label}</p>
-                        <p className="text-[8px] text-muted-foreground">
+                        <p className="text-xs font-medium text-foreground truncate">{floor.label}</p>
+                        <p className="text-2xs text-muted-foreground">
                           {floorDevices.length} TX
                           {hasLive && live.latest && typeof live.latest.distance === "number"
                             ? ` | ${(live.latest.distance / 100).toFixed(1)}m`
@@ -548,7 +548,7 @@ export function FloorManager({
                       </div>
                       {(hasLive || (eventsByFloor[floor.level]?.length ?? 0) > 0) && (
                         <div className="flex items-center gap-1 relative z-10">
-                          <span className="text-[9px] font-bold text-success">{eventsByFloor[floor.level]?.length ?? 0}</span>
+                          <span className="text-2xs font-bold text-success">{eventsByFloor[floor.level]?.length ?? 0}</span>
                           {hasLive && <Activity className="h-3 w-3 text-success animate-pulse shrink-0" />}
                         </div>
                       )}
@@ -563,7 +563,7 @@ export function FloorManager({
                                 className={cn(
                                   "flex-1 rounded-sm transition-all",
                                   count > 0
-                                    ? pos === "G" ? "bg-blue-400" : pos === "D" ? "bg-orange-400" : "bg-success"
+                                    ? pos === "G" ? "bg-chart-2" : pos === "D" ? "bg-chart-3" : "bg-chart-1"
                                     : "bg-border/30"
                                 )}
                                 title={`${positionLabel(pos as "G"|"C"|"D")}: ${count}`}
@@ -601,21 +601,21 @@ export function FloorManager({
                         <div className="absolute inset-0 bg-success/5 animate-pulse pointer-events-none" />
                       )}
                       <div
-                        className="h-6 w-6 rounded flex items-center justify-center text-[10px] font-bold text-white shrink-0 relative z-10"
+                        className="h-6 w-6 rounded flex items-center justify-center text-xs font-bold text-white shrink-0 relative z-10"
                         style={{ backgroundColor: color }}
                       >
                         {floor.level}
                       </div>
-                      <p className="text-[10px] font-medium text-foreground text-center truncate w-full relative z-10">{floor.label}</p>
-                      <p className="text-[8px] text-muted-foreground relative z-10">{floorDevices.length} TX</p>
+                      <p className="text-xs font-medium text-foreground text-center truncate w-full relative z-10">{floor.label}</p>
+                      <p className="text-2xs text-muted-foreground relative z-10">{floorDevices.length} TX</p>
                       {(hasLive || (eventsByFloor[floor.level]?.length ?? 0) > 0) && (
                         <div className="flex items-center gap-1 relative z-10">
-                          <span className="text-[9px] font-bold text-success">{eventsByFloor[floor.level]?.length ?? 0}</span>
+                          <span className="text-2xs font-bold text-success">{eventsByFloor[floor.level]?.length ?? 0}</span>
                           {hasLive && <Activity className="h-3 w-3 text-success animate-pulse" />}
                         </div>
                       )}
                       {hasLive && live.latest && typeof live.latest.distance === "number" && (
-                        <p className="text-[8px] font-mono text-success relative z-10">{(live.latest.distance / 100).toFixed(1)}m</p>
+                        <p className="text-2xs font-mono text-success relative z-10">{(live.latest.distance / 100).toFixed(1)}m</p>
                       )}
                       {/* Direction bar: G | C | D */}
                       {hasLive && live.detections.length > 0 && (
@@ -628,7 +628,7 @@ export function FloorManager({
                                 className={cn(
                                   "flex-1 rounded-sm transition-all",
                                   count > 0
-                                    ? pos === "G" ? "bg-blue-400" : pos === "D" ? "bg-orange-400" : "bg-success"
+                                    ? pos === "G" ? "bg-chart-2" : pos === "D" ? "bg-chart-3" : "bg-chart-1"
                                     : "bg-border/30"
                                 )}
                                 title={`${positionLabel(pos)}: ${count}`}
@@ -674,17 +674,17 @@ export function FloorManager({
                       <Badge
                         key={level}
                         variant="outline"
-                        className="text-[9px] border-success/40 text-success gap-1"
+                        className="text-2xs border-success/40 text-success gap-1"
                       >
                         <Radio className="h-2.5 w-2.5" />
                         {floor?.label ?? `Lvl ${level}`}: {data.count}
                         {data.detections.length > 0 && (
-                          <span className="ml-1 text-[8px] opacity-80">
-                            {gCount > 0 && <span className="text-blue-400">G:{gCount}</span>}
+                          <span className="ml-1 text-2xs opacity-80">
+                            {gCount > 0 && <span className="text-chart-2">G:{gCount}</span>}
                             {gCount > 0 && (cCount > 0 || dCount > 0) && " "}
-                            {cCount > 0 && <span className="text-success">C:{cCount}</span>}
+                            {cCount > 0 && <span className="text-chart-1">C:{cCount}</span>}
                             {cCount > 0 && dCount > 0 && " "}
-                            {dCount > 0 && <span className="text-orange-400">D:{dCount}</span>}
+                            {dCount > 0 && <span className="text-chart-3">D:{dCount}</span>}
                           </span>
                         )}
                       </Badge>
@@ -712,7 +712,7 @@ export function FloorManager({
           <div className="flex flex-col gap-3 py-2">
             <div className="flex gap-3">
               <div className="flex flex-col gap-1.5 w-20">
-                <Label className="text-[10px] text-muted-foreground">Numero</Label>
+                <Label className="text-xs text-muted-foreground">Numero</Label>
                 <div className="flex items-center gap-1">
                   <Button variant="outline" size="sm" className="h-7 w-7 p-0"
                     onClick={() => setAddLevel(addLevel - 1)}>
@@ -726,7 +726,7 @@ export function FloorManager({
                 </div>
               </div>
               <div className="flex flex-col gap-1.5 flex-1">
-                <Label htmlFor="add-floor-label" className="text-[10px] text-muted-foreground">Nom</Label>
+                <Label htmlFor="add-floor-label" className="text-xs text-muted-foreground">Nom</Label>
                 <Input
                   id="add-floor-label"
                   name="floor-label"
@@ -782,7 +782,7 @@ export function FloorManager({
                       <span className="font-mono font-medium">{dev.name}</span>
                     </div>
                     <span className={cn(
-                      "text-[10px]",
+                      "text-xs",
                       dev.status === "online" ? "text-success" : "text-muted-foreground"
                     )}>
                       {dev.status}

@@ -22,7 +22,7 @@ export default function MissionError({
           {error.message || "Une erreur est survenue lors du chargement de la mission."}
         </p>
         {error.stack && (
-          <pre className="mt-3 text-left text-[10px] text-muted-foreground/60 overflow-auto max-h-40 bg-muted/30 rounded p-2">
+          <pre className="mt-3 text-left text-xs text-muted-foreground/60 overflow-auto max-h-40 bg-muted/30 rounded p-2">
             {error.stack.split("\n").slice(0, 8).join("\n")}
           </pre>
         )}

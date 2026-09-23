@@ -716,23 +716,23 @@ export default function AdminPage() {
                 {wifiStatus?.connected ? (
                   <div className="grid grid-cols-1 gap-3 pl-6 text-sm sm:grid-cols-2">
                     <div>
-                      <p className="text-[10px] text-muted-foreground">SSID</p>
+                      <p className="text-xs text-muted-foreground">SSID</p>
                       <p className="text-xs font-medium text-foreground">{wifiStatus.ssid}</p>
                     </div>
                     <div>
-                      <p className="text-[10px] text-muted-foreground">Signal</p>
+                      <p className="text-xs text-muted-foreground">Signal</p>
                       <p className="text-xs font-mono text-foreground">{wifiStatus.signal} dBm</p>
                     </div>
                     <div>
-                      <p className="text-[10px] text-muted-foreground">IP Locale</p>
+                      <p className="text-xs text-muted-foreground">IP Locale</p>
                       <p className="text-xs font-mono text-foreground">{wifiStatus.ipLocal}</p>
                     </div>
                     <div>
-                      <p className="text-[10px] text-muted-foreground">Debit</p>
+                      <p className="text-xs text-muted-foreground">Debit</p>
                       <p className="text-xs font-mono text-foreground">{wifiStatus.txRate || "---"}</p>
                     </div>
                     <div className="sm:col-span-2 border-t border-border/50 pt-2">
-                      <p className="text-[10px] text-muted-foreground mb-1">Connectivite Internet</p>
+                      <p className="text-xs text-muted-foreground mb-1">Connectivite Internet</p>
                       {wifiStatus.hasInternet ? (
                         <div className="flex items-center gap-3">
                           <span className="flex items-center gap-1.5 text-success text-xs font-medium">
@@ -767,7 +767,7 @@ export default function AdminPage() {
                 </div>
                 {ethernetStatus?.connected ? (
                   <div className="pl-6">
-                    <p className="text-[10px] text-muted-foreground">IP Locale</p>
+                    <p className="text-xs text-muted-foreground">IP Locale</p>
                     <p className="text-xs font-mono text-foreground">{ethernetStatus.ipLocal}</p>
                   </div>
                 ) : (
@@ -787,15 +787,15 @@ export default function AdminPage() {
                 {usbModemStatus?.connected ? (
                   <div className="grid grid-cols-2 gap-2 pl-6">
                     <div>
-                      <p className="text-[10px] text-muted-foreground">Type</p>
+                      <p className="text-xs text-muted-foreground">Type</p>
                       <p className="text-xs font-medium text-foreground">{usbModemStatus.type}</p>
                     </div>
                     <div>
-                      <p className="text-[10px] text-muted-foreground">Interface</p>
+                      <p className="text-xs text-muted-foreground">Interface</p>
                       <p className="text-xs font-mono text-foreground">{usbModemStatus.interface}</p>
                     </div>
                     <div className="col-span-2">
-                      <p className="text-[10px] text-muted-foreground">IP Locale</p>
+                      <p className="text-xs text-muted-foreground">IP Locale</p>
                       <p className="text-xs font-mono text-foreground">{usbModemStatus.ipLocal}</p>
                     </div>
                   </div>
@@ -820,7 +820,7 @@ export default function AdminPage() {
                 {hotspotStatus?.active ? (
                   <div className="pl-6 flex items-center justify-between">
                     <div>
-                      <p className="text-[10px] text-muted-foreground">SSID</p>
+                      <p className="text-xs text-muted-foreground">SSID</p>
                       <p className="text-xs font-medium text-foreground">{hotspotStatus.ssid}</p>
                     </div>
                     <Button
@@ -878,24 +878,24 @@ export default function AdminPage() {
                   <div className="pl-6 flex flex-col gap-2 pt-1">
                     <div className="flex items-center gap-4">
                       <div>
-                        <p className="text-[10px] text-muted-foreground">SSID de secours</p>
+                        <p className="text-xs text-muted-foreground">SSID de secours</p>
                         <p className="text-xs font-mono text-foreground">{hotspotCreds.ssid}</p>
                       </div>
                       <div>
-                        <p className="text-[10px] text-muted-foreground">Mot de passe</p>
+                        <p className="text-xs text-muted-foreground">Mot de passe</p>
                         <p className="text-xs font-mono text-foreground">{hotspotCreds.password}</p>
                       </div>
                       <Button
                         variant="ghost"
                         size="sm"
-                        className="h-7 text-[10px] gap-1"
+                        className="h-7 text-xs gap-1"
                         onClick={() => navigator.clipboard?.writeText(hotspotCreds.password)}
                       >
                         <Copy className="h-3 w-3" />
                         Copier
                       </Button>
                     </div>
-                    <p className="text-[10px] text-muted-foreground">
+                    <p className="text-xs text-muted-foreground">
                       Notez-le maintenant : sans reseau, c&apos;est ce mot de passe qui permet de rejoindre le hub.
                       Utilise aussi bien par le demarrage automatique que par le bouton ci-dessus.
                     </p>
@@ -910,7 +910,7 @@ export default function AdminPage() {
                       <Button
                         variant="outline"
                         size="sm"
-                        className="h-7 text-[10px]"
+                        className="h-7 text-xs"
                         disabled={savingHotspotPw || hotspotPwDraft.length < 8 || hotspotPwDraft.length > 63}
                         onClick={async () => {
                           setSavingHotspotPw(true)
@@ -980,7 +980,7 @@ export default function AdminPage() {
                   {tsStatus.running && tsStatus.online && (
                     <div className="grid grid-cols-1 gap-3 text-sm sm:grid-cols-2">
                       <div>
-                        <p className="text-[10px] text-muted-foreground">IP Tailscale</p>
+                        <p className="text-xs text-muted-foreground">IP Tailscale</p>
                         <div className="flex items-center gap-1.5">
                           <p className="font-mono text-xs text-foreground break-all">{tsStatus.tailscaleIp}</p>
                           <button onClick={() => navigator.clipboard.writeText(tsStatus.tailscaleIp)}
@@ -990,12 +990,12 @@ export default function AdminPage() {
                         </div>
                       </div>
                       <div>
-                        <p className="text-[10px] text-muted-foreground">Hostname</p>
+                        <p className="text-xs text-muted-foreground">Hostname</p>
                         <p className="font-mono text-xs text-foreground">{tsStatus.hostname}</p>
                       </div>
                       {tsStatus.magicDns && (
                         <div className="sm:col-span-2">
-                          <p className="text-[10px] text-muted-foreground">Magic DNS</p>
+                          <p className="text-xs text-muted-foreground">Magic DNS</p>
                           <div className="flex items-center gap-1.5">
                             <p className="font-mono text-xs text-foreground truncate">{tsStatus.magicDns}</p>
                             <button onClick={() => navigator.clipboard.writeText(tsStatus.magicDns)}
@@ -1045,7 +1045,7 @@ export default function AdminPage() {
                   {/* Peers */}
                   {tsStatus.running && tsStatus.online && tsStatus.peers.length > 0 && (
                     <div className="flex flex-col gap-2">
-                      <p className="text-[10px] text-muted-foreground font-medium uppercase tracking-wider">
+                      <p className="text-xs text-muted-foreground font-medium uppercase tracking-wider">
                         Machines ({tsStatus.peers.filter(p => p.online).length}/{tsStatus.peers.length} en ligne)
                       </p>
                       <ScrollArea className="h-36 rounded-md border border-border/50">
@@ -1060,9 +1060,9 @@ export default function AdminPage() {
                                   <div className="flex items-center gap-2">
                                     <span className="text-xs font-medium text-foreground truncate">{peer.hostname}</span>
                                     {peer.online && <span className="h-1.5 w-1.5 rounded-full bg-success shrink-0" />}
-                                    {peer.isExitNode && <Badge variant="outline" className="text-[9px] px-1 py-0 border-success/50 text-success">EXIT</Badge>}
+                                    {peer.isExitNode && <Badge variant="outline" className="text-2xs px-1 py-0 border-success/50 text-success">EXIT</Badge>}
                                   </div>
-                                  <div className="flex flex-wrap items-center gap-x-2 gap-y-0 text-[10px] text-muted-foreground">
+                                  <div className="flex flex-wrap items-center gap-x-2 gap-y-0 text-xs text-muted-foreground">
                                     <span className="font-mono">{peer.ip}</span>
                                     <span>{peer.os}</span>
                                     {peer.online && (peer.rxBytes > 0 || peer.txBytes > 0) && (
@@ -1184,7 +1184,7 @@ export default function AdminPage() {
                   <div className="flex items-center gap-2">
                     <p className="text-sm font-medium text-foreground">Connexion a: {selectedNetwork}</p>
                     {savedNetworks.includes(selectedNetwork) && (
-                      <span className="text-[10px] bg-warning/20 text-warning px-2 py-0.5 rounded flex items-center gap-1">
+                      <span className="text-xs bg-warning/20 text-warning px-2 py-0.5 rounded flex items-center gap-1">
                         <Star className="h-3 w-3 fill-warning" />
                         Enregistre
                       </span>
@@ -1248,7 +1248,7 @@ export default function AdminPage() {
                   <div className="rounded-lg border border-border/50 bg-secondary/10 p-3 flex flex-col gap-2">
                     <div className="flex items-center gap-2">
                       <div className="h-2 w-2 rounded-full bg-success animate-pulse" />
-                      <p className="text-[10px] text-muted-foreground font-medium uppercase tracking-wider">Version actuelle</p>
+                      <p className="text-xs text-muted-foreground font-medium uppercase tracking-wider">Version actuelle</p>
                     </div>
                     <div className="flex items-center gap-3 flex-wrap">
                       <div className="flex items-center gap-1.5 rounded-md bg-secondary/40 px-2.5 py-1.5">
@@ -1266,7 +1266,7 @@ export default function AdminPage() {
                           <p className="text-xs text-foreground">{versionInfo.commitMessage}</p>
                         )}
                         {versionInfo.commitDate && (
-                          <p className="text-[10px] text-muted-foreground">
+                          <p className="text-xs text-muted-foreground">
                             {versionInfo.commitAuthor && `${versionInfo.commitAuthor} - `}{versionInfo.commitDate}
                           </p>
                         )}
@@ -1305,7 +1305,7 @@ export default function AdminPage() {
                       <ChevronDown className="absolute right-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground pointer-events-none" />
                     </div>
                     {selectedBranch && selectedBranch !== versionInfo.branch && (
-                      <p className="text-[11px] text-warning flex items-center gap-1">
+                      <p className="text-xs text-warning flex items-center gap-1">
                         <AlertTriangle className="h-3 w-3" />
                         {"Changement de branche"}: {versionInfo.branch} {"→"} {selectedBranch}
                       </p>
@@ -1334,13 +1334,13 @@ export default function AdminPage() {
                       {versionInfo.latestCommits && versionInfo.latestCommits.length > 0 && (
                         <div className="rounded-md border border-border/50 bg-secondary/20 overflow-hidden">
                           <div className="flex items-center justify-between px-3 pt-2 pb-1">
-                            <p className="text-[10px] text-muted-foreground font-medium uppercase tracking-wider">
+                            <p className="text-xs text-muted-foreground font-medium uppercase tracking-wider">
                               Commits disponibles (cliquer pour selectionner)
                             </p>
                             {selectedCommit && (
                               <button
                                 onClick={() => setSelectedCommit("")}
-                                className="text-[10px] text-primary hover:underline"
+                                className="text-xs text-primary hover:underline"
                               >
                                 Dernier commit
                               </button>
@@ -1357,14 +1357,14 @@ export default function AdminPage() {
                                 )}
                               >
                                 <span className={cn(
-                                  "font-mono text-[10px] shrink-0 mt-0.5",
+                                  "font-mono text-xs shrink-0 mt-0.5",
                                   selectedCommit === c.hash ? "text-primary font-bold" : "text-primary"
                                 )}>
                                   {c.hash.slice(0, 7)}
                                 </span>
                                 <div className="flex-1 min-w-0">
                                   <p className="text-xs text-foreground truncate">{c.message}</p>
-                                  <p className="text-[10px] text-muted-foreground">{c.author} - {c.date}</p>
+                                  <p className="text-xs text-muted-foreground">{c.author} - {c.date}</p>
                                 </div>
                                 {selectedCommit === c.hash && (
                                   <CheckCircle2 className="h-3.5 w-3.5 text-primary shrink-0 mt-0.5" />
@@ -1402,17 +1402,17 @@ export default function AdminPage() {
                       <div className="h-2.5 w-2.5 rounded-full bg-success/60" />
                     </div>
                     <Terminal className="h-3.5 w-3.5 text-muted-foreground ml-1" />
-                    <span className="text-[10px] font-medium font-mono text-muted-foreground">theia@pi ~ update</span>
+                    <span className="text-xs font-medium font-mono text-muted-foreground">theia@pi ~ update</span>
                     {updateResult?.status === "success" && (
-                      <Badge variant="outline" className="ml-auto h-4 text-[8px] border-success/50 text-success">EXIT 0</Badge>
+                      <Badge variant="outline" className="ml-auto h-4 text-2xs border-success/50 text-success">EXIT 0</Badge>
                     )}
                     {updateResult?.status === "error" && (
-                      <Badge variant="outline" className="ml-auto h-4 text-[8px] border-destructive/50 text-destructive">EXIT 1</Badge>
+                      <Badge variant="outline" className="ml-auto h-4 text-2xs border-destructive/50 text-destructive">EXIT 1</Badge>
                     )}
                     {isUpdating && !updateResult && (
                       <div className="ml-auto flex items-center gap-1.5">
                         <Loader2 className="h-3 w-3 animate-spin text-primary" />
-                        <span className="text-[9px] text-primary font-mono">RUNNING</span>
+                        <span className="text-2xs text-primary font-mono">RUNNING</span>
                       </div>
                     )}
                   </div>
@@ -1429,11 +1429,11 @@ export default function AdminPage() {
                               {step.status === "error" && <AlertTriangle className="h-3 w-3 text-destructive shrink-0" />}
                               {step.status === "running" && <Loader2 className="h-3 w-3 animate-spin text-primary shrink-0" />}
                               {step.status === "pending" && <div className="h-3 w-3 rounded-full border border-border/50 shrink-0" />}
-                              <span className="text-[10px] text-success font-mono font-bold select-none">$</span>
-                              <code className="text-[11px] font-mono text-foreground">{step.name}</code>
+                              <span className="text-xs text-success font-mono font-bold select-none">$</span>
+                              <code className="text-xs font-mono text-foreground">{step.name}</code>
                             </div>
                             {step.output && (
-                              <pre className="ml-5 mt-0.5 text-[10px] font-mono text-muted-foreground whitespace-pre-wrap leading-relaxed pl-2 border-l border-border/30">{stripAnsi(step.output)}</pre>
+                              <pre className="ml-5 mt-0.5 text-xs font-mono text-muted-foreground whitespace-pre-wrap leading-relaxed pl-2 border-l border-border/30">{stripAnsi(step.output)}</pre>
                             )}
                           </div>
                         ))
@@ -1443,21 +1443,21 @@ export default function AdminPage() {
                           {updateResult.commands.map((cmd, i) => (
                             <div key={i} className="flex items-center gap-2">
                               <CheckCircle2 className="h-3 w-3 text-success shrink-0" />
-                              <span className="text-[10px] text-success font-mono font-bold select-none">$</span>
-                              <code className="text-[11px] font-mono text-foreground">{cmd}</code>
+                              <span className="text-xs text-success font-mono font-bold select-none">$</span>
+                              <code className="text-xs font-mono text-foreground">{cmd}</code>
                             </div>
                           ))}
                         </div>
                       ) : isUpdating ? (
                         <div className="flex items-center gap-2">
                           <Loader2 className="h-3 w-3 animate-spin text-primary" />
-                          <span className="text-[11px] font-mono text-muted-foreground">Connexion au serveur...</span>
+                          <span className="text-xs font-mono text-muted-foreground">Connexion au serveur...</span>
                         </div>
                       ) : null}
 
                       {/* Raw output */}
                       {updateOutput && !updateResult?.steps && (
-                        <pre className="text-[10px] font-mono text-muted-foreground whitespace-pre-wrap leading-relaxed mt-1 pt-1 border-t border-border/20">{stripAnsi(updateOutput)}</pre>
+                        <pre className="text-xs font-mono text-muted-foreground whitespace-pre-wrap leading-relaxed mt-1 pt-1 border-t border-border/20">{stripAnsi(updateOutput)}</pre>
                       )}
                     </div>
                   </ScrollArea>
@@ -1465,16 +1465,16 @@ export default function AdminPage() {
                   {/* New commits pulled */}
                   {updateResult?.commits && updateResult.commits.length > 0 && (
                     <div className="border-t border-success/20 bg-success/5">
-                      <p className="text-[10px] text-success font-medium uppercase tracking-wider px-3 pt-2 pb-1">
+                      <p className="text-xs text-success font-medium uppercase tracking-wider px-3 pt-2 pb-1">
                         Commits integres ({updateResult.commits.length})
                       </p>
                       <div className="flex flex-col">
                         {updateResult.commits.map((c) => (
                           <div key={c.hash} className="flex items-start gap-2 px-3 py-1.5 border-t border-success/20">
-                            <span className="font-mono text-[10px] text-success shrink-0 mt-0.5">{c.hash.slice(0, 7)}</span>
+                            <span className="font-mono text-xs text-success shrink-0 mt-0.5">{c.hash.slice(0, 7)}</span>
                             <div className="flex-1 min-w-0">
                               <p className="text-xs text-foreground truncate">{c.message}</p>
-                              <p className="text-[10px] text-muted-foreground">{c.author} - {c.date}</p>
+                              <p className="text-xs text-muted-foreground">{c.author} - {c.date}</p>
                             </div>
                           </div>
                         ))}
@@ -1591,14 +1591,14 @@ export default function AdminPage() {
 
               {backups.length > 0 && (
                 <div className="flex flex-col gap-2">
-                  <p className="text-[10px] text-muted-foreground font-medium uppercase tracking-wider">Sauvegardes existantes</p>
+                  <p className="text-xs text-muted-foreground font-medium uppercase tracking-wider">Sauvegardes existantes</p>
                   <ScrollArea className="h-40">
                     <div className="flex flex-col gap-2">
                       {backups.map((backup) => (
                         <div key={backup.filename} className="flex items-center justify-between rounded-md bg-secondary/50 p-2">
                           <div className="flex-1 min-w-0">
                             <p className="text-xs font-mono text-foreground truncate">{backup.filename}</p>
-                            <p className="text-[10px] text-muted-foreground">
+                            <p className="text-xs text-muted-foreground">
                               {backup.size > 0 ? `${(backup.size / 1024 / 1024).toFixed(2)} Mo` : "Vide"}
                             </p>
                           </div>

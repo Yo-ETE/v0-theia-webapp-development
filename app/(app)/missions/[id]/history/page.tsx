@@ -87,13 +87,13 @@ export default function HistoryPage() {
                 <Table>
                   <TableHeader>
                     <TableRow className="border-border/50">
-                      <TableHead className="text-[10px]">Time</TableHead>
-                      <TableHead className="text-[10px]">Type</TableHead>
-                      <TableHead className="text-[10px]">Device</TableHead>
-                      <TableHead className="text-[10px]">Zone</TableHead>
-                      <TableHead className="text-[10px]">RSSI</TableHead>
-                      <TableHead className="text-[10px]">SNR</TableHead>
-                      <TableHead className="text-[10px]">Payload</TableHead>
+                      <TableHead className="text-xs">Time</TableHead>
+                      <TableHead className="text-xs">Type</TableHead>
+                      <TableHead className="text-xs">Device</TableHead>
+                      <TableHead className="text-xs">Zone</TableHead>
+                      <TableHead className="text-xs">RSSI</TableHead>
+                      <TableHead className="text-xs">SNR</TableHead>
+                      <TableHead className="text-xs">Payload</TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
@@ -101,13 +101,13 @@ export default function HistoryPage() {
                       const evtCfg = eventTypeConfig[evt.type] ?? eventTypeConfig.system
                       return (
                         <TableRow key={evt.id} className="border-border/30">
-                          <TableCell className="font-mono text-[11px] text-muted-foreground">
+                          <TableCell className="font-mono text-xs text-muted-foreground">
                             {formatDateTime(evt.timestamp)}
                           </TableCell>
                           <TableCell>
                             <Badge
                               variant="outline"
-                              className={cn("text-[9px] px-1 py-0", evtCfg.className)}
+                              className={cn("text-2xs px-1 py-0", evtCfg.className)}
                             >
                               {evtCfg.label}
                             </Badge>
@@ -118,13 +118,13 @@ export default function HistoryPage() {
                           <TableCell className="text-xs text-muted-foreground">
                             {evt.zone_label ?? "---"}
                           </TableCell>
-                          <TableCell className="font-mono text-[11px] text-foreground">
+                          <TableCell className="font-mono text-xs text-foreground">
                             {evt.rssi !== null ? `${evt.rssi}` : "---"}
                           </TableCell>
-                          <TableCell className="font-mono text-[11px] text-foreground">
+                          <TableCell className="font-mono text-xs text-foreground">
                             {evt.snr !== null ? `${evt.snr}` : "---"}
                           </TableCell>
-                          <TableCell className="font-mono text-[10px] text-muted-foreground max-w-48 truncate">
+                          <TableCell className="font-mono text-xs text-muted-foreground max-w-48 truncate">
                             {JSON.stringify(evt.payload)}
                           </TableCell>
                         </TableRow>

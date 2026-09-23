@@ -87,14 +87,14 @@ export default function SensorsPage() {
                 <Table>
                   <TableHeader>
                     <TableRow className="border-border/50">
-                      <TableHead className="text-[10px]">Name</TableHead>
-                      <TableHead className="text-[10px]">TX ID</TableHead>
-                      <TableHead className="text-[10px]">Status</TableHead>
-                      <TableHead className="text-[10px]">Zone / Side</TableHead>
-                      <TableHead className="text-[10px]">RSSI</TableHead>
-                      <TableHead className="text-[10px]">Battery</TableHead>
-                      <TableHead className="text-[10px]">Last Seen</TableHead>
-                      <TableHead className="text-[10px]">Action</TableHead>
+                      <TableHead className="text-xs">Name</TableHead>
+                      <TableHead className="text-xs">TX ID</TableHead>
+                      <TableHead className="text-xs">Status</TableHead>
+                      <TableHead className="text-xs">Zone / Side</TableHead>
+                      <TableHead className="text-xs">RSSI</TableHead>
+                      <TableHead className="text-xs">Battery</TableHead>
+                      <TableHead className="text-xs">Last Seen</TableHead>
+                      <TableHead className="text-xs">Action</TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
@@ -105,11 +105,11 @@ export default function SensorsPage() {
                           <TableCell className="font-mono text-xs font-medium text-foreground">
                             {device.name}
                           </TableCell>
-                          <TableCell className="font-mono text-[11px] text-muted-foreground">
+                          <TableCell className="font-mono text-xs text-muted-foreground">
                             {device.dev_eui || device.hw_id || "---"}
                           </TableCell>
                           <TableCell>
-                            <Badge variant="outline" className={cn("text-[9px] px-1 py-0", sCfg.className)}>
+                            <Badge variant="outline" className={cn("text-2xs px-1 py-0", sCfg.className)}>
                               <span className={cn("mr-1 h-1.5 w-1.5 rounded-full inline-block", sCfg.dot)} />
                               {sCfg.label}
                             </Badge>
@@ -147,13 +147,13 @@ export default function SensorsPage() {
                               <span className="text-xs text-muted-foreground">---</span>
                             )}
                           </TableCell>
-                          <TableCell className="text-[11px] text-muted-foreground">
+                          <TableCell className="text-xs text-muted-foreground">
                             {device.last_seen ? formatRelativeLocal(device.last_seen) : "Never"}
                           </TableCell>
                           <TableCell>
                             <Button
                               variant="ghost" size="sm"
-                              className="h-6 text-[10px] px-2 text-destructive hover:text-destructive/80"
+                              className="h-6 text-xs px-2 text-destructive hover:text-destructive/80"
                               onClick={() => unassignFromMission(device.id)}
                             >
                               <Unlink className="mr-1 h-3 w-3" />
@@ -182,11 +182,11 @@ export default function SensorsPage() {
                 <Table>
                   <TableHeader>
                     <TableRow className="border-border/50">
-                      <TableHead className="text-[10px]">Name</TableHead>
-                      <TableHead className="text-[10px]">TX ID</TableHead>
-                      <TableHead className="text-[10px]">Type</TableHead>
-                      <TableHead className="text-[10px]">Status</TableHead>
-                      <TableHead className="text-[10px]">Action</TableHead>
+                      <TableHead className="text-xs">Name</TableHead>
+                      <TableHead className="text-xs">TX ID</TableHead>
+                      <TableHead className="text-xs">Type</TableHead>
+                      <TableHead className="text-xs">Status</TableHead>
+                      <TableHead className="text-xs">Action</TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
@@ -198,26 +198,26 @@ export default function SensorsPage() {
                           <TableCell className="font-mono text-xs font-medium text-foreground">
                             {device.name}
                           </TableCell>
-                          <TableCell className="font-mono text-[11px] text-muted-foreground">
+                          <TableCell className="font-mono text-xs text-muted-foreground">
                             {device.dev_eui || device.hw_id || "---"}
                           </TableCell>
-                          <TableCell className="text-[11px] text-muted-foreground">
+                          <TableCell className="text-xs text-muted-foreground">
                             {device.type || "TX"}
                             {isElsewhere && (
-                              <Badge variant="outline" className="ml-1 text-[8px] px-1 py-0 text-warning border-warning/30">
+                              <Badge variant="outline" className="ml-1 text-2xs px-1 py-0 text-warning border-warning/30">
                                 other mission
                               </Badge>
                             )}
                           </TableCell>
                           <TableCell>
-                            <Badge variant="outline" className={cn("text-[9px] px-1 py-0", sCfg.className)}>
+                            <Badge variant="outline" className={cn("text-2xs px-1 py-0", sCfg.className)}>
                               {sCfg.label}
                             </Badge>
                           </TableCell>
                           <TableCell>
                             <Button
                               variant="outline" size="sm"
-                              className="h-6 text-[10px] px-2"
+                              className="h-6 text-xs px-2"
                               onClick={() => assignToMission(device.id)}
                             >
                               <Signal className="mr-1 h-3 w-3" />

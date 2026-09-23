@@ -253,7 +253,7 @@ export function DetectionTimelapse({ missionId, onDetection, onClose }: Detectio
       {/* Time range selector */}
       <div className="flex flex-col gap-2 mb-4 sm:flex-row sm:items-end">
         <div className="flex-1 min-w-0">
-          <label className="text-[10px] text-muted-foreground font-mono block mb-1">FROM</label>
+          <label className="text-xs text-muted-foreground font-mono block mb-1">FROM</label>
           <input
             type="datetime-local"
             value={fromTime}
@@ -262,7 +262,7 @@ export function DetectionTimelapse({ missionId, onDetection, onClose }: Detectio
           />
         </div>
         <div className="flex-1 min-w-0">
-          <label className="text-[10px] text-muted-foreground font-mono block mb-1">TO</label>
+          <label className="text-xs text-muted-foreground font-mono block mb-1">TO</label>
           <input
             type="datetime-local"
             value={toTime}
@@ -286,8 +286,8 @@ export function DetectionTimelapse({ missionId, onDetection, onClose }: Detectio
             return (
               <div className="mb-3">
                 <div className="flex items-center justify-between mb-1">
-                  <span className="text-[10px] font-mono text-muted-foreground">ACTIVITY</span>
-                  <span className="text-[10px] font-mono text-muted-foreground">
+                  <span className="text-xs font-mono text-muted-foreground">ACTIVITY</span>
+                  <span className="text-xs font-mono text-muted-foreground">
                     {events.length} detections
                   </span>
                 </div>
@@ -302,8 +302,8 @@ export function DetectionTimelapse({ missionId, onDetection, onClose }: Detectio
                   ))}
                 </div>
                 <div className="flex justify-between mt-0.5">
-                  <span className="text-[8px] font-mono text-muted-foreground">{histogram[0]?.label}</span>
-                  <span className="text-[8px] font-mono text-muted-foreground">{histogram[histogram.length - 1]?.label}</span>
+                  <span className="text-2xs font-mono text-muted-foreground">{histogram[0]?.label}</span>
+                  <span className="text-2xs font-mono text-muted-foreground">{histogram[histogram.length - 1]?.label}</span>
                 </div>
               </div>
             )
@@ -320,13 +320,13 @@ export function DetectionTimelapse({ missionId, onDetection, onClose }: Detectio
               className="w-full h-2 accent-primary"
             />
             <div className="flex items-center justify-between mt-1">
-              <span className="text-[10px] font-mono text-muted-foreground">
+              <span className="text-xs font-mono text-muted-foreground">
                 {events[0]?.timestamp ? formatTime(events[0].timestamp) : "--"}
               </span>
               <span className="text-xs font-mono font-bold text-primary">
                 {currentTs ? currentTs.toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit", second: "2-digit", timeZone: "Europe/Paris" }) : "--"}
               </span>
-              <span className="text-[10px] font-mono text-muted-foreground">
+              <span className="text-xs font-mono text-muted-foreground">
                 {events[events.length - 1]?.timestamp ? formatTime(events[events.length - 1].timestamp) : "--"}
               </span>
             </div>
@@ -363,7 +363,7 @@ export function DetectionTimelapse({ missionId, onDetection, onClose }: Detectio
                 <button
                   key={s}
                   onClick={() => setSpeed(s)}
-                  className={`min-h-[36px] min-w-[36px] sm:min-h-0 sm:min-w-0 px-2 py-1 rounded-md text-[10px] font-mono font-bold transition-colors ${
+                  className={`min-h-[36px] min-w-[36px] sm:min-h-0 sm:min-w-0 px-2 py-1 rounded-md text-xs font-mono font-bold transition-colors ${
                     speed === s
                       ? "bg-primary text-primary-foreground"
                       : "text-muted-foreground hover:bg-muted"
@@ -392,7 +392,7 @@ export function DetectionTimelapse({ missionId, onDetection, onClose }: Detectio
                 <span className="text-xs font-mono font-bold text-warning">
                   {det.distance}cm {det.direction}
                 </span>
-                <span className="text-[10px] text-muted-foreground ml-auto font-mono shrink-0">
+                <span className="text-xs text-muted-foreground ml-auto font-mono shrink-0">
                   {det.device_name}
                 </span>
               </div>

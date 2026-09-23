@@ -142,7 +142,7 @@ export function SmsConfig() {
         {/* Free Mobile config */}
         {config.provider === "free_mobile" && (
           <div className="flex flex-col gap-3 rounded-lg border border-border/50 p-3">
-            <p className="text-[10px] text-muted-foreground">
+            <p className="text-xs text-muted-foreground">
               Identifiants Free Mobile SMS API (gratuit pour les abonnes Free).
               Activable dans votre espace abonne : Mes Options &gt; Notifications par SMS.
             </p>
@@ -178,7 +178,7 @@ export function SmsConfig() {
         {/* ntfy config */}
         {config.provider === "ntfy" && (
           <div className="flex flex-col gap-3 rounded-lg border border-border/50 p-3">
-            <p className="text-[10px] text-muted-foreground">
+            <p className="text-xs text-muted-foreground">
               ntfy.sh est un service de notifications push gratuit et auto-hebergeable.
             </p>
             <div className="space-y-1">
@@ -193,7 +193,7 @@ export function SmsConfig() {
         )}
 
         {message && (
-          <div className={`flex items-center gap-2 text-xs ${message.type === "success" ? "text-green-500" : "text-destructive"}`}>
+          <div className={`flex items-center gap-2 text-xs ${message.type === "success" ? "text-success" : "text-destructive"}`}>
             {message.type === "success" ? <CheckCircle2 className="h-3.5 w-3.5" /> : <AlertCircle className="h-3.5 w-3.5" />}
             {message.text}
           </div>

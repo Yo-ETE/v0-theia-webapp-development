@@ -406,19 +406,19 @@ export default function DevicesPage() {
                 <Table>
                   <TableHeader>
                     <TableRow className="border-border/50">
-                      <TableHead className="text-[10px]">Name</TableHead>
-                      <TableHead className="text-[10px]">DEV EUI</TableHead>
-                      <TableHead className="text-[10px]">Port</TableHead>
-                      <TableHead className="text-[10px]">Sensor</TableHead>
-                      <TableHead className="text-[10px]">Status</TableHead>
-                      <TableHead className="text-[10px]">Mission</TableHead>
-                      <TableHead className="text-[10px]">Zone / Side</TableHead>
-                      <TableHead className="text-[10px]">RSSI</TableHead>
-                      <TableHead className="text-[10px]">Battery</TableHead>
-                      <TableHead className="text-[10px]">Last Seen</TableHead>
-                      <TableHead className="text-[10px]">Firmware</TableHead>
-                      <TableHead className="text-[10px]">Enabled</TableHead>
-                      <TableHead className="text-[10px]"></TableHead>
+                      <TableHead className="text-xs">Name</TableHead>
+                      <TableHead className="text-xs">DEV EUI</TableHead>
+                      <TableHead className="text-xs">Port</TableHead>
+                      <TableHead className="text-xs">Sensor</TableHead>
+                      <TableHead className="text-xs">Status</TableHead>
+                      <TableHead className="text-xs">Mission</TableHead>
+                      <TableHead className="text-xs">Zone / Side</TableHead>
+                      <TableHead className="text-xs">RSSI</TableHead>
+                      <TableHead className="text-xs">Battery</TableHead>
+                      <TableHead className="text-xs">Last Seen</TableHead>
+                      <TableHead className="text-xs">Firmware</TableHead>
+                      <TableHead className="text-xs">Enabled</TableHead>
+                      <TableHead className="text-xs"></TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
@@ -448,10 +448,10 @@ export default function DevicesPage() {
                               )}
                             </div>
                           </TableCell>
-                          <TableCell className="font-mono text-[10px] text-muted-foreground">
+                          <TableCell className="font-mono text-xs text-muted-foreground">
                             {device.dev_eui ?? device.hw_id ?? "---"}
                           </TableCell>
-                          <TableCell className="font-mono text-[10px] text-muted-foreground">
+                          <TableCell className="font-mono text-xs text-muted-foreground">
                             {device.serial_port || "---"}
                           </TableCell>
                           <TableCell>
@@ -464,19 +464,19 @@ export default function DevicesPage() {
                                 } catch (e) { console.error("Failed to update sensor type:", e) }
                               }}
                             >
-                              <SelectTrigger className="h-7 text-[10px] w-[110px] border-border/40">
+                              <SelectTrigger className="h-7 text-xs w-[110px] border-border/40">
                                 <SelectValue />
                               </SelectTrigger>
                               <SelectContent>
-                                <SelectItem value="microwave_tx" className="text-[10px]">LD2450</SelectItem>
-                                <SelectItem value="c4001" className="text-[10px]">C4001</SelectItem>
-                                <SelectItem value="gravity_mw" className="text-[10px]">Gravity MW V2</SelectItem>
-                                <SelectItem value="xaver" className="text-[10px]">XAVER 400</SelectItem>
+                                <SelectItem value="microwave_tx" className="text-xs">LD2450</SelectItem>
+                                <SelectItem value="c4001" className="text-xs">C4001</SelectItem>
+                                <SelectItem value="gravity_mw" className="text-xs">Gravity MW V2</SelectItem>
+                                <SelectItem value="xaver" className="text-xs">XAVER 400</SelectItem>
                               </SelectContent>
                             </Select>
                           </TableCell>
                           <TableCell>
-                            <Badge variant="outline" className={cn("text-[9px] px-1 py-0", sCfg.className)}>
+                            <Badge variant="outline" className={cn("text-2xs px-1 py-0", sCfg.className)}>
                               <span className={cn("mr-1 h-1.5 w-1.5 rounded-full inline-block", sCfg.dot)} />
                               {sCfg.label}
                             </Badge>
@@ -495,13 +495,13 @@ export default function DevicesPage() {
                           <TableCell>
                             {device.rssi != null && device.rssi !== 0 ? (
                               <span className={cn(
-                                "font-mono text-[11px]",
+                                "font-mono text-xs",
                                 device.rssi >= -70 ? "text-success" : device.rssi >= -85 ? "text-warning" : "text-destructive"
                               )}>
                                 {Math.round(device.rssi)}dBm
                               </span>
                             ) : (
-                              <span className="text-[11px] text-muted-foreground">---</span>
+                              <span className="text-xs text-muted-foreground">---</span>
                             )}
                           </TableCell>
                           <TableCell>
@@ -511,20 +511,20 @@ export default function DevicesPage() {
                                   "h-3 w-3",
                                   Number(device.battery) > 4.0 ? "text-success" : Number(device.battery) > 3.5 ? "text-warning" : "text-destructive"
                                 )} />
-                                <span className="font-mono text-[11px]">{Number(device.battery).toFixed(2)}V</span>
+                                <span className="font-mono text-xs">{Number(device.battery).toFixed(2)}V</span>
                               </div>
                             ) : (
-                              <span className="text-[11px] text-muted-foreground">---</span>
+                              <span className="text-xs text-muted-foreground">---</span>
                             )}
                           </TableCell>
-                          <TableCell className="text-[11px] text-muted-foreground">
+                          <TableCell className="text-xs text-muted-foreground">
                             {device.last_seen ? formatRelativeLocal(device.last_seen) : "Never"}
                           </TableCell>
                           <TableCell>
                             <div className="flex items-center gap-2">
-                              <span className="text-[9px] text-muted-foreground font-mono">v{device.firmware_version || '1.0.0'}</span>
+                              <span className="text-2xs text-muted-foreground font-mono">v{device.firmware_version || '1.0.0'}</span>
                               {device.needs_update ? (
-                                <Badge variant="destructive" className="text-[9px] px-2 py-0.5">À mettre à jour</Badge>
+                                <Badge variant="destructive" className="text-2xs px-2 py-0.5">À mettre à jour</Badge>
                               ) : null}
                             </div>
                           </TableCell>
@@ -558,7 +558,7 @@ export default function DevicesPage() {
             <details className="group">
               <summary className="flex items-center gap-2 cursor-pointer select-none list-none py-2 text-muted-foreground hover:text-foreground transition-colors">
                 <ChevronDown className="h-3.5 w-3.5 transition-transform group-open:rotate-180" />
-                <span className="text-[11px] uppercase tracking-widest font-medium">
+                <span className="text-xs uppercase tracking-widest font-medium">
                   Devices desactives ({disabledDevices.length})
                 </span>
               </summary>
@@ -574,7 +574,7 @@ export default function DevicesPage() {
                           <Signal className="h-3 w-3 text-muted-foreground/40 shrink-0" />
                           <div className="min-w-0">
                             <p className="text-xs font-mono font-medium text-muted-foreground truncate">{device.name}</p>
-                            <p className="text-[10px] text-muted-foreground/60">
+                            <p className="text-xs text-muted-foreground/60">
                               {device.type ?? "microwave_tx"} -- {device.serial_port || "no port"}
                             </p>
                           </div>
@@ -583,7 +583,7 @@ export default function DevicesPage() {
                           <Button
                             variant="outline"
                             size="sm"
-                            className="h-7 text-[10px] px-2 gap-1 border-success/30 text-success hover:bg-success/10"
+                            className="h-7 text-xs px-2 gap-1 border-success/30 text-success hover:bg-success/10"
                             onClick={async () => {
                               await updateDevice(device.id, { enabled: true } as never)
                               mutate()
@@ -595,7 +595,7 @@ export default function DevicesPage() {
                           <Button
                             variant="outline"
                             size="sm"
-                            className="h-7 text-[10px] px-2 gap-1 border-destructive/30 text-destructive hover:bg-destructive/10"
+                            className="h-7 text-xs px-2 gap-1 border-destructive/30 text-destructive hover:bg-destructive/10"
                             onClick={async () => {
                               if (!confirm(`Supprimer definitivement "${device.name}" ? Cette action est irreversible.`)) return
                               try { await deleteDevice(device.id, true) } catch (err) { console.error("[THEIA] Hard delete failed:", err) }
@@ -650,7 +650,7 @@ export default function DevicesPage() {
                 onChange={(e) => setEnrollForm((f) => ({ ...f, dev_eui: e.target.value }))}
                 className="bg-input/50 border-border font-mono text-sm h-8"
               />
-              <p className="text-[10px] text-muted-foreground">
+              <p className="text-xs text-muted-foreground">
                 Unique identifier for the LoRa module (MAC or custom ID)
               </p>
             </div>
@@ -662,7 +662,7 @@ export default function DevicesPage() {
                 onChange={(e) => setEnrollForm((f) => ({ ...f, serial_port: e.target.value }))}
                 className="bg-input/50 border-border font-mono text-sm h-8"
               />
-              <p className="text-[10px] text-muted-foreground">
+              <p className="text-xs text-muted-foreground">
                 USB port where the RX for this TX is connected (e.g. /dev/ttyUSB1)
               </p>
             </div>
@@ -736,8 +736,8 @@ export default function DevicesPage() {
                   className="h-10 text-sm bg-input/50 border-border font-mono"
                   autoFocus
                 />
-                {txIdError && <p className="text-[10px] text-warning">{txIdError}</p>}
-                <p className="text-[10px] text-muted-foreground">
+                {txIdError && <p className="text-xs text-warning">{txIdError}</p>}
+                <p className="text-xs text-muted-foreground">
                   Identifiant unique du capteur (ex: TX03, TX04...). Sera ecrit dans le firmware.
                 </p>
               </div>
@@ -754,15 +754,15 @@ export default function DevicesPage() {
                       <Cpu className="h-7 w-7 text-primary/60" />
                     </div>
                     <p className="text-sm font-medium text-foreground">Branchez le capteur ESP32 en USB</p>
-                    <p className="text-[10px] text-muted-foreground text-center max-w-[280px]">
+                    <p className="text-xs text-muted-foreground text-center max-w-[280px]">
                       {"Connectez l'ESP32 au Raspberry Pi via un cable USB. Le port sera detecte automatiquement."}
                     </p>
                     <div className="flex items-center gap-1.5 mt-1">
                       <span className="h-1.5 w-1.5 rounded-full bg-primary animate-pulse" />
-                      <span className="text-[10px] text-muted-foreground">Recherche en cours...</span>
+                      <span className="text-xs text-muted-foreground">Recherche en cours...</span>
                     </div>
                     {usbDebug && (
-                      <p className="text-[9px] font-mono text-muted-foreground/60 mt-1 max-w-[320px] text-center">{usbDebug}</p>
+                      <p className="text-2xs font-mono text-muted-foreground/60 mt-1 max-w-[320px] text-center">{usbDebug}</p>
                     )}
                   </>
                 ) : (
@@ -777,7 +777,7 @@ export default function DevicesPage() {
                       {portVerified?.safe === false ? "Port non securise" : "Capteur detecte"}
                     </p>
                     {portVerified?.safe === false && (
-                      <p className="text-[10px] text-destructive text-center max-w-[300px]">{portVerified.reason}</p>
+                      <p className="text-xs text-destructive text-center max-w-[300px]">{portVerified.reason}</p>
                     )}
                     <div className={cn(
                       "rounded-md border px-4 py-2.5 w-full",
@@ -785,16 +785,16 @@ export default function DevicesPage() {
                     )}>
                       <div className="flex items-center justify-between">
                         <span className="font-mono text-xs text-foreground">{detectedPort.port}</span>
-                        <Badge variant="outline" className={cn("text-[9px]", portVerified?.safe === false ? "border-destructive/40 text-destructive" : "border-success/40 text-success")}>
+                        <Badge variant="outline" className={cn("text-2xs", portVerified?.safe === false ? "border-destructive/40 text-destructive" : "border-success/40 text-success")}>
                           {portVerifying ? "verification..." : portVerified?.safe === false ? "BLOQUE" : "nouveau"}
                         </Badge>
                       </div>
-                      <p className="text-[9px] text-muted-foreground mt-1 font-mono">{detectedPort.real}</p>
+                      <p className="text-2xs text-muted-foreground mt-1 font-mono">{detectedPort.real}</p>
                       {detectedPort.summary && (
-                        <p className="text-[9px] text-muted-foreground mt-0.5">{detectedPort.summary}</p>
+                        <p className="text-2xs text-muted-foreground mt-0.5">{detectedPort.summary}</p>
                       )}
                       {portVerified?.label && (
-                        <p className="text-[9px] text-muted-foreground mt-0.5">ID: {portVerified.label}</p>
+                        <p className="text-2xs text-muted-foreground mt-0.5">ID: {portVerified.label}</p>
                       )}
                     </div>
                   </>
@@ -805,7 +805,7 @@ export default function DevicesPage() {
                 <div className="border-t border-border/50 pt-3">
                   {ports.length > 0 ? (
                     <>
-                      <p className="text-[10px] text-muted-foreground mb-2">Ou selectionner un port manuellement :</p>
+                      <p className="text-xs text-muted-foreground mb-2">Ou selectionner un port manuellement :</p>
                       <Select
                         value={flashForm.port}
                         onValueChange={(v) => {
@@ -821,7 +821,7 @@ export default function DevicesPage() {
                             <SelectItem key={p.port} value={p.port} className="text-xs">
                               <div className="flex flex-col">
                                 <span className="font-mono">{p.port}</span>
-                                <span className="text-[9px] text-muted-foreground">{p.summary || p.real}</span>
+                                <span className="text-2xs text-muted-foreground">{p.summary || p.real}</span>
                               </div>
                             </SelectItem>
                           ))}
@@ -830,8 +830,8 @@ export default function DevicesPage() {
                     </>
                   ) : (
                     <>
-                      <p className="text-[10px] text-amber-400 mb-1">Aucun port libre detecte.</p>
-                      <p className="text-[9px] text-muted-foreground mb-2">
+                      <p className="text-xs text-warning mb-1">Aucun port libre detecte.</p>
+                      <p className="text-2xs text-muted-foreground mb-2">
                         Tous les ports sont reserves. Entrez manuellement le chemin du port si le capteur est branche :
                       </p>
                       <input
@@ -856,14 +856,14 @@ export default function DevicesPage() {
                         }}
                       />
                       {usbDebug && (
-                        <p className="text-[8px] font-mono text-muted-foreground/50 mt-2 break-all">{usbDebug}</p>
+                        <p className="text-2xs font-mono text-muted-foreground/50 mt-2 break-all">{usbDebug}</p>
                       )}
                     </>
                   )}
                 </div>
               )}
 {systemPorts.length > 0 && (
-  <p className="text-[9px] text-muted-foreground">
+  <p className="text-2xs text-muted-foreground">
 Symlinks : {systemPorts.map(s => `${s.symlink} -> ${s.real} (${s.role})`).join(", ")}
   </p>
   )}
@@ -876,7 +876,7 @@ Symlinks : {systemPorts.map(s => `${s.symlink} -> ${s.real} (${s.role})`).join("
               <div className="rounded-md border border-border/50 bg-muted/30 px-3 py-2 flex items-center gap-3">
                 <Cpu className="h-4 w-4 text-primary shrink-0" />
                 <span className="font-mono text-xs text-foreground">{flashForm.tx_id}</span>
-                <span className="font-mono text-[9px] text-muted-foreground">{flashForm.port}</span>
+                <span className="font-mono text-2xs text-muted-foreground">{flashForm.port}</span>
               </div>
               <div className="flex flex-col gap-1.5">
                 <Label className="text-xs font-medium">Firmware a flasher</Label>
@@ -901,17 +901,17 @@ Symlinks : {systemPorts.map(s => `${s.symlink} -> ${s.real} (${s.role})`).join("
                           <div className="flex items-center gap-1.5 flex-wrap">
                             <span className="text-xs font-medium text-foreground">{fw.name}</span>
                             {fw.current_version && (
-                              <span className="text-[7px] text-muted-foreground font-mono">v{fw.current_version}</span>
+                              <span className="text-2xs text-muted-foreground font-mono">v{fw.current_version}</span>
                             )}
                             {fw.sensor_type && !["custom", "rx"].includes(fw.sensor_type.toLowerCase()) && (
-                              <Badge className="text-[8px] px-1 py-0 bg-primary/20 text-primary border-primary/30">
+                              <Badge className="text-2xs px-1 py-0 bg-primary/20 text-primary border-primary/30">
                                 {fw.sensor_type === "gravity_mw" ? "MW V2" : fw.sensor_type === "xaver" ? "XAVER" : fw.sensor_type.toUpperCase()}
                               </Badge>
                             )}
-                            {fw.is_template && <Badge variant="outline" className="text-[8px] px-1 py-0">Template</Badge>}
-                            {fw.is_custom && <Badge variant="secondary" className="text-[8px] px-1 py-0">Custom</Badge>}
+                            {fw.is_template && <Badge variant="outline" className="text-2xs px-1 py-0">Template</Badge>}
+                            {fw.is_custom && <Badge variant="secondary" className="text-2xs px-1 py-0">Custom</Badge>}
                           </div>
-                          <p className="text-[8px] text-muted-foreground/60 mt-1 font-mono truncate">{fw.file}</p>
+                          <p className="text-2xs text-muted-foreground/60 mt-1 font-mono truncate">{fw.file}</p>
                         </button>
                       )
                     })}
@@ -937,7 +937,7 @@ Symlinks : {systemPorts.map(s => `${s.symlink} -> ${s.real} (${s.role})`).join("
                     <Upload className="h-3.5 w-3.5 text-primary shrink-0" />
                     <div className="flex-1 min-w-0">
                       <p className="text-xs font-medium text-foreground truncate">{flashForm.custom_sketch.name}</p>
-                      <p className="text-[9px] text-muted-foreground">Sketch personnalise (upload)</p>
+                      <p className="text-2xs text-muted-foreground">Sketch personnalise (upload)</p>
                     </div>
                     <Button
                       variant="ghost"
@@ -977,10 +977,10 @@ Symlinks : {systemPorts.map(s => `${s.symlink} -> ${s.real} (${s.role})`).join("
                 <div>
                   <div className="flex items-center gap-1.5 mb-1.5">
                     <Terminal className="h-3 w-3 text-muted-foreground" />
-                    <span className="text-[10px] uppercase tracking-widest text-muted-foreground">Console</span>
-                    {flashing && <span className="ml-auto text-[10px] text-primary animate-pulse">En cours...</span>}
+                    <span className="text-xs uppercase tracking-widest text-muted-foreground">Console</span>
+                    {flashing && <span className="ml-auto text-xs text-primary animate-pulse">En cours...</span>}
                   </div>
-                  <div className="rounded-md border border-border bg-background p-2 max-h-48 overflow-y-auto font-mono text-[10px] leading-4 text-muted-foreground">
+                  <div className="rounded-md border border-border bg-background p-2 max-h-48 overflow-y-auto font-mono text-xs leading-4 text-muted-foreground">
                     {flashLogs.map((line, i) => (
                       <div key={i} className={cn(
                         line.startsWith("[ERROR]") && "text-destructive",

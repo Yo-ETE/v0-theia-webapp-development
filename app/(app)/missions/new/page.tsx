@@ -202,7 +202,7 @@ export default function NewMissionPage() {
                         : "bg-muted text-muted-foreground"
                   }`}
                 >
-                  {i < step ? <Check className="h-3 w-3" /> : <span className="text-[10px]">{i + 1}</span>}
+                  {i < step ? <Check className="h-3 w-3" /> : <span className="text-xs">{i + 1}</span>}
                   <span className={i !== step ? "hidden sm:inline" : ""}>{s}</span>
                 </button>
                 {i < STEPS.length - 1 && (
@@ -297,7 +297,7 @@ export default function NewMissionPage() {
                             <MapPin className="h-3 w-3 shrink-0 mt-0.5 text-primary" />
                             <div className="min-w-0">
                               <span className="text-foreground block truncate">{r.display_name}</span>
-                              <span className="text-[10px] font-mono text-muted-foreground">
+                              <span className="text-xs font-mono text-muted-foreground">
                                 {parseFloat(r.lat).toFixed(5)}, {parseFloat(r.lon).toFixed(5)}
                               </span>
                             </div>
@@ -310,7 +310,7 @@ export default function NewMissionPage() {
                   {/* Manual coordinates */}
                   <div className="grid grid-cols-3 gap-3">
                     <div className="flex flex-col gap-1.5">
-                      <Label htmlFor="center-lat" className="text-[10px] text-muted-foreground font-mono">Latitude</Label>
+                      <Label htmlFor="center-lat" className="text-xs text-muted-foreground font-mono">Latitude</Label>
                       <Input
                         id="center-lat"
                         name="center_lat"
@@ -326,7 +326,7 @@ export default function NewMissionPage() {
                       />
                     </div>
                     <div className="flex flex-col gap-1.5">
-                      <Label htmlFor="center-lon" className="text-[10px] text-muted-foreground font-mono">Longitude</Label>
+                      <Label htmlFor="center-lon" className="text-xs text-muted-foreground font-mono">Longitude</Label>
                       <Input
                         id="center-lon"
                         name="center_lon"
@@ -342,7 +342,7 @@ export default function NewMissionPage() {
                       />
                     </div>
                     <div className="flex flex-col gap-1.5">
-                      <Label htmlFor="zoom-level" className="text-[10px] text-muted-foreground font-mono">Zoom</Label>
+                      <Label htmlFor="zoom-level" className="text-xs text-muted-foreground font-mono">Zoom</Label>
                       <Input
                         id="zoom-level"
                         name="zoom"
@@ -356,7 +356,7 @@ export default function NewMissionPage() {
 
                   {/* Location label */}
                   <div className="flex flex-col gap-1.5">
-                    <Label htmlFor="location-label" className="text-[10px] text-muted-foreground">Location Label</Label>
+                    <Label htmlFor="location-label" className="text-xs text-muted-foreground">Location Label</Label>
                     <Input
                       id="location-label"
                       name="location"
@@ -392,7 +392,7 @@ export default function NewMissionPage() {
                         >
                           <X className="h-4 w-4" />
                         </button>
-                        <p className="mt-2 text-[10px] text-muted-foreground text-center">
+                        <p className="mt-2 text-xs text-muted-foreground text-center">
                           {planFile?.name} ({planFile ? (planFile.size / 1024).toFixed(0) : 0} Ko)
                         </p>
                       </div>
@@ -407,7 +407,7 @@ export default function NewMissionPage() {
                           <p className="text-xs text-muted-foreground mt-1">
                             Photo de plan d'evacuation, plan architecte, etc.
                           </p>
-                          <p className="text-[10px] text-muted-foreground mt-0.5">
+                          <p className="text-xs text-muted-foreground mt-0.5">
                             JPG, PNG ou WebP
                           </p>
                         </div>
@@ -427,7 +427,7 @@ export default function NewMissionPage() {
                 <CardHeader className="py-2 px-4">
                   <CardTitle className="text-xs flex items-center gap-2">
                     Map Preview
-                    <Badge variant="outline" className="text-[9px] px-1.5 py-0 font-mono">
+                    <Badge variant="outline" className="text-2xs px-1.5 py-0 font-mono">
                       {form.center_lat.toFixed(5)}, {form.center_lon.toFixed(5)}
                     </Badge>
                   </CardTitle>
@@ -478,15 +478,15 @@ export default function NewMissionPage() {
                     </div>
                     <div>
                       <p className="text-sm font-medium text-foreground">Habitation</p>
-                      <p className="text-[10px] text-muted-foreground">Maison, villa, batiment</p>
+                      <p className="text-xs text-muted-foreground">Maison, villa, batiment</p>
                     </div>
                   </div>
                   <p className="text-xs text-muted-foreground leading-relaxed">
                     Dessinez les zones sur la carte, definissez les facades et placez les TX sur chaque cote.
                   </p>
                   <div className="flex flex-wrap gap-1">
-                    <Badge variant="outline" className="text-[9px] py-0">Zones sur carte</Badge>
-                    <Badge variant="outline" className="text-[9px] py-0">Facades A/B/C/D</Badge>
+                    <Badge variant="outline" className="text-2xs py-0">Zones sur carte</Badge>
+                    <Badge variant="outline" className="text-2xs py-0">Facades A/B/C/D</Badge>
                   </div>
                 </button>
 
@@ -505,15 +505,15 @@ export default function NewMissionPage() {
                     </div>
                     <div>
                       <p className="text-sm font-medium text-foreground">Garage / Souterrain</p>
-                      <p className="text-[10px] text-muted-foreground">Parking, tunnel, rangee</p>
+                      <p className="text-xs text-muted-foreground">Parking, tunnel, rangee</p>
                     </div>
                   </div>
                   <p className="text-xs text-muted-foreground leading-relaxed">
                     Definissez le nombre de troncons cote a cote et assignez les TX par troncon.
                   </p>
                   <div className="flex flex-wrap gap-1">
-                    <Badge variant="outline" className="text-[9px] py-0">Troncons horizontaux</Badge>
-                    <Badge variant="outline" className="text-[9px] py-0">TX par troncon</Badge>
+                    <Badge variant="outline" className="text-2xs py-0">Troncons horizontaux</Badge>
+                    <Badge variant="outline" className="text-2xs py-0">TX par troncon</Badge>
                   </div>
                 </button>
 
@@ -532,15 +532,15 @@ export default function NewMissionPage() {
                     </div>
                     <div>
                       <p className="text-sm font-medium text-foreground">Etages</p>
-                      <p className="text-[10px] text-muted-foreground">Immeuble, cage d'escalier</p>
+                      <p className="text-xs text-muted-foreground">Immeuble, cage d'escalier</p>
                     </div>
                   </div>
                   <p className="text-xs text-muted-foreground leading-relaxed">
                     Definissez le nombre d'etages empiles verticalement et assignez les TX par etage.
                   </p>
                   <div className="flex flex-wrap gap-1">
-                    <Badge variant="outline" className="text-[9px] py-0">Etages empiles</Badge>
-                    <Badge variant="outline" className="text-[9px] py-0">TX par etage</Badge>
+                    <Badge variant="outline" className="text-2xs py-0">Etages empiles</Badge>
+                    <Badge variant="outline" className="text-2xs py-0">TX par etage</Badge>
                   </div>
                 </button>
 
@@ -559,15 +559,15 @@ export default function NewMissionPage() {
                     </div>
                     <div>
                       <p className="text-sm font-medium text-foreground">Sur Plan</p>
-                      <p className="text-[10px] text-muted-foreground">Plan de batiment, evacuation</p>
+                      <p className="text-xs text-muted-foreground">Plan de batiment, evacuation</p>
                     </div>
                   </div>
                   <p className="text-xs text-muted-foreground leading-relaxed">
                     Importez une photo de plan et dessinez les zones directement dessus. Meme principe que Habitation.
                   </p>
                   <div className="flex flex-wrap gap-1">
-                    <Badge variant="outline" className="text-[9px] py-0">Plan importe</Badge>
-                    <Badge variant="outline" className="text-[9px] py-0">Zones + Facades</Badge>
+                    <Badge variant="outline" className="text-2xs py-0">Plan importe</Badge>
+                    <Badge variant="outline" className="text-2xs py-0">Zones + Facades</Badge>
                   </div>
                 </button>
               </CardContent>
@@ -587,11 +587,11 @@ export default function NewMissionPage() {
                 <CardContent className="flex flex-col gap-3">
                   <div className="grid grid-cols-2 gap-3">
                     <div className="rounded border border-border/50 p-3">
-                      <p className="text-[10px] text-muted-foreground mb-1">Mission</p>
+                      <p className="text-xs text-muted-foreground mb-1">Mission</p>
                       <p className="text-sm font-mono text-foreground">{form.name}</p>
                     </div>
                     <div className="rounded border border-border/50 p-3">
-                      <p className="text-[10px] text-muted-foreground mb-1">Type</p>
+                      <p className="text-xs text-muted-foreground mb-1">Type</p>
                       <div className="flex items-center gap-1.5">
                         {form.environment === "habitation" && <Home className="h-3.5 w-3.5 text-primary" />}
                         {form.environment === "garage" && <Warehouse className="h-3.5 w-3.5 text-primary" />}
@@ -603,15 +603,15 @@ export default function NewMissionPage() {
                       </div>
                     </div>
                     <div className="rounded border border-border/50 p-3 col-span-2">
-                      <p className="text-[10px] text-muted-foreground mb-1">Location</p>
+                      <p className="text-xs text-muted-foreground mb-1">Location</p>
                       <p className="text-xs text-foreground">{form.location || "---"}</p>
-                      <p className="text-[10px] font-mono text-muted-foreground mt-0.5">
+                      <p className="text-xs font-mono text-muted-foreground mt-0.5">
                         {form.center_lat.toFixed(5)}, {form.center_lon.toFixed(5)} z{form.zoom}
                       </p>
                     </div>
                     {form.description && (
                       <div className="rounded border border-border/50 p-3 col-span-2">
-                        <p className="text-[10px] text-muted-foreground mb-1">Description</p>
+                        <p className="text-xs text-muted-foreground mb-1">Description</p>
                         <p className="text-xs text-foreground">{form.description}</p>
                       </div>
                     )}

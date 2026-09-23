@@ -161,8 +161,8 @@ export default function LoginPage() {
         </Card>
 
         <div className="flex flex-col items-center gap-0.5 mt-8">
-          <p className="text-[10px] text-muted-foreground tracking-wider">© 2026 Yoann ETE</p>
-          <p className="text-[9px] italic text-muted-foreground/60">
+          <p className="text-xs text-muted-foreground tracking-wider">© 2026 Yoann ETE</p>
+          <p className="text-2xs italic text-muted-foreground/60">
             THEIA - La ou l&apos;oeil est aveugle, l&apos;onde revele
           </p>
         </div>

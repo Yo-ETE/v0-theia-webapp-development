@@ -2,8 +2,11 @@ import type { Metadata, Viewport } from 'next'
 import { Geist, Geist_Mono } from 'next/font/google'
 import './globals.css'
 
-const _geist = Geist({ subsets: ["latin"] });
-const _geistMono = Geist_Mono({ subsets: ["latin"] });
+// `variable` exposes each family as a CSS custom property that globals.css hands to
+// --font-sans / --font-mono. Without it next/font emits a hashed family name that no
+// stylesheet can reference, so the webfonts download but nothing ever uses them.
+const geistSans = Geist({ subsets: ["latin"], variable: "--font-geist-sans", display: "swap" });
+const geistMono = Geist_Mono({ subsets: ["latin"], variable: "--font-geist-mono", display: "swap" });
 
 export const metadata: Metadata = {
   title: {
@@ -39,7 +42,7 @@ export default function RootLayout({
   children: React.ReactNode
 }>) {
   return (
-    <html lang="fr" className="dark bg-background">
+    <html lang="fr" className={`dark bg-background ${geistSans.variable} ${geistMono.variable}`}>
       <body className="font-sans antialiased">
         <script dangerouslySetInnerHTML={{ __html: `
           // Auto-reload on ChunkLoadError (stale cache after Pi rebuild)

@@ -162,13 +162,13 @@ export default function DashboardPage() {
           {alerts.length > 0 && (
             <section>
               <div className="mb-3 flex items-center justify-between">
-                <h2 className="text-[11px] uppercase tracking-widest text-muted-foreground flex items-center gap-1.5">
-                  <AlertTriangle className="h-3.5 w-3.5 text-amber-500" />
+                <h2 className="text-xs uppercase tracking-widest text-muted-foreground flex items-center gap-1.5">
+                  <AlertTriangle className="h-3.5 w-3.5 text-warning" />
                   Alertes actives ({alerts.length})
                 </h2>
                 <button
                   onClick={handleDismissAll}
-                  className="text-[10px] text-muted-foreground hover:text-foreground transition-colors cursor-pointer"
+                  className="text-xs text-muted-foreground hover:text-foreground transition-colors cursor-pointer"
                 >
                   Tout effacer
                 </button>
@@ -181,13 +181,13 @@ export default function DashboardPage() {
                       "border-l-2",
                       n.severity === "critical"
                         ? "border-l-destructive bg-destructive/5"
-                        : "border-l-amber-500 bg-amber-500/5"
+                        : "border-l-amber-500 bg-warning/5"
                     )}
                   >
                     <CardContent className="flex items-center gap-3 px-3 py-2.5">
                       <div className={cn(
                         "shrink-0",
-                        n.severity === "critical" ? "text-destructive" : "text-amber-500"
+                        n.severity === "critical" ? "text-destructive" : "text-warning"
                       )}>
                         {alertIcon(n.type)}
                       </div>
@@ -196,7 +196,7 @@ export default function DashboardPage() {
                           {n.message}
                         </p>
                         {n.device_name && (
-                          <p className="text-[10px] text-muted-foreground font-mono">
+                          <p className="text-xs text-muted-foreground font-mono">
                             {n.device_name}
                           </p>
                         )}
@@ -216,7 +216,7 @@ export default function DashboardPage() {
 
           {/* ── Raspberry Pi ── */}
           <section>
-            <h2 className="mb-3 text-[11px] uppercase tracking-widest text-muted-foreground">
+            <h2 className="mb-3 text-xs uppercase tracking-widest text-muted-foreground">
               Raspberry Pi
             </h2>
             <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-5">
@@ -257,7 +257,7 @@ export default function DashboardPage() {
 
           {/* ── Connexion Internet ── */}
           <section>
-            <h2 className="mb-3 text-[11px] uppercase tracking-widest text-muted-foreground">
+            <h2 className="mb-3 text-xs uppercase tracking-widest text-muted-foreground">
               Connexion Internet
             </h2>
             <Card className="border-border/50 bg-card">
@@ -312,7 +312,7 @@ export default function DashboardPage() {
                           <span className="font-mono text-xs text-muted-foreground">{network.wifi.ssid}</span>
                           {network.wifi.signal !== 0 && (
                             <span className={cn(
-                              "font-mono text-[11px]",
+                              "font-mono text-xs",
                               network.wifi.signal >= -50 ? "text-success" :
                               network.wifi.signal >= -70 ? "text-warning" : "text-destructive"
                             )}>
@@ -320,7 +320,7 @@ export default function DashboardPage() {
                             </span>
                           )}
                           {network.wifi.tx_rate && (
-                            <span className="text-[11px] text-muted-foreground">{network.wifi.tx_rate}</span>
+                            <span className="text-xs text-muted-foreground">{network.wifi.tx_rate}</span>
                           )}
                         </div>
                       ) : (
@@ -360,7 +360,7 @@ export default function DashboardPage() {
                       {network.usb_modem.connected ? (
                         <div className="flex items-center gap-2">
                           <span className="font-mono text-xs text-muted-foreground">{network.usb_modem.ip}</span>
-                          <span className="text-[10px] text-muted-foreground">({network.usb_modem.interface})</span>
+                          <span className="text-xs text-muted-foreground">({network.usb_modem.interface})</span>
                         </div>
                       ) : (
                         <p className="text-xs text-muted-foreground">Non connecte</p>
@@ -384,11 +384,11 @@ export default function DashboardPage() {
                   {/* IPs */}
                   <div className="sm:ml-auto flex flex-col gap-1">
                     <div className="flex items-center gap-2">
-                      <span className="text-[10px] text-muted-foreground">Hostname</span>
+                      <span className="text-xs text-muted-foreground">Hostname</span>
                       <span className="font-mono text-xs text-foreground">{network.hostname}</span>
                     </div>
                     <div className="flex items-center gap-2">
-                      <span className="text-[10px] text-muted-foreground">LAN IP</span>
+                      <span className="text-xs text-muted-foreground">LAN IP</span>
                       <span className="font-mono text-xs text-foreground">{network.lan_ip}</span>
                     </div>
                   </div>
@@ -400,7 +400,7 @@ export default function DashboardPage() {
 
           {/* ── GPS & LoRa ── */}
           <section>
-            <h2 className="mb-3 text-[11px] uppercase tracking-widest text-muted-foreground">
+            <h2 className="mb-3 text-xs uppercase tracking-widest text-muted-foreground">
               Capteurs
             </h2>
             <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
@@ -413,7 +413,7 @@ export default function DashboardPage() {
                     <Badge
                       variant="outline"
                       className={cn(
-                        "text-[9px] px-1.5 py-0 ml-auto",
+                        "text-2xs px-1.5 py-0 ml-auto",
                         gps.fix
                           ? "border-success/30 bg-success/10 text-success"
                           : "border-destructive/30 bg-destructive/10 text-destructive",
@@ -426,31 +426,31 @@ export default function DashboardPage() {
                 <CardContent className="flex flex-col gap-2">
                   <div className="grid grid-cols-2 gap-x-6 gap-y-2">
                     <div>
-                      <span className="text-[10px] text-muted-foreground">Latitude</span>
+                      <span className="text-xs text-muted-foreground">Latitude</span>
                       <p className="font-mono text-sm text-foreground">
                         {gps.latitude?.toFixed(6) ?? "---"}
                       </p>
                     </div>
                     <div>
-                      <span className="text-[10px] text-muted-foreground">Longitude</span>
+                      <span className="text-xs text-muted-foreground">Longitude</span>
                       <p className="font-mono text-sm text-foreground">
                         {gps.longitude?.toFixed(6) ?? "---"}
                       </p>
                     </div>
                     <div>
-                      <span className="text-[10px] text-muted-foreground">Altitude</span>
+                      <span className="text-xs text-muted-foreground">Altitude</span>
                       <p className="font-mono text-sm text-foreground">
                         {gps.altitude ? `${gps.altitude}m` : "---"}
                       </p>
                     </div>
                     <div>
-                      <span className="text-[10px] text-muted-foreground">Satellites</span>
+                      <span className="text-xs text-muted-foreground">Satellites</span>
                       <p className="font-mono text-sm text-foreground">{gps.satellites}</p>
                     </div>
                   </div>
                   {gps.hdop !== null && (
                     <div className="mt-1 border-t border-border/50 pt-2">
-                      <span className="text-[10px] text-muted-foreground">HDOP: </span>
+                      <span className="text-xs text-muted-foreground">HDOP: </span>
                       <span className={cn(
                         "font-mono text-xs",
                         (gps.hdop ?? 0) <= 2 ? "text-success" : (gps.hdop ?? 0) <= 5 ? "text-warning" : "text-destructive"
@@ -471,7 +471,7 @@ export default function DashboardPage() {
                     <Badge
                       variant="outline"
                       className={cn(
-                        "text-[9px] px-1.5 py-0 ml-auto",
+                        "text-2xs px-1.5 py-0 ml-auto",
                         lora.connected
                           ? "border-success/30 bg-success/10 text-success"
                           : "border-destructive/30 bg-destructive/10 text-destructive",
@@ -484,7 +484,7 @@ export default function DashboardPage() {
                 <CardContent className="flex flex-col gap-2">
                   <div className="grid grid-cols-2 gap-x-6 gap-y-2">
                     <div>
-                      <span className="text-[10px] text-muted-foreground">RSSI (moy.)</span>
+                      <span className="text-xs text-muted-foreground">RSSI (moy.)</span>
                       <p className={cn(
                         "font-mono text-lg font-semibold",
                         smoothRssi !== null
@@ -495,13 +495,13 @@ export default function DashboardPage() {
                       </p>
                     </div>
                     <div>
-                      <span className="text-[10px] text-muted-foreground">SNR</span>
+                      <span className="text-xs text-muted-foreground">SNR</span>
                       <p className="font-mono text-lg font-semibold text-foreground">
                         {lora.snr !== null ? `${lora.snr} dB` : "---"}
                       </p>
                     </div>
                     <div>
-                      <span className="text-[10px] text-muted-foreground">Port</span>
+                      <span className="text-xs text-muted-foreground">Port</span>
                       <p className="font-mono text-sm text-foreground truncate" title={lora.port}>
                         {lora.port === "/dev/theia-rx"
                           ? "/dev/theia-rx"
@@ -511,15 +511,15 @@ export default function DashboardPage() {
                       </p>
                     </div>
                     <div>
-                      <span className="text-[10px] text-muted-foreground">Baud Rate</span>
+                      <span className="text-xs text-muted-foreground">Baud Rate</span>
                       <p className="font-mono text-sm text-foreground">{lora.baud_rate.toLocaleString()}</p>
                     </div>
                   </div>
                   <div className="mt-1 flex items-center justify-between border-t border-border/50 pt-2">
                     <div>
-                      <span className="text-[10px] text-muted-foreground">Packets RX: </span>
+                      <span className="text-xs text-muted-foreground">Packets RX: </span>
                       <span className="font-mono text-xs text-success">{lora.packets_received.toLocaleString()}</span>
-                      <span className="text-[10px] text-muted-foreground"> / Errors: </span>
+                      <span className="text-xs text-muted-foreground"> / Errors: </span>
                       <span className="font-mono text-xs text-destructive">{lora.packets_errors}</span>
                     </div>
                   </div>

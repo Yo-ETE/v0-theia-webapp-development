@@ -58,7 +58,7 @@ export class ErrorBoundary extends Component<Props, State> {
           <div className="flex h-full w-full items-center justify-center rounded-lg border border-destructive/30 bg-destructive/5 p-4">
             <div className="text-center">
               <p className="text-xs font-mono text-destructive">Component Error</p>
-              <p className="mt-1 text-[10px] text-muted-foreground max-w-xs truncate">
+              <p className="mt-1 text-xs text-muted-foreground max-w-xs truncate">
                 {this.state.error?.message}
               </p>
               <button

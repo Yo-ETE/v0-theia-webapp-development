@@ -169,7 +169,7 @@ export function NotificationConfig({ missionId, missionName, zones = [], initial
                 <div className="rounded-md border border-border/50 bg-muted/30 p-2.5 space-y-2">
                   <div className="flex items-center gap-2">
                     <Smartphone className="h-3.5 w-3.5 text-muted-foreground" />
-                    <span className="text-[11px] text-muted-foreground">
+                    <span className="text-xs text-muted-foreground">
                       {!pushSupported
                         ? "Push non supporte sur ce navigateur"
                         : pushPermission === "denied"
@@ -182,7 +182,7 @@ export function NotificationConfig({ missionId, missionName, zones = [], initial
                     {pushSupported && pushPermission !== "denied" && !pushSubscribed && (
                       <button
                         onClick={pushSubscribe}
-                        className="text-[10px] text-primary hover:underline cursor-pointer ml-auto"
+                        className="text-xs text-primary hover:underline cursor-pointer ml-auto"
                       >
                         Activer
                       </button>
@@ -192,14 +192,14 @@ export function NotificationConfig({ missionId, missionName, zones = [], initial
                     <button
                       onClick={sendTestPush}
                       disabled={testingSend}
-                      className="flex items-center gap-1.5 text-[10px] text-primary hover:underline cursor-pointer disabled:opacity-50"
+                      className="flex items-center gap-1.5 text-xs text-primary hover:underline cursor-pointer disabled:opacity-50"
                     >
                       {testingSend ? <Loader2 className="h-3 w-3 animate-spin" /> : <SendHorizonal className="h-3 w-3" />}
                       Envoyer un push de test
                     </button>
                   )}
                   {pushSupported && pushPermission !== "denied" && (
-                    <p className="text-[10px] text-muted-foreground/60 leading-relaxed">
+                    <p className="text-xs text-muted-foreground/60 leading-relaxed">
                       {"Sur iPhone, ajoutez THEIA a l'ecran d'accueil pour recevoir les notifications en arriere-plan."}
                     </p>
                   )}

@@ -896,7 +896,7 @@ export function PlanEditor({
                         y={sy}
                         textAnchor="middle"
                         dominantBaseline="central"
-                        className="text-[9px] font-mono font-bold pointer-events-none"
+                        className="text-2xs font-mono font-bold pointer-events-none"
                         style={{ fill: "#ffffff" }}
                       >
                         {label}
@@ -910,7 +910,7 @@ export function PlanEditor({
                   y={midY - 10}
                   textAnchor="middle"
                   dominantBaseline="central"
-                  className="text-[11px] font-medium pointer-events-none"
+                  className="text-xs font-medium pointer-events-none"
                   style={{ fill: "#ffffff", paintOrder: "stroke", stroke: "hsl(var(--background))", strokeWidth: 4 }}
                 >
                   {zone.name}
@@ -921,7 +921,7 @@ export function PlanEditor({
                     y={midY + 6}
                     textAnchor="middle"
                     dominantBaseline="central"
-                    className="text-[9px] font-mono pointer-events-none"
+                    className="text-2xs font-mono pointer-events-none"
                     style={{ fill: zoneColor, paintOrder: "stroke", stroke: "hsl(var(--background))", strokeWidth: 3 }}
                   >
                     {lengthStr}
@@ -969,7 +969,7 @@ export function PlanEditor({
                       y={sy}
                       textAnchor="middle"
                       dominantBaseline="central"
-                      className="text-[9px] font-mono font-bold pointer-events-none"
+                      className="text-2xs font-mono font-bold pointer-events-none"
                       style={{ fill: "#ffffff" }}
                     >
                       {label}
@@ -991,7 +991,7 @@ export function PlanEditor({
                       y={mid[1] - (showMeasurements ? 8 : 0)}
                       textAnchor="middle"
                       dominantBaseline="central"
-                      className="text-[10px] font-mono font-bold pointer-events-none"
+                      className="text-xs font-mono font-bold pointer-events-none"
                       style={{ fill: "#ffffff", paintOrder: "stroke", stroke: "hsl(var(--background))", strokeWidth: 4 }}
                     >
                       {label}
@@ -1002,7 +1002,7 @@ export function PlanEditor({
                         y={mid[1] + 8}
                         textAnchor="middle"
                         dominantBaseline="central"
-                        className="text-[8px] font-mono pointer-events-none"
+                        className="text-2xs font-mono pointer-events-none"
                         style={{ fill: zoneColor, paintOrder: "stroke", stroke: "hsl(var(--background))", strokeWidth: 3 }}
                       >
                         ({lengthStr})
@@ -1024,7 +1024,7 @@ export function PlanEditor({
                       y={sy - (showMeasurements ? 8 : 0)}
                       textAnchor="middle"
                       dominantBaseline="central"
-                      className="text-[12px] font-bold pointer-events-none"
+                      className="text-sm font-bold pointer-events-none"
                       style={{ fill: zoneColor, paintOrder: "stroke", stroke: "hsl(var(--background))", strokeWidth: 5 }}
                     >
                       {zone.name || zone.label}
@@ -1035,7 +1035,7 @@ export function PlanEditor({
                         y={sy + 10}
                         textAnchor="middle"
                         dominantBaseline="central"
-                        className="text-[10px] font-mono pointer-events-none"
+                        className="text-xs font-mono pointer-events-none"
                         style={{ fill: zoneColor, paintOrder: "stroke", stroke: "hsl(var(--background))", strokeWidth: 3, opacity: 0.9 }}
                       >
                         {areaStr}
@@ -1095,7 +1095,7 @@ export function PlanEditor({
                     y={y}
                     textAnchor="middle"
                     dominantBaseline="central"
-                    className="text-[10px] font-semibold pointer-events-none"
+                    className="text-xs font-semibold pointer-events-none"
                     style={{
                       fill: "#374151",
                       paintOrder: "stroke",
@@ -1166,7 +1166,7 @@ export function PlanEditor({
                 <text
                   x={m.detSx} y={m.detSy - 12}
                   textAnchor="middle"
-                  className="text-[9px] font-mono font-bold pointer-events-none"
+                  className="text-2xs font-mono font-bold pointer-events-none"
                   style={{ fill: vc.detection_dot_live, paintOrder: "stroke", stroke: "hsl(var(--background))", strokeWidth: 3 }}
                 >
                   {m.det!.distance}cm {m.det!.direction === "G" || m.det!.direction === "Gauche" ? "G" : m.det!.direction === "D" || m.det!.direction === "Droite" ? "D" : "C"}
@@ -1185,7 +1185,7 @@ export function PlanEditor({
               x={m.sx}
               y={m.sy - 10}
               textAnchor="middle"
-              className="fill-foreground text-[9px] font-mono pointer-events-none"
+              className="fill-foreground text-2xs font-mono pointer-events-none"
               style={{ paintOrder: "stroke", stroke: "hsl(var(--background))", strokeWidth: 3 }}
             >
               {m.device_name}
@@ -1196,7 +1196,7 @@ export function PlanEditor({
                 x={m.sx}
                 y={m.sy + 16}
                 textAnchor="middle"
-                className="text-[9px] font-mono font-bold pointer-events-none"
+                className="text-2xs font-mono font-bold pointer-events-none"
                 style={{ fill: vc.detection_dot_live, paintOrder: "stroke", stroke: "hsl(var(--background))", strokeWidth: 3 }}
               >
                 {m.det.distance}cm
@@ -1230,7 +1230,7 @@ export function PlanEditor({
                 x={m.sx + Math.cos(angleDeg * Math.PI / 180) * radiusPx * 0.7}
                 y={m.sy + Math.sin(angleDeg * Math.PI / 180) * radiusPx * 0.7}
                 textAnchor="middle"
-                className="fill-cyan-400/60 text-[8px] font-mono pointer-events-none"
+                className="fill-cyan-400/60 text-2xs font-mono pointer-events-none"
               >
                 {specs.maxRangeM}m
               </text>
@@ -1250,7 +1250,7 @@ export function PlanEditor({
                 <g key={`cal-${i}`}>
                   <circle cx={x} cy={y} r={8} fill="none" stroke="#f43f5e" strokeWidth={2} />
                   <circle cx={x} cy={y} r={3} fill="#f43f5e" />
-                  <text x={x + 12} y={y + 4} className="fill-rose-400 text-[10px] font-mono font-bold pointer-events-none">
+                  <text x={x + 12} y={y + 4} className="fill-rose-400 text-xs font-mono font-bold pointer-events-none">
                     {i === 0 ? "A" : "B"}
                   </text>
                 </g>
@@ -1271,7 +1271,7 @@ export function PlanEditor({
                     x={(x1 + x2) / 2}
                     y={(y1 + y2) / 2 - 8}
                     textAnchor="middle"
-                    className="fill-rose-400 text-[10px] font-mono font-bold pointer-events-none"
+                    className="fill-rose-400 text-xs font-mono font-bold pointer-events-none"
                     style={{ paintOrder: "stroke", stroke: "hsl(var(--background))", strokeWidth: 3 }}
                   >
                     {Math.round(pxDist)}px
@@ -1281,7 +1281,7 @@ export function PlanEditor({
             })()}
             {/* Instruction text */}
             {calPoints.length < 2 && (
-              <text x={containerW / 2} y={30} textAnchor="middle" className="fill-rose-400 text-[11px] font-semibold pointer-events-none"
+              <text x={containerW / 2} y={30} textAnchor="middle" className="fill-rose-400 text-xs font-semibold pointer-events-none"
                 style={{ paintOrder: "stroke", stroke: "hsl(var(--background))", strokeWidth: 3 }}>
                 {calPoints.length === 0
                   ? "Cliquez le point A sur le plan"
@@ -1309,7 +1309,7 @@ export function PlanEditor({
               <line x1={barX} y1={barY} x2={barX + barW} y2={barY} stroke="hsl(var(--foreground))" strokeWidth={2} />
               <line x1={barX} y1={barY - 4} x2={barX} y2={barY + 2} stroke="hsl(var(--foreground))" strokeWidth={2} />
               <line x1={barX + barW} y1={barY - 4} x2={barX + barW} y2={barY + 2} stroke="hsl(var(--foreground))" strokeWidth={2} />
-              <text x={barX + barW / 2} y={barY - 4} textAnchor="middle" className="fill-foreground text-[9px] font-mono font-bold pointer-events-none">
+              <text x={barX + barW / 2} y={barY - 4} textAnchor="middle" className="fill-foreground text-2xs font-mono font-bold pointer-events-none">
                 {barM}m
               </text>
             </g>
@@ -1381,7 +1381,7 @@ export function PlanEditor({
                     y={midY}
                     textAnchor="middle"
                     dominantBaseline="central"
-                    className="text-[10px] font-mono font-bold pointer-events-none"
+                    className="text-xs font-mono font-bold pointer-events-none"
                     style={{ fill: "#0891b2" }}
                   >
                     {label}: {lengthStr}
@@ -1413,7 +1413,7 @@ export function PlanEditor({
                     y={sy}
                     textAnchor="middle"
                     dominantBaseline="central"
-                    className="text-[10px] font-mono font-bold pointer-events-none"
+                    className="text-xs font-mono font-bold pointer-events-none"
                     style={{ fill: "#0891b2" }}
                   >
                     {areaStr} | P: {perimStr}
@@ -1442,7 +1442,7 @@ export function PlanEditor({
             onTouchStart={(e) => handleDrawVertexDragStart(i, e)}
           >
             <div
-              className="w-full h-full rounded-full flex items-center justify-center text-[10px] font-bold text-white shadow-md"
+              className="w-full h-full rounded-full flex items-center justify-center text-xs font-bold text-white shadow-md"
               style={{
                 background: "#0891b2",
                 border: "2px solid white",
@@ -1451,7 +1451,7 @@ export function PlanEditor({
               {i + 1}
             </div>
             <div
-              className="absolute -top-5 left-1/2 -translate-x-1/2 px-1.5 py-0.5 rounded text-[9px] font-semibold whitespace-nowrap"
+              className="absolute -top-5 left-1/2 -translate-x-1/2 px-1.5 py-0.5 rounded text-2xs font-semibold whitespace-nowrap"
               style={{ color: "#0891b2" }}
             >
               P{i + 1}
@@ -1558,7 +1558,7 @@ export function PlanEditor({
                   }}
                   disabled={t.id === "delete" && editingPolygon.length <= 3}
                   className={cn(
-                    "flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-[11px] font-semibold transition-all min-h-[34px]",
+                    "flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-xs font-semibold transition-all min-h-[34px]",
                     t.id === "move"
                       ? "text-white shadow-sm"
                       : "text-muted-foreground hover:text-foreground bg-transparent disabled:opacity-50 disabled:cursor-not-allowed"
@@ -1573,7 +1573,7 @@ export function PlanEditor({
                 </button>
               ))}
               <div className="w-px h-5 bg-border/50 mx-0.5" />
-              <span className="text-[9px] font-mono text-amber-500/80 px-1">{editingPolygon.length}pts {areaStr}</span>
+              <span className="text-2xs font-mono text-amber-500/80 px-1">{editingPolygon.length}pts {areaStr}</span>
             </div>
           </div>
         )
@@ -1596,7 +1596,7 @@ export function PlanEditor({
             onTouchStart={(e) => handleEditVertexDragStart(i, e)}
           >
             <div
-              className="w-full h-full rounded-full flex items-center justify-center text-[11px] font-bold text-white shadow-lg"
+              className="w-full h-full rounded-full flex items-center justify-center text-xs font-bold text-white shadow-lg"
               style={{
                 background: "#f59e0b",
                 border: "3px solid white",
