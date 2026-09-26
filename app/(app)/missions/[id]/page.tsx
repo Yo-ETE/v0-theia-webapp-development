@@ -43,6 +43,7 @@ import { Switch } from "@/components/ui/switch"
 import { useSSE } from "@/hooks/use-sse"
 import { useNotificationSound } from "@/hooks/use-notification-sound"
 import { updateMission, updateDevice } from "@/lib/api-client"
+import { remapForInsert, remapForDelete, type PolygonEdit } from "@/lib/side-remap"
 import { missionStatusConfig, eventTypeConfig, deviceStatusConfig, formatRelative, formatRelativeLocal, formatTime, formatTimeLocal, formatDateTime } from "@/lib/format"
 import { cn } from "@/lib/utils"
 import type { Zone, Floor, DetectionEvent, LiveDetection } from "@/lib/types"
@@ -670,12 +671,48 @@ export default function MissionDetailPage() {
   }, [mission, id, mutate, mutateDevices, unassigning])
 
   // ── Zone polygon editing (local state only, saved on exit) ──
-  const updateZonePolygon = useCallback((_zoneId: string, newPolygon: [number, number][]) => {
-    setEditingPolygon(newPolygon)
-  }, [])
+  /*
+   * Sensors are bound to a wall as (segment index, t), so inserting or deleting a vertex
+   * renumbers the walls under them: a sensor still claiming "C" ends up on what used to be
+   * "D", silently, with its FOV cone and every derived position pointing at the wrong wall.
+   * Dragging a vertex is free -- the wall moves and the sensor moves with it.
+   *
+   * The remaps are accumulated here and written once, on exit, alongside the polygon. Doing
+   * it per gesture would fire a device PATCH for every tap on a "+".
+   */
+  const pendingSideRemapRef = useRef<Record<string, { side: string; sensor_position: number }>>({})
+
+  const updateZonePolygon = useCallback((
+    zoneId: string,
+    newPolygon: [number, number][],
+    edit?: PolygonEdit,
+  ) => {
+    setEditingPolygon((prev) => {
+      const before = prev ?? []
+      if (edit && before.length >= 3) {
+        const affected = (allDevices ?? [])
+          .filter((d) => d.zone_id === zoneId && d.side)
+          .map((d) => ({
+            id: d.id,
+            side: pendingSideRemapRef.current[d.id]?.side ?? d.side!,
+            sensor_position: pendingSideRemapRef.current[d.id]?.sensor_position ?? (d.sensor_position ?? 0.5),
+          }))
+        if (affected.length > 0) {
+          const remapped = edit.type === "insert"
+            ? remapForInsert(affected, before, edit.edgeIndex, edit.point)
+            : remapForDelete(affected, before, edit.vertexIndex)
+          for (const r of remapped) {
+            pendingSideRemapRef.current[r.id] = { side: r.side, sensor_position: r.sensor_position }
+          }
+        }
+      }
+      return newPolygon
+    })
+  }, [allDevices])
 
   // Start editing: copy polygon to local state
   const startEditingZone = useCallback((zoneId: string | null) => {
+    pendingSideRemapRef.current = {}
     if (zoneId) {
       const zone = (mission?.zones ?? []).find(z => z.id === zoneId)
       if (zone) setEditingPolygon([...zone.polygon])
@@ -704,16 +741,32 @@ export default function MissionDetailPage() {
       }
       return { ...z, polygon: editingPolygon, sides: newSides }
     })
+    // Sensors whose wall was renumbered by an insert or a delete (see updateZonePolygon).
+    const remaps = pendingSideRemapRef.current
+    const remappedIds = Object.keys(remaps)
+    const updatedPlacements = { ...(mission.device_placements ?? {}) }
+    for (const deviceId of remappedIds) {
+      const existing = updatedPlacements[deviceId]
+      if (existing) updatedPlacements[deviceId] = { ...existing, ...remaps[deviceId] }
+    }
+
     mutate({ ...mission, zones: updatedZones }, false)
     try {
-      await updateMission(id, { zones: updatedZones })
+      await updateMission(id, {
+        zones: updatedZones,
+        ...(remappedIds.length > 0 ? { device_placements: updatedPlacements } : {}),
+      })
+      // The device rows carry the same binding and drive the live map, so they move too.
+      await Promise.all(remappedIds.map((deviceId) => updateDevice(deviceId, remaps[deviceId])))
+      if (remappedIds.length > 0) mutateDevices()
     } catch (err) {
       console.warn("[THEIA] Failed to save zone polygon:", err)
       mutate()
     }
+    pendingSideRemapRef.current = {}
     setEditingZoneId(null)
     setEditingPolygon(null)
-  }, [mission, editingZoneId, editingPolygon, id, mutate])
+  }, [mission, editingZoneId, editingPolygon, id, mutate, mutateDevices])
 
   // ── Zone properties edit ──
   const openEditZone = useCallback((zoneId: string) => {

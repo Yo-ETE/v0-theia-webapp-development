@@ -1,6 +1,7 @@
 "use client"
 
 import React, { useEffect, useState, useCallback, useRef, useMemo } from "react"
+import type { PolygonEdit } from "@/lib/side-remap"
 import type { Zone, DetectionEvent, LiveDetection } from "@/lib/types"
 import { cn } from "@/lib/utils"
 import type { VisualConfig } from "@/hooks/use-visual-config"
@@ -88,7 +89,7 @@ interface MapInnerProps {
   onMapMove?: (lat: number, lon: number, zoom: number) => void
   editingZoneId?: string | null
   editingPolygon?: [number, number][] | null
-  onZonePolygonUpdate?: (zoneId: string, polygon: [number, number][]) => void
+  onZonePolygonUpdate?: (zoneId: string, polygon: [number, number][], edit?: PolygonEdit) => void
   onStopEditing?: () => void
   showFov?: boolean
   showGrid?: boolean  // Show alphanumeric grid overlay on zones (A-Q horizontal, 1-12 vertical)
@@ -433,7 +434,8 @@ export default function MapInner({
           setLocalPoly(prev => {
             if (!prev || prev.length <= 3) return prev
             const np = prev.filter((_, idx) => idx !== i)
-            onZonePolygonUpdate?.(zone.id, np)
+            // Tell the parent WHICH vertex went, so sensors can follow their wall.
+            onZonePolygonUpdate?.(zone.id, np, { type: "delete", vertexIndex: i })
             return np
           })
         }
@@ -466,7 +468,7 @@ export default function MapInner({
             if (!prev) return prev
             const np: [number, number][] = [...prev]
             np.splice(i + 1, 0, [midLat, midLon])
-            onZonePolygonUpdate?.(zone.id, np)
+            onZonePolygonUpdate?.(zone.id, np, { type: "insert", edgeIndex: i, point: [midLat, midLon] })
             return np
           })
         })

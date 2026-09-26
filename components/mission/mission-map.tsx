@@ -1,6 +1,7 @@
 "use client"
 
 import type { Zone, DetectionEvent, LiveDetection } from "@/lib/types"
+import type { PolygonEdit } from "@/lib/side-remap"
 import type { VisualConfig } from "@/hooks/use-visual-config"
 import { cn } from "@/lib/utils"
 import MapInner from "./map-inner"
@@ -38,7 +39,7 @@ interface MissionMapProps {
   onMapMove?: (lat: number, lon: number, zoom: number) => void
   editingZoneId?: string | null
   editingPolygon?: [number, number][] | null
-  onZonePolygonUpdate?: (zoneId: string, polygon: [number, number][]) => void
+  onZonePolygonUpdate?: (zoneId: string, polygon: [number, number][], edit?: PolygonEdit) => void
   onStopEditing?: () => void
   estimatePosition?: boolean
   showFov?: boolean

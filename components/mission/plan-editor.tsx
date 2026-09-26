@@ -1,6 +1,7 @@
 "use client"
 
 import { useState, useRef, useCallback, useEffect, useMemo } from "react"
+import type { PolygonEdit } from "@/lib/side-remap"
 import type { Zone, DetectionEvent, LiveDetection } from "@/lib/types"
 import { cn } from "@/lib/utils"
 import type { VisualConfig } from "@/hooks/use-visual-config"
@@ -56,7 +57,7 @@ interface PlanEditorProps {
   onSensorPlace?: (zoneId: string, side: string, position: number) => void
   editingZoneId?: string | null
   editingPolygon?: [number, number][] | null
-  onZonePolygonUpdate?: (zoneId: string, polygon: [number, number][]) => void
+  onZonePolygonUpdate?: (zoneId: string, polygon: [number, number][], edit?: PolygonEdit) => void
   /** Called when editing is finished (Deplacer button clicked) */
   onStopEditing?: () => void
   showFov?: boolean
@@ -1639,7 +1640,8 @@ export function PlanEditor({
             onTouchStart={(e) => { if (editTool === "move") handleEditVertexDragStart(i, e) }}
             onClick={() => {
               if (!isDelete || !editingZoneId || !editingPolygon || editingPolygon.length <= 3) return
-              onZonePolygonUpdate?.(editingZoneId, editingPolygon.filter((_, idx) => idx !== i))
+              // Tell the parent WHICH vertex went, so sensors can follow their wall.
+              onZonePolygonUpdate?.(editingZoneId, editingPolygon.filter((_, idx) => idx !== i), { type: "delete", vertexIndex: i })
             }}
           >
             <span className="theia-vertex-dot" style={{ background: isDelete ? "#ef4444" : "#f59e0b" }}>
@@ -1664,7 +1666,7 @@ export function PlanEditor({
               if (!editingZoneId || !editingPolygon) return
               const np = [...editingPolygon]
               np.splice(i + 1, 0, mid)
-              onZonePolygonUpdate?.(editingZoneId, np)
+              onZonePolygonUpdate?.(editingZoneId, np, { type: "insert", edgeIndex: i, point: mid })
             }}
           >
             <span className="theia-vertex-dot" style={{ background: "#22c55e" }}>+</span>
