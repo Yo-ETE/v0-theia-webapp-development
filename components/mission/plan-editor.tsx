@@ -139,8 +139,26 @@ function getPointOnEdge(polygon: [number, number][], sideIdx: number, t: number)
 }
 
 /** Side index from side letter */
-function sideLetterToIdx(side: string): number {
-  return side.charCodeAt(0) - 65
+/**
+ * Resolve a stored `side` to a segment index.
+ *
+ * The convention is the raw segment letter: A = segment 0, B = segment 1 (map-inner.tsx:1863).
+ * Facade labels are presentation and live in `zone.sides`; they are resolved at render time,
+ * never stored. This editor used to store the label instead, so "Entree principale" would be
+ * read back as `'E' - 'A' = 4` and the sensor would land on segment 4 or vanish. The reverse
+ * lookup below recovers those rows instead of leaving them broken.
+ */
+function resolveSideIdx(side: string, polygonLength: number, sides?: Record<string, string>): number {
+  const direct = side.charCodeAt(0) - 65
+  if (side.length === 1 && direct >= 0 && direct < polygonLength) return direct
+  if (sides) {
+    for (const [segmentKey, label] of Object.entries(sides)) {
+      if (label !== side) continue
+      const idx = segmentKey.charCodeAt(0) - 65
+      if (idx >= 0 && idx < polygonLength) return idx
+    }
+  }
+  return -1
 }
 
 /** Grid columns (A-C) and rows (1-3) for zone overlay */
@@ -578,10 +596,18 @@ export function PlanEditor({
         const a = zone.polygon[i]
         const b = zone.polygon[(i + 1) % zone.polygon.length]
         const segmentKey = String.fromCharCode(65 + i) // A, B, C, D, E, F...
-        const side = zoneSides?.[segmentKey] ?? segmentKey // Use facade letter from zone.sides
+        // The LABEL filters, the SEGMENT KEY is stored. Storing the label was the bug: a
+        // renamed facade came back through charCodeAt(0)-65 as a meaningless index.
+        const facadeLabel = zoneSides?.[segmentKey] ?? segmentKey
 
-        // Only consider edges matching the selected facade
-        if (sensorPlaceMode.side && side !== sensorPlaceMode.side) continue
+        // Only consider edges matching the selected facade. The caller's `side` may be either
+        // a facade label or a segment key depending on where placement was started, so accept
+        // both rather than silently offering no edge to click.
+        if (
+          sensorPlaceMode.side &&
+          facadeLabel !== sensorPlaceMode.side &&
+          segmentKey !== sensorPlaceMode.side
+        ) continue
 
         const ax = a[1], ay = a[0]
         const bx = b[1], by = b[0]
@@ -597,7 +623,7 @@ export function PlanEditor({
         if (dist < bestDist) {
           bestDist = dist
           bestZoneId = zone.id
-          bestSide = side
+          bestSide = segmentKey
           bestT = Math.max(0.02, Math.min(0.98, t))
         }
       }
@@ -656,7 +682,8 @@ export function PlanEditor({
     return sensorPlacements.map(sp => {
       const zone = zones.find(z => z.id === sp.zone_id)
       if (!zone?.polygon?.length) return null
-      const idx = sideLetterToIdx(sp.side)
+      const idx = resolveSideIdx(sp.side, zone.polygon.length, zone.sides as Record<string, string> | undefined)
+      if (idx < 0) return null
       const pt = getPointOnEdge(zone.polygon, idx, sp.sensor_position)
       if (!pt) return null
       const [sx, sy] = toSvg(pt)
@@ -1219,7 +1246,8 @@ export function PlanEditor({
         {showFov && planScale && sensorMarkers.map(m => {
           const zone = zones.find(z => z.id === m.zone_id)
           if (!zone?.polygon?.length) return null
-          const sideIdx = sideLetterToIdx(m.side)
+          const sideIdx = resolveSideIdx(m.side, zone.polygon.length, zone.sides as Record<string, string> | undefined)
+          if (sideIdx < 0) return null
           const specs = SENSOR_SPECS[m.device_type ?? ""] ?? DEFAULT_SENSOR_SPECS
           const angleDeg = getEdgeNormal(zone.polygon, sideIdx, m.orientation ?? "inward")
           const radiusPx = specs.maxRangeM * planScale * scale
