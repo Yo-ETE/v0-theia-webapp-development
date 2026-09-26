@@ -493,6 +493,16 @@ export function PlanEditor({
   }, [editingPolygon, editingZoneId, onZonePolygonUpdate])
 
   // Edit zone vertex dragging
+  /*
+   * Which sub-tool the edit toolbar is on. It did not exist: the three buttons LOOKED like a
+   * tool selector -- and "Deplacer" was even highlighted as if it were the active one -- but
+   * clicking "Deplacer" called onStopEditing(), so the button labelled "Move" saved the zone
+   * and closed the editor. "Ajouter" always split edge 0-1 and "Supprimer" always dropped the
+   * last point, wherever you actually wanted them.
+   */
+  const [editTool, setEditTool] = useState<"move" | "add" | "delete">("move")
+  useEffect(() => { setEditTool("move") }, [editingZoneId])
+
   const [draggingEditVertex, setDraggingEditVertex] = useState<number | null>(null)
 
   const handleEditVertexDragStart = useCallback((index: number, e: React.MouseEvent | React.TouchEvent) => {
@@ -1532,38 +1542,31 @@ export function PlanEditor({
       {/* Editing mode toolbar (exactly like Habitation) */}
       {editingZoneId && editingPolygon && (() => {
         const tools = [
-          { id: "move", label: "Deplacer", icon: "M7 10l5-5 5 5M7 14l5 5 5-5", color: "#f59e0b" },
-          { id: "add", label: "Ajouter", icon: "M12 5v14M5 12h14", color: "#22c55e" },
-          { id: "delete", label: "Supprimer", icon: "M18 6L6 18M6 6l12 12", color: "#ef4444" },
+          { id: "move" as const, label: "Deplacer", icon: "M7 10l5-5 5 5M7 14l5 5 5-5", color: "#f59e0b" },
+          { id: "add" as const, label: "Ajouter", icon: "M12 5v14M5 12h14", color: "#22c55e" },
+          { id: "delete" as const, label: "Supprimer", icon: "M18 6L6 18M6 6l12 12", color: "#ef4444" },
         ]
         const areaStr = formatArea(polygonAreaPx(editingPolygon), planScale)
+        const hint =
+          editTool === "move" ? "Glissez un point pour le deplacer"
+          : editTool === "add" ? "Touchez un + sur une arete"
+          : "Touchez un point pour le supprimer"
         return (
           <div className="absolute bottom-10 left-1/2 -translate-x-1/2 z-[500] flex flex-col items-center gap-1.5">
             <div className="rounded-xl bg-card/95 backdrop-blur border border-amber-500/30 shadow-lg px-1.5 py-1 flex items-center gap-0.5">
               {tools.map((t) => (
                 <button
                   key={t.id}
-                  onClick={() => {
-                    if (t.id === "move") {
-                      onStopEditing?.()
-                    } else if (t.id === "add" && editingPolygon.length >= 3) {
-                      const midRow = (editingPolygon[0][0] + editingPolygon[1][0]) / 2
-                      const midCol = (editingPolygon[0][1] + editingPolygon[1][1]) / 2
-                      const newPoly: [number, number][] = [editingPolygon[0], [midRow, midCol], ...editingPolygon.slice(1)]
-                      onZonePolygonUpdate?.(editingZoneId, newPoly)
-                    } else if (t.id === "delete" && editingPolygon.length > 3) {
-                      const newPoly = editingPolygon.slice(0, -1)
-                      onZonePolygonUpdate?.(editingZoneId, newPoly)
-                    }
-                  }}
+                  onClick={() => setEditTool(t.id)}
                   disabled={t.id === "delete" && editingPolygon.length <= 3}
+                  aria-pressed={editTool === t.id}
                   className={cn(
-                    "flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-xs font-semibold transition-all min-h-[34px]",
-                    t.id === "move"
+                    "flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-xs font-semibold transition-all min-h-[44px]",
+                    editTool === t.id
                       ? "text-white shadow-sm"
                       : "text-muted-foreground hover:text-foreground bg-transparent disabled:opacity-50 disabled:cursor-not-allowed"
                   )}
-                  style={t.id === "move" ? { background: t.color } : {}}
+                  style={editTool === t.id ? { background: t.color } : {}}
                 >
                   <svg width="14" height="14" viewBox="0 0 24 24" fill="none"
                     stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
@@ -1573,37 +1576,70 @@ export function PlanEditor({
                 </button>
               ))}
               <div className="w-px h-5 bg-border/50 mx-0.5" />
+              {/* Finishing is its own button now. It used to be hidden behind "Deplacer". */}
+              <button
+                onClick={() => onStopEditing?.()}
+                className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-xs font-semibold min-h-[44px] bg-primary text-primary-foreground"
+              >
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none"
+                  stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M20 6L9 17l-5-5" />
+                </svg>
+                Terminer
+              </button>
               <span className="text-2xs font-mono text-amber-500/80 px-1">{editingPolygon.length}pts {areaStr}</span>
             </div>
+            <span className="rounded bg-card/90 px-2 py-0.5 text-2xs text-muted-foreground">{hint}</span>
           </div>
         )
       })()}
 
       {/* Editing vertices (HTML overlay for drag support) */}
+      {/* Vertex handles. The grab box is 44px (theia-vertex-hit) while the dot stays 24px,
+          so the target is a finger's width without the plan disappearing under markers.
+          In "delete" the handle removes its own point; in "add" the midpoint handles below
+          are what you click. */}
       {editingZoneId && editingPolygon && editingPolygon.map((pt, i) => {
         const [x, y] = toSvg(pt)
+        const isDelete = editTool === "delete"
         return (
           <div
             key={`edit-vertex-html-${i}`}
-            className="absolute z-[400] cursor-grab active:cursor-grabbing touch-none select-none"
-            style={{
-              left: x - 14,
-              top: y - 14,
-              width: 28,
-              height: 28,
+            className="theia-vertex-hit absolute z-[400] select-none"
+            style={{ left: x - 22, top: y - 22, cursor: isDelete ? "pointer" : "grab" }}
+            onMouseDown={(e) => { if (editTool === "move") handleEditVertexDragStart(i, e) }}
+            onTouchStart={(e) => { if (editTool === "move") handleEditVertexDragStart(i, e) }}
+            onClick={() => {
+              if (!isDelete || !editingZoneId || !editingPolygon || editingPolygon.length <= 3) return
+              onZonePolygonUpdate?.(editingZoneId, editingPolygon.filter((_, idx) => idx !== i))
             }}
-            onMouseDown={(e) => handleEditVertexDragStart(i, e)}
-            onTouchStart={(e) => handleEditVertexDragStart(i, e)}
           >
-            <div
-              className="w-full h-full rounded-full flex items-center justify-center text-xs font-bold text-white shadow-lg"
-              style={{
-                background: "#f59e0b",
-                border: "3px solid white",
-              }}
-            >
+            <span className="theia-vertex-dot" style={{ background: isDelete ? "#ef4444" : "#f59e0b" }}>
               {i + 1}
-            </div>
+            </span>
+          </div>
+        )
+      })}
+
+      {/* Midpoint handles: insert a point on the edge you actually point at. The old
+          "Ajouter" button always split edge 0-1, wherever you needed the point. */}
+      {editingZoneId && editingPolygon && editTool === "add" && editingPolygon.map((pt, i) => {
+        const next = editingPolygon[(i + 1) % editingPolygon.length]
+        const mid: [number, number] = [(pt[0] + next[0]) / 2, (pt[1] + next[1]) / 2]
+        const [x, y] = toSvg(mid)
+        return (
+          <div
+            key={`edit-mid-html-${i}`}
+            className="theia-vertex-hit absolute z-[400] select-none"
+            style={{ left: x - 22, top: y - 22, cursor: "pointer" }}
+            onClick={() => {
+              if (!editingZoneId || !editingPolygon) return
+              const np = [...editingPolygon]
+              np.splice(i + 1, 0, mid)
+              onZonePolygonUpdate?.(editingZoneId, np)
+            }}
+          >
+            <span className="theia-vertex-dot" style={{ background: "#22c55e" }}>+</span>
           </div>
         )
       })}

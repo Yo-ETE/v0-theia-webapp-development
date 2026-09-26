@@ -89,6 +89,7 @@ interface MapInnerProps {
   editingZoneId?: string | null
   editingPolygon?: [number, number][] | null
   onZonePolygonUpdate?: (zoneId: string, polygon: [number, number][]) => void
+  onStopEditing?: () => void
   showFov?: boolean
   showGrid?: boolean  // Show alphanumeric grid overlay on zones (A-Q horizontal, 1-12 vertical)
   replayMode?: boolean
@@ -289,6 +290,7 @@ export default function MapInner({
   editingZoneId = null,
   editingPolygon = null,
   onZonePolygonUpdate,
+  onStopEditing,
   showFov = false,
   showGrid = false,
   replayMode = false,
@@ -400,11 +402,13 @@ export default function MapInner({
       const bg = isDelete ? "#ef4444" : "#f59e0b"
       const cursor = isMove ? "grab" : "pointer"
 
+      // The grab target is the 44px box; the dot stays small so the shape stays readable.
+      // Before, the target WAS the 24px dot -- about 12px of aim, with a gloved finger.
       const icon = L.divIcon({
-        className: "",
-        html: `<div style="width:24px;height:24px;background:${bg};border:2px solid white;border-radius:50%;display:flex;align-items:center;justify-content:center;box-shadow:0 2px 6px rgba(0,0,0,0.4);cursor:${cursor};"><span style="color:white;font-size:10px;font-weight:800">${i + 1}</span></div>`,
-        iconSize: [24, 24],
-        iconAnchor: [12, 12],
+        className: "theia-vertex",
+        html: `<div class="theia-vertex-hit" style="cursor:${cursor}"><span class="theia-vertex-dot" style="background:${bg}">${i + 1}</span></div>`,
+        iconSize: [44, 44],
+        iconAnchor: [22, 22],
       })
 
       const marker = L.marker(pt, {
@@ -446,10 +450,10 @@ export default function MapInner({
         const midLon = (pt[1] + next[1]) / 2
 
         const addIcon = L.divIcon({
-          className: "",
-          html: `<div style="width:22px;height:22px;background:#22c55e;border:2px solid white;border-radius:50%;display:flex;align-items:center;justify-content:center;box-shadow:0 2px 6px rgba(0,0,0,0.4);cursor:pointer;"><span style="color:white;font-size:14px;font-weight:800;line-height:1">+</span></div>`,
-          iconSize: [22, 22],
-          iconAnchor: [11, 11],
+          className: "theia-vertex",
+          html: `<div class="theia-vertex-hit" style="cursor:pointer"><span class="theia-vertex-dot" style="background:#22c55e">+</span></div>`,
+          iconSize: [44, 44],
+          iconAnchor: [22, 22],
         })
 
         const midMarker = L.marker([midLat, midLon], {
@@ -760,8 +764,13 @@ export default function MapInner({
     return () => clearTimeout(timer)
   }, [centerLat, centerLon, zoom])
 
-  // Disable map drag in draw mode OR zone polygon edit mode
-  const shouldLockMap = drawingMode || !!editingZoneId
+  /*
+   * Only draw mode locks the map. Edit mode used to lock it too, which meant a vertex that
+   * sat off-screen simply could not be reached: no panning, and the handle is not on the map
+   * you can see. Leaflet stops marker drags from reaching the map, so panning and dragging a
+   * handle do not fight each other.
+   */
+  const shouldLockMap = drawingMode
   useEffect(() => {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const map = mapRef.current as any
@@ -2297,8 +2306,9 @@ export default function MapInner({
                 <button
                   key={t.id}
                   onClick={() => setEditTool(t.id)}
+                  aria-pressed={editTool === t.id}
                   className={cn(
-                    "flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-xs font-semibold transition-all min-h-[34px]",
+                    "flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-xs font-semibold transition-all min-h-[44px]",
                     editTool === t.id
                       ? "text-white shadow-sm"
                       : "text-muted-foreground hover:text-foreground bg-transparent"
@@ -2313,8 +2323,25 @@ export default function MapInner({
                 </button>
               ))}
               <div className="w-px h-5 bg-border/50 mx-0.5" />
+              {/* Finishing an edit meant finding the pencil again in the side panel, with no
+                  sign that the change was still unsaved. It belongs where the editing is. */}
+              <button
+                onClick={() => onStopEditing?.()}
+                className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-xs font-semibold min-h-[44px] bg-primary text-primary-foreground"
+              >
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none"
+                  stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M20 6L9 17l-5-5" />
+                </svg>
+                Terminer
+              </button>
               <span className="text-2xs font-mono text-amber-500/80 px-1">{localPoly.length}pts {area.toFixed(1)}m2</span>
             </div>
+            <span className="rounded bg-card/90 px-2 py-0.5 text-2xs text-muted-foreground">
+              {editTool === "move" ? "Glissez un point pour le deplacer"
+                : editTool === "add" ? "Touchez un + sur une arete"
+                : "Touchez un point pour le supprimer"}
+            </span>
           </div>
         )
       })()}

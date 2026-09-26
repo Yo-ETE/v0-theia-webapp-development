@@ -1753,6 +1753,7 @@ export default function MissionDetailPage() {
                       editingZoneId={editingZoneId}
                       editingPolygon={editingPolygon}
                       onZonePolygonUpdate={updateZonePolygon}
+                      onStopEditing={stopEditingZone}
                       showFov={showFov}
                       showGrid={showGrid}
                       replayMode={timelapseMode}

@@ -288,6 +288,67 @@
   color: oklch(0.62 0.12 40) !important;
 }
 
+/*
+ * Polygon vertex handles, shared by the Leaflet editor and the plan editor.
+ *
+ * Two separate sizes on purpose: `hit` is what the finger or cursor must land on (44px, the
+ * usual minimum for touch), `dot` is what the eye sees (24px). They used to be the same
+ * thing, so grabbing a corner meant hitting a 12px radius -- on a tablet, outdoors.
+ *
+ * The hover and active states exist because nothing on screen said a handle could be
+ * dragged: same colour, same size, no cursor change until you were already on it.
+ */
+.theia-vertex-hit {
+  width: 44px;
+  height: 44px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: transparent;
+  touch-action: none;
+}
+
+.theia-vertex-dot {
+  width: 24px;
+  height: 24px;
+  border: 2px solid #fff;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #fff;
+  font-size: 10px;
+  font-weight: 800;
+  line-height: 1;
+  box-shadow: 0 2px 6px rgb(0 0 0 / 0.4);
+  transition: transform 120ms ease, box-shadow 120ms ease;
+}
+
+/* Grabbable, and it now says so before you touch it. */
+.theia-vertex-hit:hover .theia-vertex-dot {
+  transform: scale(1.25);
+  box-shadow: 0 0 0 4px rgb(255 255 255 / 0.25), 0 2px 8px rgb(0 0 0 / 0.5);
+}
+
+.theia-vertex-hit:active .theia-vertex-dot {
+  transform: scale(1.1);
+}
+
+/* While a handle is being dragged Leaflet marks the marker, not our inner div. */
+.leaflet-marker-draggable.leaflet-drag-target .theia-vertex-dot {
+  transform: scale(1.3);
+  box-shadow: 0 0 0 5px rgb(255 255 255 / 0.3), 0 2px 10px rgb(0 0 0 / 0.6);
+}
+
+/* Coarse pointers get a bigger dot too: precision is worse and the finger hides it. */
+@media (pointer: coarse) {
+  .theia-vertex-dot {
+    width: 28px;
+    height: 28px;
+    font-size: 11px;
+  }
+}
+
 /* Leaflet tooltip styling for zone/segment labels */
 .zone-label-tooltip,
 .segment-label-tooltip {

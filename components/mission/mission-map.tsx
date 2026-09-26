@@ -39,6 +39,7 @@ interface MissionMapProps {
   editingZoneId?: string | null
   editingPolygon?: [number, number][] | null
   onZonePolygonUpdate?: (zoneId: string, polygon: [number, number][]) => void
+  onStopEditing?: () => void
   estimatePosition?: boolean
   showFov?: boolean
   showGrid?: boolean  // Alphanumeric grid overlay (A-Q, 1-12)
