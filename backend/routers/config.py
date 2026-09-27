@@ -11,10 +11,10 @@ import glob
 import shutil
 import time
 from datetime import datetime
-from fastapi import APIRouter, Request
+from fastapi import APIRouter, File, Request, UploadFile
 from fastapi.responses import FileResponse, JSONResponse
 
-from backend.database import get_db
+from backend.database import close_db, get_db
 from backend.security import (
     is_within, valid_backup_filename, valid_git_ref, valid_host, valid_ssid,
     valid_timezone, valid_wpa_passphrase, UPDATE_LOCK,
@@ -1029,6 +1029,56 @@ async def download_backup(filename: str):
     return FileResponse(filepath, media_type="application/gzip", filename=filename)
 
 
+MAX_BACKUP_UPLOAD = 500 * 1024 * 1024  # a data dir with plans and firmware, with room to spare
+
+
+@router.post("/backups/upload")
+async def upload_backup(file: UploadFile = File(...)):
+    """
+    Take a backup archive back in from the operator's machine.
+
+    Restore could only ever read files already sitting in /opt/theia/backups, which is no
+    use in the one case that matters: the card died, the hub was rebuilt from scratch, and
+    the only copy is the one that was downloaded to a laptop.
+    """
+    name = os.path.basename(file.filename or "")
+    if not valid_backup_filename(name):
+        return JSONResponse(
+            {"status": "error", "message": "Nom invalide : attendu theia_backup_AAAAMMJJ_HHMMSS.tar.gz"},
+            status_code=400,
+        )
+    dest = os.path.join(BACKUP_DIR, name)
+    if not is_within(BACKUP_DIR, dest):
+        return JSONResponse({"status": "error", "message": "Chemin invalide"}, status_code=400)
+    try:
+        os.makedirs(BACKUP_DIR, exist_ok=True)
+        written = 0
+        # Streamed and capped: an unbounded upload onto the hub's own card is how you fill
+        # the disk that holds the database.
+        with open(dest, "wb") as out:
+            while chunk := await file.read(1024 * 1024):
+                written += len(chunk)
+                if written > MAX_BACKUP_UPLOAD:
+                    out.close()
+                    os.remove(dest)
+                    return JSONResponse(
+                        {"status": "error", "message": "Fichier trop volumineux (500 Mo max)"},
+                        status_code=413,
+                    )
+                out.write(chunk)
+        # Refuse anything that is not actually a readable archive, before it can be restored.
+        check = subprocess.run(["tar", "-tzf", dest], capture_output=True, timeout=60)
+        if check.returncode != 0:
+            os.remove(dest)
+            return JSONResponse(
+                {"status": "error", "message": "Archive illisible ou corrompue"}, status_code=400
+            )
+        return {"status": "success", "filename": name, "size": written, "message": f"{name} importee"}
+    except Exception as e:
+        logger.warning("Backup upload failed: %s", e)
+        return JSONResponse({"status": "error", "message": str(e)}, status_code=500)
+
+
 @router.post("/backups/restore")
 async def restore_backup(body: dict):
     """Restore a backup."""
@@ -1038,16 +1088,47 @@ async def restore_backup(body: dict):
     filepath = os.path.join(BACKUP_DIR, filename)
     if not os.path.exists(filepath):
         return {"status": "error", "message": "Sauvegarde introuvable"}
+    parent = os.path.dirname(DATA_DIR)
+    staging = os.path.join(parent, ".restore_tmp")
+    previous = f"{DATA_DIR}.before_restore"
     try:
-        def _restore():
-            subprocess.run(
-                ["tar", "-xzf", filepath, "-C", os.path.dirname(DATA_DIR)],
-                check=True, timeout=120
-            )
-        await asyncio.get_event_loop().run_in_executor(None, _restore)
-        return {"status": "success", "message": f"Sauvegarde {filename} restauree"}
+        # 1. Unpack somewhere harmless first. Extracting straight over DATA_DIR rewrote
+        #    theia.db underneath the connection the API still had open, with a -wal left
+        #    describing the old file -- a reliable way to corrupt the database you are trying
+        #    to recover. It also half-applied a truncated archive, with no way back.
+        def _extract():
+            shutil.rmtree(staging, ignore_errors=True)
+            os.makedirs(staging, exist_ok=True)
+            subprocess.run(["tar", "-xzf", filepath, "-C", staging], check=True, timeout=180)
+        await asyncio.get_event_loop().run_in_executor(None, _extract)
+
+        unpacked = os.path.join(staging, os.path.basename(DATA_DIR))
+        if not os.path.isfile(os.path.join(unpacked, "theia.db")):
+            shutil.rmtree(staging, ignore_errors=True)
+            return {"status": "error", "message": "Archive invalide : theia.db absent"}
+
+        # 2. Let go of the database before its file moves. get_db() reopens on next use.
+        await close_db()
+
+        # 3. Swap, keeping the current data one move away in case the archive is bad.
+        def _swap():
+            shutil.rmtree(previous, ignore_errors=True)
+            if os.path.exists(DATA_DIR):
+                os.rename(DATA_DIR, previous)
+            os.rename(unpacked, DATA_DIR)
+            shutil.rmtree(staging, ignore_errors=True)
+        await asyncio.get_event_loop().run_in_executor(None, _swap)
+
+        logger.info("Backup %s restored; previous data kept at %s", filename, previous)
+        return {
+            "status": "success",
+            "message": f"Sauvegarde {filename} restauree. Redemarrez les services pour que tout reparte du bon pied.",
+            "previous_data": previous,
+        }
     except Exception as e:
-        return {"status": "error", "message": str(e)}
+        shutil.rmtree(staging, ignore_errors=True)
+        logger.warning("Restore of %s failed: %s", filename, e)
+        return {"status": "error", "message": f"Restauration echouee : {e}"}
 
 
 @router.delete("/backups/{filename}")

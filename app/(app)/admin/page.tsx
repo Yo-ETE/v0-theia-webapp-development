@@ -1,7 +1,7 @@
 "use client"
 
 import { backendOrigin } from "@/lib/backend"
-import { useState, useEffect, useCallback } from "react"
+import { useState, useEffect, useCallback, useRef } from "react"
 import {
   RefreshCw,
   Power,
@@ -16,6 +16,7 @@ import {
   RotateCcw,
   Globe,
   Download,
+  Upload,
   Wifi,
   WifiOff,
   Cable,
@@ -245,6 +246,8 @@ export default function AdminPage() {
 
   // Backup
   const [backups, setBackups] = useState<BackupInfo[]>([])
+  const [isUploadingBackup, setIsUploadingBackup] = useState(false)
+  const backupFileRef = useRef<HTMLInputElement>(null)
   const [isCreatingBackup, setIsCreatingBackup] = useState(false)
   const [backupMessage, setBackupMessage] = useState<string | null>(null)
 
@@ -590,8 +593,39 @@ export default function AdminPage() {
     finally { setIsCreatingBackup(false) }
   }
 
+  const handleUploadBackup = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0]
+    e.target.value = "" // so picking the same file twice still fires
+    if (!file) return
+    setIsUploadingBackup(true)
+    setBackupMessage(null)
+    try {
+      const form = new FormData()
+      form.append("file", file)
+      // FormData sets its own multipart boundary; api.post sends JSON, so go direct.
+      const res = await fetch(`${backendOrigin()}/api/config/backups/upload`, {
+        method: "POST",
+        credentials: "include",
+        body: form,
+      })
+      const result = await res.json()
+      setBackupMessage(
+        result.status === "success"
+          ? `${result.filename} importee. Utilisez Restaurer pour l'appliquer.`
+          : result.message || "Import echoue",
+      )
+      fetchBackups()
+    } catch { setBackupMessage("Erreur lors de l'import") }
+    finally { setIsUploadingBackup(false) }
+  }
+
   const handleRestoreBackup = async (filename: string) => {
-    if (!confirm(`Restaurer la sauvegarde ${filename} ?\nLes donnees actuelles seront ecrasees.`)) return
+    if (!confirm(
+      `Restaurer la sauvegarde ${filename} ?\n\n`
+      + "Les donnees actuelles seront remplacees. Une copie est conservee dans "
+      + "/opt/theia/data.before_restore.\n\n"
+      + "Redemarrez les services juste apres (Administration > Redemarrer les services)."
+    )) return
     try {
       const result = await api.post("backups/restore", { filename })
       setBackupMessage(result.message)
@@ -1587,10 +1621,30 @@ export default function AdminPage() {
               <p className="text-xs text-muted-foreground">
                 {"Archive le dossier"} <code className="bg-secondary px-1 rounded text-foreground">/opt/theia/data/</code> {"contenant toutes les missions, captures, logs et configurations. Utilisez la restauration pour recuperer vos donnees apres un crash ou reinstallation."}
               </p>
-              <Button onClick={handleCreateBackup} disabled={isCreatingBackup} className="w-full gap-2">
-                {isCreatingBackup ? <Loader2 className="h-4 w-4 animate-spin" /> : <HardDrive className="h-4 w-4" />}
-                {isCreatingBackup ? "Sauvegarde..." : "Creer une sauvegarde"}
-              </Button>
+              <div className="flex flex-col gap-2 sm:flex-row">
+                <Button onClick={handleCreateBackup} disabled={isCreatingBackup} className="flex-1 gap-2">
+                  {isCreatingBackup ? <Loader2 className="h-4 w-4 animate-spin" /> : <HardDrive className="h-4 w-4" />}
+                  {isCreatingBackup ? "Sauvegarde..." : "Creer une sauvegarde"}
+                </Button>
+                {/* The case that matters: the card died, the hub was rebuilt, and the only
+                    copy is the one sitting on a laptop. Restore could not reach it. */}
+                <Button
+                  variant="outline"
+                  onClick={() => backupFileRef.current?.click()}
+                  disabled={isUploadingBackup}
+                  className="flex-1 gap-2"
+                >
+                  {isUploadingBackup ? <Loader2 className="h-4 w-4 animate-spin" /> : <Upload className="h-4 w-4" />}
+                  {isUploadingBackup ? "Import..." : "Importer une sauvegarde"}
+                </Button>
+                <input
+                  ref={backupFileRef}
+                  type="file"
+                  accept=".tar.gz,application/gzip"
+                  className="hidden"
+                  onChange={handleUploadBackup}
+                />
+              </div>
 
               {backupMessage && (
                 <Alert className="border-muted">
