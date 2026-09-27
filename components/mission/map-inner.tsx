@@ -4,6 +4,7 @@ import React, { useEffect, useState, useCallback, useRef, useMemo } from "react"
 import type { PolygonEdit } from "@/lib/side-remap"
 import type { Zone, DetectionEvent, LiveDetection } from "@/lib/types"
 import { cn } from "@/lib/utils"
+import { ChevronDown, Flame, Grid3X3 } from "lucide-react"
 import type { VisualConfig } from "@/hooks/use-visual-config"
 import { VISUAL_DEFAULTS } from "@/hooks/use-visual-config"
 import HeatmapCanvas from "./heatmap-canvas"
@@ -335,6 +336,15 @@ export default function MapInner({
   // Which overlay the heatmap button shows: the historical density map, or the Bayesian
   // occupancy grid (which also renders what sensors have actively cleared).
   const [overlayMode, setOverlayMode] = useState<"heatmap" | "occupancy">("heatmap")
+  /*
+   * The overlay panel used to sit open at 384px wide, which on a phone covers most of the map
+   * it is describing. It starts collapsed below sm and open above -- declared here, with the
+   * other hooks, so it stays ahead of the early return further down.
+   */
+  const [legendOpen, setLegendOpen] = useState(true)
+  useEffect(() => {
+    if (typeof window !== "undefined") setLegendOpen(window.innerWidth >= 640)
+  }, [])
   // Keep ref in sync for use in native Leaflet callbacks
   useEffect(() => { localPolyRef.current = localPoly }, [localPoly])
 
@@ -2429,7 +2439,26 @@ export default function MapInner({
 
       {/* Heatmap controls and legend */}
       {heatmapMode && (
-        <div className="absolute bottom-4 right-4 z-[500] flex flex-col gap-3 rounded-lg bg-card/95 backdrop-blur px-4 py-3 border border-border shadow-lg max-w-sm">
+        <div className="absolute bottom-4 right-4 left-4 sm:left-auto z-[500] flex flex-col gap-2 rounded-lg bg-card/95 backdrop-blur px-3 py-2 border border-border shadow-lg sm:max-w-sm">
+          {/* Collapsed, this is one line saying what is on screen. The panel describes the map;
+              it should not be the thing covering it. */}
+          <button
+            onClick={() => setLegendOpen((v) => !v)}
+            aria-expanded={legendOpen}
+            className="flex items-center justify-between gap-2 min-h-[36px] text-xs font-semibold text-foreground"
+          >
+            <span className="flex items-center gap-1.5">
+              {overlayMode === "heatmap" ? <Flame className="h-3.5 w-3.5 text-warning" /> : <Grid3X3 className="h-3.5 w-3.5 text-info" />}
+              {overlayMode === "heatmap" ? "Heatmap" : "Grille d'occupation"}
+              <span className="font-normal text-muted-foreground">
+                {heatmapTimeFilter === "all" ? "tout" : heatmapTimeFilter}
+              </span>
+            </span>
+            <ChevronDown className={cn("h-4 w-4 shrink-0 transition-transform", legendOpen && "rotate-180")} />
+          </button>
+
+          {legendOpen && (
+          <>
           {/* Overlay picker: density of past detections vs probability of presence now */}
           <div className="flex flex-col gap-1.5">
             <p className="text-xs font-semibold text-foreground">Affichage</p>
@@ -2496,7 +2525,7 @@ export default function MapInner({
           {/* Color legend (heatmap only -- the grid has its own three-state legend above) */}
           {overlayMode === "heatmap" && (
           <div className="flex flex-col gap-1">
-            <p className="text-xs font-semibold text-foreground">Intensity</p>
+            <p className="text-xs font-semibold text-foreground">Intensite</p>
             <div
               className="h-6 rounded-sm border border-border"
               style={{
@@ -2504,15 +2533,15 @@ export default function MapInner({
               }}
             />
             <div className="text-xs text-muted-foreground flex justify-between">
-              <span>Low</span>
-              <span>High</span>
+              <span>Faible</span>
+              <span>Forte</span>
             </div>
           </div>
           )}
 
           {/* Time filter */}
           <div className="flex flex-col gap-1.5">
-            <label className="text-xs font-semibold text-foreground">Time Filter</label>
+            <label className="text-xs font-semibold text-foreground">Periode</label>
             <div className="flex gap-1">
               <button
                 onClick={() => setHeatmapTimeFilter("10m")}
@@ -2530,10 +2559,12 @@ export default function MapInner({
                 onClick={() => setHeatmapTimeFilter("all")}
                 className={`text-xs px-2 py-1 rounded border transition-colors ${heatmapTimeFilter === "all" ? "bg-cyan-600 text-white border-cyan-600" : "bg-muted border-border hover:bg-muted-foreground/20"}`}
               >
-                All
+                Tout
               </button>
             </div>
           </div>
+          </>
+          )}
         </div>
       )}
     </div>
