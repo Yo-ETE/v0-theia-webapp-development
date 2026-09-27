@@ -46,7 +46,7 @@ import { useNotificationSound } from "@/hooks/use-notification-sound"
 import { updateMission, updateDevice } from "@/lib/api-client"
 import { remapForInsert, remapForDelete, type PolygonEdit } from "@/lib/side-remap"
 import { toast } from "sonner"
-import { missionStatusConfig, eventTypeConfig, deviceStatusConfig, formatRelative, formatRelativeLocal, formatTime, formatTimeLocal, formatDateTime } from "@/lib/format"
+import { missionStatusConfig, eventTypeConfig, deviceStatusConfig, formatRelative, formatRelativeLocal, formatTime, formatTimeLocal, formatDateTime, parseDbTime } from "@/lib/format"
 import { cn } from "@/lib/utils"
 import type { Zone, Floor, DetectionEvent, LiveDetection } from "@/lib/types"
 import { groupSidesByBearing } from "@/lib/facade-utils"
@@ -2632,11 +2632,9 @@ export default function MissionDetailPage() {
                 {floorFilteredEvents.length > 0 && (() => {
                   const NUM_SLOTS = 48
                   
-                  // Parse all timestamps - DB stores in UTC
-                  const parseAsUTC = (t: string) => {
-                    if (t.includes("Z") || /[+-]\d{2}:\d{2}$/.test(t)) return new Date(t)
-                    return new Date(t.replace(" ", "T") + "Z")
-                  }
+                  // A third copy of the same wrong assumption: the DB stores wall-clock time,
+                  // not UTC. Use the shared parser so this cannot drift again.
+                  const parseAsUTC = parseDbTime
                   const timestamps: number[] = []
                   for (const evt of floorFilteredEvents) {
                     if (!evt.timestamp) continue

@@ -99,38 +99,47 @@ export const eventTypeConfig: Record<
 
 // ─── Formatters ──────────────────────────────────────────────────
 
-/** 
- * Parse a timestamp string from the database as UTC.
- * The backend (Python/SQLite) stores timestamps in UTC.
- * We add "Z" suffix to force UTC interpretation.
+/**
+ * Parse a timestamp as the database actually writes it: the hub's wall clock.
+ *
+ * This used to add a "Z" and parse as UTC, on the stated belief that the backend stored UTC.
+ * It does not -- every table declares `datetime('now','localtime')` -- so every absolute time
+ * in the interface was shown one or two hours in the future depending on the season. Measured
+ * on the hub: a log row written at 19:19:53 displayed as 21:19:53, and the replay tab
+ * returned 125 events for a window that contains 26.
+ *
+ * It went unnoticed because the shift is uniform: everything was equally wrong, so nothing
+ * looked out of place next to anything else. The `...Local` variants further down exist
+ * because someone hit this on the SSE path and added a parallel set of functions rather than
+ * correcting the assumption; they are now the same thing and kept only for their callers.
+ *
+ * Any timezone marker is stripped rather than honoured: the backend sometimes appends a "Z"
+ * to a value that is not UTC, and the wall-clock reading is the one that matches the hub.
  */
-export function parseAsUTC(ts: string): Date {
+export function parseDbTime(ts: string): Date {
   if (!ts) return new Date(NaN)
-  // If already has timezone indicator, parse directly
-  if (ts.includes("Z") || /[+-]\d{2}:\d{2}$/.test(ts)) {
-    return new Date(ts)
-  }
-  // Add "Z" to interpret as UTC
-  return new Date(ts.replace(" ", "T") + "Z")
+  const cleaned = ts.replace("Z", "").replace(/[+-]\d{2}:\d{2}$/, "").replace(" ", "T")
+  return new Date(cleaned)
 }
 
+/** @deprecated Misnamed: the value is local, not UTC. Use parseDbTime. */
+export const parseAsUTC = parseDbTime
+
 export function formatDate(iso: string): string {
-  const date = parseAsUTC(iso)
+  const date = parseDbTime(iso)
   return date.toLocaleDateString("fr-FR", {
     day: "2-digit",
     month: "2-digit",
     year: "numeric",
-    timeZone: "Europe/Paris",
   })
 }
 
 export function formatTime(iso: string): string {
-  const date = parseAsUTC(iso)
+  const date = parseDbTime(iso)
   return date.toLocaleTimeString("fr-FR", {
     hour: "2-digit",
     minute: "2-digit",
     second: "2-digit",
-    timeZone: "Europe/Paris",
   })
 }
 
@@ -155,7 +164,7 @@ export function formatDateTime(iso: string): string {
 }
 
 export function formatRelative(iso: string): string {
-  const diff = Date.now() - parseAsUTC(iso).getTime()
+  const diff = Date.now() - parseDbTime(iso).getTime()
   const secs = Math.floor(diff / 1000)
   if (secs < 60) return `${secs}s ago`
   const mins = Math.floor(secs / 60)
@@ -184,7 +193,7 @@ export function measuresAreStale(lastSeen: string | null | undefined): boolean {
 
 /** Age of a database timestamp, in French, for UI copy: "maintenant", "12min", "3h", "2j". */
 export function formatAgeFr(iso: string): string {
-  const diff = Date.now() - parseAsUTC(iso).getTime()
+  const diff = Date.now() - parseDbTime(iso).getTime()
   if (!Number.isFinite(diff)) return ""
   const mins = Math.floor(diff / 60000)
   if (mins < 1) return "maintenant"
