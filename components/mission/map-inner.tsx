@@ -2,6 +2,7 @@
 
 import React, { useEffect, useState, useCallback, useRef, useMemo } from "react"
 import type { PolygonEdit } from "@/lib/side-remap"
+import { haversineM } from "@/lib/mission-geo"
 import type { Zone, DetectionEvent, LiveDetection } from "@/lib/types"
 import { cn } from "@/lib/utils"
 import { ChevronDown, Flame, Grid3X3 } from "lucide-react"
@@ -100,16 +101,6 @@ interface MapInnerProps {
 }
 
 // ── Geodesic measurement helpers ──────────────────────────────
-
-/** Haversine distance between two lat/lon points, returns meters */
-function haversineM(lat1: number, lon1: number, lat2: number, lon2: number): number {
-  const R = 6371000 // Earth radius in meters
-  const dLat = (lat2 - lat1) * Math.PI / 180
-  const dLon = (lon2 - lon1) * Math.PI / 180
-  const a = Math.sin(dLat / 2) ** 2 +
-    Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) * Math.sin(dLon / 2) ** 2
-  return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a))
-}
 
 /** Format distance: < 1m show cm, else show m with 1 decimal */
 function fmtDist(meters: number): string {

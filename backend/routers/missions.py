@@ -272,9 +272,14 @@ async def patch_mission(mission_id: str, body: MissionUpdate, request: Request):
 
 
 @router.put("/{mission_id}")
-async def update_mission(mission_id: str, body: MissionUpdate):
-    """Full update -- same behavior as PATCH for backwards compat."""
-    return await patch_mission(mission_id, body)
+async def update_mission(mission_id: str, body: MissionUpdate, request: Request):
+    """Full update -- same behavior as PATCH for backwards compat.
+
+    `request` is not used here, but PATCH needs it (it reads the caller's permissions), so it
+    has to be declared for FastAPI to supply it. Without it this route raised a TypeError and
+    answered 500 on every call -- the frontend only ever sends PATCH, so nothing noticed.
+    """
+    return await patch_mission(mission_id, body, request)
 
 
 @router.delete("/{mission_id}")

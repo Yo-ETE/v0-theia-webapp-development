@@ -9,7 +9,7 @@ import {
   Pencil, Play, Pause, CheckCircle, Trash2, Building2, Home,
   Activity, Eye, EyeOff, Zap, Timer, Download, Signal, Battery, Wifi, WifiOff, Unlink,
   Flame, Crosshair, ArrowDownLeft, ArrowUpRight, Bell, BellOff,
-  Maximize2, Minimize2, FileImage, Ruler, Palette, RotateCw,
+  Maximize2, Minimize2, FileImage, Ruler, Palette,
   Volume2, VolumeX, Grid3X3, ArrowLeftRight, Copy, Plug, AlertTriangle,
 } from "lucide-react"
 import { TopHeader } from "@/components/top-header"
@@ -18,13 +18,6 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
-import { Label } from "@/components/ui/label"
-import {
-  Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
-} from "@/components/ui/select"
-import {
-  Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter,
-} from "@/components/ui/dialog"
 import {
   Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
 } from "@/components/ui/table"
@@ -37,9 +30,8 @@ import { FloorManager } from "@/components/mission/floor-manager"
 import { DetectionTimelapse } from "@/components/mission/detection-timelapse"
 import { ErrorBoundary } from "@/components/error-boundary"
 import { useMission, useEvents, useDevices } from "@/hooks/use-api"
-import { useVisualConfig, VISUAL_DEFAULTS, type VisualConfigKey } from "@/hooks/use-visual-config"
+import { useVisualConfig } from "@/hooks/use-visual-config"
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
-import { Switch } from "@/components/ui/switch"
 import { useSSE } from "@/hooks/use-sse"
 import { useMissionEvents } from "@/hooks/use-mission-events"
 import { useNotificationSound } from "@/hooks/use-notification-sound"
@@ -50,69 +42,18 @@ import { missionStatusConfig, eventTypeConfig, deviceStatusConfig, formatRelativ
 import { cn } from "@/lib/utils"
 import type { Zone, Floor, DetectionEvent, LiveDetection } from "@/lib/types"
 import { groupSidesByBearing } from "@/lib/facade-utils"
-
-/*
- * Two different cadences, because freshness and cost peak at opposite moments.
- *
- * Live markers, tracks and the Detection Feed come straight off SSE and are never affected
- * by any of this. But the heatmap and the occupancy grid are built from `events`, the
- * polled history -- so slowing the poll down would make a room you just swept stay
- * "unknown" on the grid for longer, which is the opposite of useful.
- *
- * So: the periodic poll goes slow, because polling while nothing is happening is pure
- * waste; and a detection arriving on the stream pulls the history promptly, because that is
- * exactly when the overlays have something new to show.
- */
-const IDLE_POLL_MS = 30000
-const SSE_DOWN_POLL_MS = 5000
-const AFTER_DETECTION_SYNC_MS = 8000
-
-/** How many events the console loads. Past this the backend drops the OLDEST ones. */
-const EVENTS_LIMIT = 10000
-
-const ZONE_COLORS = ["#3b82f6", "#ef4444", "#22c55e", "#f59e0b", "#8b5cf6", "#ec4899", "#06b6d4", "#f97316"]
-const ZONE_TYPES = [
-  { value: "facade", label: "Facade / Wall" },
-  { value: "perimeter", label: "Perimeter" },
-  { value: "interior", label: "Interior" },
-  { value: "roof", label: "Roof" },
-  { value: "floor", label: "Floor / Etage" },
-  { value: "section", label: "Section / Troncon" },
-  { value: "custom", label: "Custom" },
-] as const
-
-// LiveDetection type is now imported from @/lib/types
-
-/** Haversine distance between two lat/lon points in meters */
-function haversineM(lat1: number, lon1: number, lat2: number, lon2: number): number {
-  const R = 6371000
-  const dLat = (lat2 - lat1) * Math.PI / 180
-  const dLon = (lon2 - lon1) * Math.PI / 180
-  const a = Math.sin(dLat / 2) ** 2 + Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) * Math.sin(dLon / 2) ** 2
-  return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a))
-}
-
-/** Compute distance in meters along a polygon edge for a device side + sensor_position */
-function getSideDistanceM(polygon: [number, number][], side: string, sensorPos: number, groupSides: (p: [number, number][]) => { segmentToGroup: Record<number, string> }): string {
-  if (!polygon || polygon.length < 3 || !side) return ""
-  const { segmentToGroup } = groupSides(polygon)
-  // Find the first polygon edge matching this side letter
-  for (let i = 0; i < polygon.length; i++) {
-    const groupKey = segmentToGroup[i] ?? String.fromCharCode(65 + i)
-    if (groupKey === side) {
-      const j = (i + 1) % polygon.length
-      const isPixel = polygon.some(([a, b]: [number, number]) => Math.abs(a) > 200 || Math.abs(b) > 200)
-      if (isPixel) {
-        const pct = Math.round(sensorPos * 100)
-        return `${pct}%`
-      }
-      const edgeLen = haversineM(polygon[i][0], polygon[i][1], polygon[j][0], polygon[j][1])
-      const dist = edgeLen * sensorPos
-      return dist < 1 ? `${Math.round(dist * 100)}cm` : `${dist.toFixed(1)}m`
-    }
-  }
-  return ""
-}
+import { getSideDistanceM } from "@/lib/mission-geo"
+import {
+  IDLE_POLL_MS, SSE_DOWN_POLL_MS, AFTER_DETECTION_SYNC_MS, EVENTS_LIMIT,
+  ZONE_COLORS, FEED_TTL_MS, FLOOR_LABELS,
+} from "@/lib/mission-constants"
+import { VisualConfigPopover } from "@/components/mission/visual-config-popover"
+import { ZoneCreateDialog } from "@/components/mission/dialogs/zone-create-dialog"
+import { ZoneEditDialog } from "@/components/mission/dialogs/zone-edit-dialog"
+import { DuplicateFloorDialog } from "@/components/mission/dialogs/duplicate-floor-dialog"
+import { DeviceAssignDialog } from "@/components/mission/dialogs/device-assign-dialog"
+import { GravityConfigDialog } from "@/components/mission/dialogs/gravity-config-dialog"
+import type { AssignStep, SensorPlaceMode, GravityConfigTarget } from "@/components/mission/dialogs/types"
 
 export default function MissionDetailPage() {
   const { id } = useParams<{ id: string }>()
@@ -163,33 +104,10 @@ export default function MissionDetailPage() {
   const [editZoneType, setEditZoneType] = useState<string>("facade")
   const [editSideLabels, setEditSideLabels] = useState<Record<string, string>>({})
   const [assignDialog, setAssignDialog] = useState<string | null>(null)
-  const [assignStep, setAssignStep] = useState<{ 
-    deviceId: string; 
-    deviceName: string; 
-    side?: string;
-    deviceType?: string;
-    // Gravity MW specific config
-    gravityConfig?: {
-      effectiveRange: number; // meters
-      effectiveFov: number; // degrees
-    };
-  } | null>(null)
-  const [sensorPlaceMode, setSensorPlaceMode] = useState<{
-    zoneId: string
-    side: string
-    deviceId: string
-    deviceName: string
-    deviceType?: string
-  } | null>(null)
+  const [assignStep, setAssignStep] = useState<AssignStep | null>(null)
+  const [sensorPlaceMode, setSensorPlaceMode] = useState<SensorPlaceMode | null>(null)
   // Gravity MW config dialog (shown after sensor placement)
-  const [gravityConfigDialog, setGravityConfigDialog] = useState<{
-    deviceId: string
-    deviceName: string
-    zoneId: string
-    side: string
-    sensorPosition: number
-    config: { effectiveRange: number; effectiveFov: number }
-  } | null>(null)
+  const [gravityConfigDialog, setGravityConfigDialog] = useState<GravityConfigTarget | null>(null)
   const [statusUpdating, setStatusUpdating] = useState(false)
   // ── Save map center/zoom on pan (debounced) ──
   const mapMoveTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
@@ -267,7 +185,6 @@ export default function MissionDetailPage() {
   // Detection Feed TTL states - must be before conditional return (Rules of Hooks)
   const [lastActivityTime, setLastActivityTime] = useState<number>(() => Date.now())
   const [feedExpired, setFeedExpired] = useState(false)
-  const FEED_TTL_MS = 5 * 60 * 1000 // 5 minutes
   const lastDetectionRef = useRef<string | null>(null)
   const [errorMsg, setErrorMsg] = useState<string | null>(null)
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -593,11 +510,15 @@ export default function MissionDetailPage() {
     } catch (err) {
       console.warn("[THEIA] Failed to update device during assign:", err)
     }
-    const updatedZonesAssign = (mission.zones ?? []).map((z) =>
-      z.id === zoneId && !z.devices.includes(deviceId)
-        ? { ...z, devices: [...z.devices, deviceId] }
+    // `devices` is typed as required, but a zone written by anything other than this page can
+    // arrive without it. It used to throw here -- after the device PATCH had already gone
+    // through -- which left the node assigned while the mission never recorded the placement.
+    const updatedZonesAssign = (mission.zones ?? []).map((z) => {
+      const zoneDevices = z.devices ?? []
+      return z.id === zoneId && !zoneDevices.includes(deviceId)
+        ? { ...z, devices: [...zoneDevices, deviceId] }
         : z
-    )
+    })
     // Persist device placement in mission history (for replay after unassignment)
     const existingPlacements = mission.device_placements ?? {}
     const deviceObj = (allDevices ?? []).find(d => d.id === deviceId)
@@ -657,7 +578,7 @@ export default function MissionDetailPage() {
 
     const updatedZones = (mission.zones ?? []).map((z) => ({
       ...z,
-      devices: z.devices.filter((did) => did !== deviceId),
+      devices: (z.devices ?? []).filter((did) => did !== deviceId),
     }))
     const updatedFloors = (mission.floors ?? []).map((f) => ({
       ...f,
@@ -984,7 +905,6 @@ export default function MissionDetailPage() {
     zones.forEach(z => levels.add(z.floor ?? 0))
     return Array.from(levels).sort((a, b) => a - b)
   }, [zones])
-  const floorLabels: Record<number, string> = { 0: "RDC", 1: "1er", 2: "2ème", 3: "3ème", [-1]: "Sous-sol" }
   const filteredZones = useMemo(() => {
     if (floorLevels.length <= 1) return zones
     return zones.filter(z => (z.floor ?? 0) === selectedFloor)
@@ -2020,7 +1940,7 @@ export default function MissionDetailPage() {
                             : "bg-muted/50 text-muted-foreground hover:bg-muted"
                         )}
                       >
-                        {floorLabels[level] ?? `Niveau ${level}`}
+                        {FLOOR_LABELS[level] ?? `Niveau ${level}`}
                       </button>
                     ))}
                     <button
@@ -2038,7 +1958,7 @@ export default function MissionDetailPage() {
                           setDuplicateFloorDialog({ sourceFloor: selectedFloor, targetFloor: nextFloor })
                         }}
                         className="px-2 py-1 text-xs rounded bg-muted/30 text-muted-foreground hover:bg-muted flex items-center gap-1"
-                        title={`Dupliquer les zones de ${floorLabels[selectedFloor] ?? `Niveau ${selectedFloor}`} vers un nouvel etage`}
+                        title={`Dupliquer les zones de ${FLOOR_LABELS[selectedFloor] ?? `Niveau ${selectedFloor}`} vers un nouvel etage`}
                       >
                         <Copy className="h-3 w-3" />
                       </button>
@@ -2077,7 +1997,7 @@ export default function MissionDetailPage() {
                     <p className="text-xs text-muted-foreground py-3 text-center">
                       {zones.length === 0 
                         ? "Cliquez \"Draw Zone\" puis placez les points un par un sur la carte. Minimum 3 points. Toute forme est possible (L, T, etc.)"
-                        : `Aucune zone sur ${floorLabels[selectedFloor] ?? `Niveau ${selectedFloor}`}. Dessinez une nouvelle zone pour cet etage.`
+                        : `Aucune zone sur ${FLOOR_LABELS[selectedFloor] ?? `Niveau ${selectedFloor}`}. Dessinez une nouvelle zone pour cet etage.`
                       }
                     </p>
                   ) : filteredZones.map((zone) => {
@@ -2988,608 +2908,72 @@ export default function MissionDetailPage() {
         </div>
       </main>
 
-      {/* Floor duplication confirmation dialog */}
       {duplicateFloorDialog && (
-        <Dialog open={true} onOpenChange={() => setDuplicateFloorDialog(null)}>
-          <DialogContent className="sm:max-w-sm z-[10000]">
-            <DialogHeader>
-              <DialogTitle className="text-sm">Dupliquer les zones</DialogTitle>
-              <DialogDescription className="text-xs text-muted-foreground">
-                Copier toutes les zones de {floorLabels[duplicateFloorDialog.sourceFloor] ?? `Niveau ${duplicateFloorDialog.sourceFloor}`} vers {floorLabels[duplicateFloorDialog.targetFloor] ?? `Niveau ${duplicateFloorDialog.targetFloor}`}.
-              </DialogDescription>
-            </DialogHeader>
-            <div className="text-xs text-muted-foreground py-2">
-              <p>{zones.filter(z => (z.floor ?? 0) === duplicateFloorDialog.sourceFloor).length} zone(s) seront copiees. Les capteurs ne seront pas copies.</p>
-            </div>
-            <DialogFooter className="gap-2">
-              <Button variant="outline" size="sm" onClick={() => setDuplicateFloorDialog(null)}>
-                Annuler
-              </Button>
-              <Button
-                size="sm"
-                onClick={async () => {
-                  await duplicateFloorZones(duplicateFloorDialog.sourceFloor, duplicateFloorDialog.targetFloor)
-                  setSelectedFloor(duplicateFloorDialog.targetFloor)
-                  setDuplicateFloorDialog(null)
-                }}
-              >
-                <Copy className="h-3.5 w-3.5 mr-1" />
-                Dupliquer
-              </Button>
-            </DialogFooter>
-          </DialogContent>
-        </Dialog>
+        <DuplicateFloorDialog
+          sourceFloor={duplicateFloorDialog.sourceFloor}
+          targetFloor={duplicateFloorDialog.targetFloor}
+          zoneCount={zones.filter((z) => (z.floor ?? 0) === duplicateFloorDialog.sourceFloor).length}
+          onCancel={() => setDuplicateFloorDialog(null)}
+          onConfirm={async () => {
+            await duplicateFloorZones(duplicateFloorDialog.sourceFloor, duplicateFloorDialog.targetFloor)
+            setSelectedFloor(duplicateFloorDialog.targetFloor)
+            setDuplicateFloorDialog(null)
+          }}
+        />
       )}
 
-      {/* Zone creation dialog */}
-      <Dialog open={zoneDialog} onOpenChange={setZoneDialog}>
-        <DialogContent className="sm:max-w-md z-[10000]">
-          <DialogHeader>
-            <DialogTitle className="text-sm">New Zone</DialogTitle>
-            <DialogDescription className="text-xs text-muted-foreground">
-              Name and classify the drawn zone. It will appear on the map.
-            </DialogDescription>
-          </DialogHeader>
-          <div className="flex flex-col gap-4 py-2">
-            <div className="flex flex-col gap-2">
-              <Label htmlFor="zone-name" className="text-xs text-muted-foreground">Zone Name</Label>
-              <Input
-                id="zone-name"
-                name="zone-name"
-                placeholder="e.g. Facade Nord"
-                value={zoneName}
-                onChange={(e) => setZoneName(e.target.value)}
-                className="bg-input/50 border-border text-sm"
-                autoFocus
-              />
-            </div>
-            <div className="flex flex-col gap-2">
-              <Label className="text-xs text-muted-foreground">Zone Type</Label>
-              <Select value={zoneType} onValueChange={setZoneType}>
-                <SelectTrigger className="bg-input/50 border-border text-sm"><SelectValue /></SelectTrigger>
-                <SelectContent className="z-[10001]" position="popper" sideOffset={4}>
-                  {ZONE_TYPES.map((t) => (<SelectItem key={t.value} value={t.value}>{t.label}</SelectItem>))}
-                </SelectContent>
-              </Select>
-            </div>
-            {/* Floor selector for multi-floor missions */}
-            <div className="flex flex-col gap-2">
-              <Label className="text-xs text-muted-foreground">Etage</Label>
-              <div className="flex items-center gap-1">
-                {[...floorLevels, Math.max(...floorLevels, -1) + 1].filter((v, i, a) => a.indexOf(v) === i).sort((a,b) => a-b).map(level => (
-                  <button
-                    key={level}
-                    type="button"
-                    onClick={() => setSelectedFloor(level)}
-                    className={cn(
-                      "px-3 py-1.5 text-xs rounded border transition-colors",
-                      selectedFloor === level 
-                        ? "bg-primary text-primary-foreground border-primary" 
-                        : "bg-muted/50 text-muted-foreground border-border hover:bg-muted"
-                    )}
-                  >
-                    {floorLabels[level] ?? `Niveau ${level}`}
-                  </button>
-                ))}
-              </div>
-            </div>
-            {pendingPolygon && pendingPolygon.length >= 2 && (
-              <div className="flex flex-col gap-3">
-                <Label className="text-xs text-muted-foreground">
-                  Faces ({Object.keys(sideLabels).length} faces - {pendingPolygon.length} segments)
-                </Label>
-                <div className="flex flex-col gap-2">
-                  {Object.keys(sideLabels).map((groupKey) => {
-                    // Find which polygon segments belong to this group
-                    const segmentIndices = sideGrouping
-                      .map((g, i) => g === groupKey ? i : -1)
-                      .filter(i => i >= 0)
-                    const segmentLetters = segmentIndices.map(i => String.fromCharCode(65 + i))
-                    return (
-                      <div key={groupKey} className="flex items-center gap-2">
-                        <div className="flex flex-col items-center shrink-0 w-10">
-                          <span className="text-xs font-mono font-bold text-info">{groupKey}</span>
-                          <span className="text-2xs text-muted-foreground font-mono">
-                            {segmentLetters.length > 1
-                              ? segmentLetters.join(",")
-                              : `seg ${segmentLetters[0]}`}
-                          </span>
-                        </div>
-                        <Input
-                          id={`side-label-${groupKey}`}
-                          name={`side-label-${groupKey}`}
-                          placeholder={`Face ${groupKey}${segmentLetters.length > 1 ? ` (${segmentLetters.join("+")} parallels)` : ""}`}
-                          value={sideLabels[groupKey]}
-                          onChange={(e) => setSideLabels((prev) => ({ ...prev, [groupKey]: e.target.value }))}
-                          className="bg-input/50 border-border text-xs h-9"
-                        />
-                      </div>
-                    )
-                  })}
-                </div>
-                <p className="text-2xs text-muted-foreground">
-                  Les segments paralleles sont regroupes automatiquement sous la meme face.
-                </p>
-              </div>
-            )}
-            <p className="text-xs text-muted-foreground font-mono">
-              {pendingPolygon?.length ?? 0} points - {Object.keys(sideLabels).length} faces - {Object.values(sideLabels).filter(Boolean).length} labeled
-            </p>
-          </div>
-          <DialogFooter>
-            <Button variant="ghost" size="sm" onClick={() => setZoneDialog(false)}>Annuler</Button>
-            <Button size="sm" onClick={saveZone} disabled={!zoneName.trim()}>Save Zone</Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+      <ZoneCreateDialog
+        open={zoneDialog}
+        onOpenChange={setZoneDialog}
+        name={zoneName}
+        onNameChange={setZoneName}
+        type={zoneType}
+        onTypeChange={setZoneType}
+        sideLabels={sideLabels}
+        onSideLabelsChange={setSideLabels}
+        sideGrouping={sideGrouping}
+        polygon={pendingPolygon}
+        floorLevels={floorLevels}
+        selectedFloor={selectedFloor}
+        onSelectFloor={setSelectedFloor}
+        onSave={saveZone}
+      />
 
-      {/* Zone edit dialog */}
-      <Dialog open={!!editZoneDialog} onOpenChange={() => setEditZoneDialog(null)}>
-        <DialogContent className="sm:max-w-md z-[10000]">
-          <DialogHeader>
-            <DialogTitle className="text-sm">Edit Zone</DialogTitle>
-            <DialogDescription className="text-xs text-muted-foreground">
-              Modify zone name, type, and facade/side labels.
-            </DialogDescription>
-          </DialogHeader>
-          <div className="flex flex-col gap-4 py-2">
-            <div className="flex flex-col gap-2">
-              <Label htmlFor="edit-zone-name" className="text-xs text-muted-foreground">Zone Name</Label>
-              <Input
-                id="edit-zone-name"
-                name="edit-zone-name"
-                placeholder="e.g. Facade Nord"
-                value={editZoneName}
-                onChange={(e) => setEditZoneName(e.target.value)}
-                className="bg-input/50 border-border text-sm"
-                autoFocus
-              />
-            </div>
-            <div className="flex flex-col gap-2">
-              <Label className="text-xs text-muted-foreground">Zone Type</Label>
-<Select value={editZoneType} onValueChange={setEditZoneType}>
-  <SelectTrigger className="bg-input/50 border-border text-sm"><SelectValue /></SelectTrigger>
-  <SelectContent className="z-[10001]" position="popper" sideOffset={4}>
-  {ZONE_TYPES.map((t) => (<SelectItem key={t.value} value={t.value}>{t.label}</SelectItem>))}
-  </SelectContent>
-  </Select>
-            </div>
-            {Object.keys(editSideLabels).length > 0 && (
-              <div className="flex flex-col gap-3">
-                <Label className="text-xs text-muted-foreground">
-                  Faces ({Object.keys(editSideLabels).length} faces)
-                </Label>
-                <p className="text-2xs text-muted-foreground">
-                  Les segments paralleles sont regroupes par face automatiquement.
-                </p>
-                <div className="flex flex-col gap-2">
-                  {Object.keys(editSideLabels).sort().map((groupKey) => {
-                    const segmentIndices = sideGrouping
-                      .map((g, i) => g === groupKey ? i : -1)
-                      .filter(i => i >= 0)
-                    const segmentLetters = segmentIndices.map(i => String.fromCharCode(65 + i))
-                    return (
-                      <div key={groupKey} className="flex items-center gap-2">
-                        <div className="flex flex-col items-center shrink-0 w-10">
-                          <span className="text-xs font-mono font-bold text-info">{groupKey}</span>
-                          <span className="text-2xs text-muted-foreground font-mono">
-                            {segmentLetters.length > 1 ? segmentLetters.join(",") : `seg ${segmentLetters[0] ?? groupKey}`}
-                          </span>
-                        </div>
-                        <Input
-                          id={`edit-side-label-${groupKey}`}
-                          name={`edit-side-label-${groupKey}`}
-                          placeholder={`Face ${groupKey}${segmentLetters.length > 1 ? ` (${segmentLetters.join("+")} parallel)` : ""}`}
-                          value={editSideLabels[groupKey]}
-                          onChange={(e) => setEditSideLabels((prev) => ({ ...prev, [groupKey]: e.target.value }))}
-                          className="bg-input/50 border-border text-xs h-9"
-                        />
-                      </div>
-                    )
-                  })}
-                </div>
-              </div>
-            )}
-          </div>
-          <DialogFooter>
-            <Button variant="ghost" size="sm" onClick={() => setEditZoneDialog(null)}>Annuler</Button>
-            <Button size="sm" onClick={saveEditZone} disabled={!editZoneName.trim()}>Save</Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+      <ZoneEditDialog
+        open={!!editZoneDialog}
+        onClose={() => setEditZoneDialog(null)}
+        name={editZoneName}
+        onNameChange={setEditZoneName}
+        type={editZoneType}
+        onTypeChange={setEditZoneType}
+        sideLabels={editSideLabels}
+        onSideLabelsChange={setEditSideLabels}
+        sideGrouping={sideGrouping}
+        onSave={saveEditZone}
+      />
 
-      {/* Device assignment dialog */}
-      <Dialog open={!!assignDialog} onOpenChange={() => { setAssignDialog(null); setAssignStep(null) }}>
-        <DialogContent className="sm:max-w-md z-[10000]">
-          {!assignStep ? (
-            <>
-              <DialogHeader>
-                <DialogTitle className="text-sm">
-                  Assign TX to {zones.find((z) => z.id === assignDialog)?.label ?? "Zone"}
-                </DialogTitle>
-                <DialogDescription className="text-xs text-muted-foreground">
-                  Select an unassigned device to place on this zone.
-                </DialogDescription>
-              </DialogHeader>
-              <div className="flex flex-col gap-2 py-2 max-h-64 overflow-y-auto">
-                {unassigned.length === 0 ? (
-                  <p className="text-xs text-muted-foreground py-4 text-center">No unassigned devices available</p>
-                ) : unassigned.map((device) => {
-                  const assignZone = zones.find((z) => z.id === assignDialog)
-                  const hasSides = assignZone?.sides && Object.values(assignZone.sides).some(Boolean)
-                  const isElsewhere = device.mission_id && device.mission_id !== id
-                  const isGravityMW = device.type === "gravity_mw"
-                  return (
-                    <button
-                      key={device.id}
-                      onClick={() => {
-                        // For gravity_mw without sides, go directly to config step
-                        if (isGravityMW && !hasSides) {
-                          setAssignStep({ 
-                            deviceId: device.id, 
-                            deviceName: device.name,
-                            deviceType: device.type,
-                            side: "", // Set side to empty string to skip side selection
-                            gravityConfig: { effectiveRange: 12, effectiveFov: 72 },
-                          })
-                        } else if (hasSides || isGravityMW) {
-                          // Has sides to choose, or is gravity_mw with sides
-                          setAssignStep({ 
-                            deviceId: device.id, 
-                            deviceName: device.name,
-                            deviceType: device.type,
-                            gravityConfig: isGravityMW ? { effectiveRange: 12, effectiveFov: 72 } : undefined,
-                          })
-                        } else if (assignDialog) {
-                          assignDevice(device.id, assignDialog)
-                        }
-                      }}
-                      className="flex items-center gap-3 rounded border border-border/50 p-3 text-left hover:bg-muted/30 transition-colors"
-                    >
-                      <Radio className="h-4 w-4 text-primary shrink-0" />
-                      <div className="flex-1 min-w-0">
-                        <p className="text-xs font-mono font-medium text-foreground">{device.name}</p>
-                        <p className="text-xs text-muted-foreground">
-                          {device.dev_eui || device.serial_port || device.hw_id || "no port"}
-                          {isElsewhere && (
-                            <span className="text-warning ml-1">(other mission)</span>
-                          )}
-                        </p>
-                      </div>
-                      <div className="flex items-center gap-1">
-                        {device.battery && (
-                          <span className="text-2xs text-muted-foreground font-mono">{device.battery}V</span>
-                        )}
-                        <Badge 
-                          variant={device.status === "online" ? "default" : "outline"} 
-                          className={cn("text-2xs px-1 py-0", device.status === "online" ? "bg-success/20 text-success border-success/30" : device.status === "offline" ? "text-muted-foreground" : "")}
-                        >
-                          {device.status ?? "unknown"}
-                        </Badge>
-                      </div>
-                    </button>
-                  )
-                })}
-              </div>
-            </>
-          ) : assignStep.side === undefined ? (
-            /* Step 2a: Pick which side (only if side is undefined, not empty string) */
-            <>
-              <DialogHeader>
-                <DialogTitle className="text-sm">Side: {assignStep.deviceName}</DialogTitle>
-                <DialogDescription className="text-xs text-muted-foreground">
-                  Select which facade/side this TX covers.
-                </DialogDescription>
-              </DialogHeader>
-              <div className="flex flex-col gap-2 py-2">
-                {(() => {
-                  const assignZone = zones.find((z) => z.id === assignDialog)
-                  if (!assignZone?.polygon || !Array.isArray(assignZone.polygon) || assignZone.polygon.length < 2) return null
-                  
-                  // Handle facades (2 points) - only has side A
-                  if (assignZone.polygon.length === 2) {
-                    return (
-                      <button
-                        onClick={() => {
-                          setSensorPlaceMode({
-                            zoneId: assignDialog!,
-                            side: "A",
-                            deviceId: assignStep!.deviceId,
-                            deviceName: assignStep!.deviceName,
-                            deviceType: assignStep!.deviceType,
-                          })
-                          setAssignDialog(null)
-                          setAssignStep(null)
-                        }}
-                        className="flex items-center gap-3 rounded border border-border/50 p-3 text-left hover:bg-muted/30 transition-colors"
-                      >
-                        <span className="text-sm font-mono font-bold text-info w-6 text-center">A</span>
-                        <span className="text-xs text-foreground">Façade A (ligne)</span>
-                      </button>
-                    )
-                  }
-                  
-                  // Polygons (3+ points) - use groupSidesByBearing for consistency with map display
-                  const { segmentToGroup } = groupSidesByBearing(assignZone.polygon as [number, number][])
-                  if (!Array.isArray(segmentToGroup) || segmentToGroup.length === 0) return null
-                  const uniqueGroups = [...new Set(segmentToGroup)]
-                  return uniqueGroups.map((groupLabel) => (
-                    <button
-                      key={groupLabel}
-                      onClick={() => {
-                        setSensorPlaceMode({
-                          zoneId: assignDialog!,
-                          side: groupLabel,
-                          deviceId: assignStep!.deviceId,
-                          deviceName: assignStep!.deviceName,
-                          deviceType: assignStep!.deviceType,
-                        })
-                        setAssignDialog(null)
-                        setAssignStep(null)
-                      }}
-                      className="flex items-center gap-3 rounded border border-border/50 p-3 text-left hover:bg-muted/30 transition-colors"
-                    >
-                      <span className="text-sm font-mono font-bold text-info w-6 text-center">{groupLabel}</span>
-                      <span className="text-xs text-foreground">Façade {groupLabel}</span>
-                    </button>
-                  ))
-                })()}
-                <button
-                  onClick={() => {
-                    if (assignStep?.deviceType === "gravity_mw") {
-                      // For gravity_mw without side, go to config step
-                      setAssignStep({ ...assignStep!, side: "" })
-                    } else if (assignDialog) {
-                      assignDevice(assignStep!.deviceId, assignDialog)
-                    }
-                  }}
-                  className="flex items-center gap-3 rounded border border-dashed border-border/30 p-3 text-left hover:bg-muted/20 transition-colors"
-                >
-                  <span className="text-sm font-mono text-muted-foreground w-6 text-center">-</span>
-                  <span className="text-xs text-muted-foreground">No specific side</span>
-                </button>
-              </div>
-              <DialogFooter>
-                <Button variant="ghost" size="sm" onClick={() => setAssignStep(null)}>Back</Button>
-              </DialogFooter>
-            </>
-          ) : null}
-          </DialogContent>
-        </Dialog>
+      <DeviceAssignDialog
+        open={!!assignDialog}
+        zone={zones.find((z) => z.id === assignDialog)}
+        zoneId={assignDialog}
+        unassigned={unassigned}
+        missionId={id}
+        step={assignStep}
+        onStepChange={setAssignStep}
+        onClose={() => { setAssignDialog(null); setAssignStep(null) }}
+        onAssignWithoutSide={(deviceId) => { if (assignDialog) assignDevice(deviceId, assignDialog) }}
+        onPlaceSensor={setSensorPlaceMode}
+      />
 
-        {/* Gravity MW config dialog (after sensor placement) */}
-        <Dialog open={!!gravityConfigDialog} onOpenChange={() => setGravityConfigDialog(null)}>
-          <DialogContent className="sm:max-w-md z-[10000]">
-            <DialogHeader>
-              <DialogTitle className="text-sm">Configurer {gravityConfigDialog?.deviceName}</DialogTitle>
-              <DialogDescription className="text-xs text-muted-foreground">
-                Ajustez la portee et le FOV selon l&apos;environnement (murs, materiaux).
-              </DialogDescription>
-            </DialogHeader>
-            {gravityConfigDialog && (
-              <div className="flex flex-col gap-4 py-4">
-                {/* Effective Range */}
-                <div className="space-y-2">
-                  <div className="flex items-center justify-between">
-                    <label className="text-xs font-medium">Portee effective</label>
-                    <span className="text-xs font-mono text-muted-foreground">{gravityConfigDialog.config.effectiveRange}m</span>
-                  </div>
-                  <input
-                    type="range"
-                    min="2"
-                    max="12"
-                    step="0.5"
-                    value={gravityConfigDialog.config.effectiveRange}
-                    onChange={(e) => setGravityConfigDialog({
-                      ...gravityConfigDialog,
-                      config: { ...gravityConfigDialog.config, effectiveRange: parseFloat(e.target.value) },
-                    })}
-                    className="w-full h-2 bg-muted rounded-lg appearance-none cursor-pointer accent-primary"
-                  />
-                  <div className="flex justify-between text-2xs text-muted-foreground">
-                    <span>2m (parpaing)</span>
-                    <span>6m (PVC)</span>
-                    <span>12m (libre)</span>
-                  </div>
-                </div>
-                {/* Effective FOV */}
-                <div className="space-y-2">
-                  <div className="flex items-center justify-between">
-                    <label className="text-xs font-medium">FOV effectif</label>
-                    <span className="text-xs font-mono text-muted-foreground">{gravityConfigDialog.config.effectiveFov}°</span>
-                  </div>
-                  <input
-                    type="range"
-                    min="20"
-                    max="72"
-                    step="2"
-                    value={gravityConfigDialog.config.effectiveFov}
-                    onChange={(e) => setGravityConfigDialog({
-                      ...gravityConfigDialog,
-                      config: { ...gravityConfigDialog.config, effectiveFov: parseFloat(e.target.value) },
-                    })}
-                    className="w-full h-2 bg-muted rounded-lg appearance-none cursor-pointer accent-primary"
-                  />
-                  <div className="flex justify-between text-2xs text-muted-foreground">
-                    <span>20° (bois epais)</span>
-                    <span>50° (porte)</span>
-                    <span>72° (libre)</span>
-                  </div>
-                </div>
-                {/* Presets */}
-                <div className="space-y-1">
-                  <label className="text-xs font-medium text-muted-foreground">Presets</label>
-                  <div className="flex flex-wrap gap-1">
-                    {[
-                      { label: "Libre", range: 12, fov: 72 },
-                      { label: "PVC", range: 6, fov: 50 },
-                      { label: "Porte bois", range: 8, fov: 45 },
-                      { label: "Bois 5cm", range: 7, fov: 30 },
-                      { label: "Parpaing", range: 3, fov: 72 },
-                    ].map((preset) => (
-                      <button
-                        key={preset.label}
-                        onClick={() => setGravityConfigDialog({
-                          ...gravityConfigDialog,
-                          config: { effectiveRange: preset.range, effectiveFov: preset.fov },
-                        })}
-                        className="text-xs px-2 py-1 rounded border border-border/50 hover:bg-muted/50 transition-colors"
-                      >
-                        {preset.label}
-                      </button>
-                    ))}
-                  </div>
-                </div>
-              </div>
-            )}
-            <DialogFooter className="gap-2">
-              <Button variant="ghost" size="sm" onClick={() => setGravityConfigDialog(null)}>
-                Annuler
-              </Button>
-              <Button 
-                size="sm" 
-                onClick={() => {
-                  if (gravityConfigDialog) {
-                    assignDevice(
-                      gravityConfigDialog.deviceId, 
-                      gravityConfigDialog.zoneId, 
-                      gravityConfigDialog.side, 
-                      gravityConfigDialog.sensorPosition,
-                      gravityConfigDialog.config
-                    )
-                    setGravityConfigDialog(null)
-                  }
-                }}
-              >
-                Valider
-              </Button>
-            </DialogFooter>
-          </DialogContent>
-        </Dialog>
+      <GravityConfigDialog
+        target={gravityConfigDialog}
+        onChange={setGravityConfigDialog}
+        onCancel={() => setGravityConfigDialog(null)}
+        onConfirm={(target) => {
+          assignDevice(target.deviceId, target.zoneId, target.side, target.sensorPosition, target.config)
+          setGravityConfigDialog(null)
+        }}
+      />
         </>
-  )
-}
-
-
-// ── Visual Config Popover (per-mission) ──────────────────────
-
-const VC_COLOR_ROWS: { key: VisualConfigKey; label: string }[] = [
-  { key: "zone_fill_color",      label: "Zone (remplissage)" },
-  { key: "detection_dot_live",   label: "Detection (live)" },
-  { key: "detection_dot_hold",   label: "Detection (maintien)" },
-  { key: "detection_line_color", label: "Ligne detection" },
-  { key: "fov_overlay_color",    label: "FOV capteur" },
-  { key: "sensor_dot_idle",      label: "Capteur (inactif)" },
-  { key: "estimated_pos_color",  label: "Position estimee" },
-]
-
-const VC_OPACITY_ROWS: { key: VisualConfigKey; label: string }[] = [
-  { key: "zone_fill_opacity",    label: "Opacite zone" },
-  { key: "zone_stroke_opacity",  label: "Contour zone" },
-  { key: "fov_fill_opacity",     label: "Opacite FOV" },
-]
-
-function VisualConfigPopover({
-  raw,
-  updateConfig,
-  resetAll,
-  hasMissionOverrides,
-}: {
-  raw: Record<string, string>
-  updateConfig: (key: VisualConfigKey, value: string) => void
-  resetAll: () => void
-  hasMissionOverrides: boolean
-}) {
-  return (
-    <div className="flex flex-col gap-3">
-      <div className="flex items-center justify-between">
-        <p className="text-xs font-semibold text-foreground">Apparence</p>
-        <button
-          onClick={resetAll}
-          className="flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground transition-colors"
-          title={hasMissionOverrides ? "Revenir aux parametres globaux" : "Reinitialiser les valeurs par defaut"}
-        >
-          <RotateCw className="h-3 w-3" />
-          {hasMissionOverrides ? "Global" : "Defaut"}
-        </button>
-      </div>
-
-      {/* Colors */}
-      <div className="grid grid-cols-1 gap-1.5">
-        {VC_COLOR_ROWS.map(({ key, label }) => {
-          const val = (raw[key] ?? VISUAL_DEFAULTS[key]) as string
-          const isCustom = val !== VISUAL_DEFAULTS[key]
-          return (
-            <div key={key} className="flex items-center gap-2">
-              <label className="relative cursor-pointer shrink-0">
-                <span
-                  className="block h-5 w-5 rounded border border-border/50"
-                  style={{ backgroundColor: val }}
-                />
-                <input
-                  type="color"
-                  value={val}
-                  onChange={(e) => updateConfig(key, e.target.value)}
-                  onBlur={(e) => updateConfig(key, e.target.value)}
-                  className="absolute inset-0 h-full w-full cursor-pointer opacity-0"
-                />
-              </label>
-              <span className="text-xs text-muted-foreground truncate flex-1">{label}</span>
-              {isCustom && (
-                <button
-                  onClick={() => updateConfig(key, VISUAL_DEFAULTS[key])}
-                  className="text-2xs text-muted-foreground/60 hover:text-foreground transition-colors shrink-0"
-                  title="Reinitialiser"
-                >
-                  <RotateCw className="h-2.5 w-2.5" />
-                </button>
-              )}
-            </div>
-          )
-        })}
-      </div>
-
-      {/* Opacities */}
-      <div className="flex flex-col gap-1.5 pt-1 border-t border-border/30">
-        {VC_OPACITY_ROWS.map(({ key, label }) => {
-          const val = parseFloat(raw[key] ?? VISUAL_DEFAULTS[key])
-          const isCustom = (raw[key] ?? VISUAL_DEFAULTS[key]) !== VISUAL_DEFAULTS[key]
-          return (
-            <div key={key} className="flex items-center gap-2">
-              <input
-                type="range"
-                min={0}
-                max={100}
-                step={1}
-                value={Math.round(val * 100)}
-                onChange={(e) => updateConfig(key, String(parseInt(e.target.value) / 100))}
-                className="w-20 accent-primary h-1"
-              />
-              <span className="text-xs text-muted-foreground truncate flex-1">{label}</span>
-              <span className="text-xs font-mono text-muted-foreground w-8 text-right">{Math.round(val * 100)}%</span>
-              {isCustom && (
-                <button
-                  onClick={() => updateConfig(key, VISUAL_DEFAULTS[key])}
-                  className="text-2xs text-muted-foreground/60 hover:text-foreground transition-colors shrink-0"
-                  title="Reinitialiser"
-                >
-                  <RotateCw className="h-2.5 w-2.5" />
-                </button>
-              )}
-            </div>
-          )
-        })}
-      </div>
-
-      {/* FOV toggle */}
-      <div className="flex items-center justify-between pt-1 border-t border-border/30">
-        <span className="text-xs text-muted-foreground">FOV visible par defaut</span>
-        <Switch
-          checked={(raw.fov_default_visible ?? VISUAL_DEFAULTS.fov_default_visible) === "true"}
-          onCheckedChange={(v) => updateConfig("fov_default_visible", v ? "true" : "false")}
-          className="scale-75"
-        />
-      </div>
-    </div>
   )
 }
