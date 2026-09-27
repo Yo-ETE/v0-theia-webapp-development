@@ -291,7 +291,20 @@ async def wifi_connect(body: dict):
             result = subprocess.run(cmd, capture_output=True, text=True, timeout=30)
             if result.returncode == 0:
                 return {"status": "success", "message": f"Connecte a {ssid}"}
-            return {"status": "error", "message": result.stderr.strip() or "Echec de connexion"}
+            # nmcli usually explains itself on stderr. When it does not, say WHY there is
+            # nothing to report instead of printing a bare "Echec de connexion": seen on the
+            # hub 2026-09-27, a corrupted nmcli died on SIGILL (returncode -4, no output) and
+            # the admin page showed the same generic failure as a wrong passphrase.
+            detail = result.stderr.strip() or result.stdout.strip()
+            if not detail:
+                if result.returncode < 0:
+                    detail = (
+                        f"nmcli s'est arrete sur le signal {-result.returncode}"
+                        " (binaire corrompu ?). Verifier: nmcli device status"
+                    )
+                else:
+                    detail = f"nmcli a echoue (code {result.returncode}) sans message"
+            return {"status": "error", "message": detail}
         data = await asyncio.get_event_loop().run_in_executor(None, _connect)
         return data
     except Exception as e:
