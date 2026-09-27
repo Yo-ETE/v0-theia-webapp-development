@@ -659,11 +659,21 @@ export default function AdminPage() {
   }
 
   const handleShutdown = async () => {
-    if (!confirm("Voulez-vous vraiment eteindre le Raspberry Pi ?")) return
+    if (!confirm(
+      "Eteindre le Raspberry Pi ?\n\n"
+      + "Attendre ensuite que la LED verte cesse de clignoter avant de couper l'alimentation. "
+      + "Couper le courant avant la fin de l'arret corrompt la carte SD."
+    )) return
     setIsShuttingDown(true)
     try {
       await fetch("/api/admin/shutdown", { method: "POST" })
-      setSystemMessage("Arret en cours... La connexion sera perdue.")
+      // The point of the clean shutdown is the wait. Cutting power while the card is still
+      // being flushed is what corrupts it -- and the old message said the connection would
+      // drop without ever saying when it was safe to pull the plug.
+      setSystemMessage(
+        "Arret en cours. La connexion va etre perdue : c'est normal. "
+        + "ATTENDRE que la LED verte du Raspberry cesse de clignoter avant de couper l'alimentation."
+      )
     } catch { setSystemMessage("Erreur lors de l'arret"); setIsShuttingDown(false) }
   }
 
