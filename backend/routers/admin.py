@@ -214,6 +214,25 @@ async def test_sms():
         raise HTTPException(status_code=400, detail="Aucun provider SMS selectionne")
 
     from backend.services.sms_service import send_sms
+
+    # For ntfy, send the SAME message twice at two priorities. Diagnosing "the phone receives
+    # but shows nothing" needs the comparison, not one message: if only the high-priority one
+    # raises a banner, the phone is muting normal ones (a Focus mode, Deliver Quietly, or a
+    # muted subscription) and the fix is on the device, not here. Other providers have no such
+    # notion, so they get one message as before.
+    if config.get("provider") == "ntfy":
+        low = await send_sms("THEIA - test 1/2 : priorite NORMALE", config, title="THEIA - test", priority="default")
+        high = await send_sms("THEIA - test 2/2 : priorite HAUTE", config, title="THEIA - test", priority="high")
+        if low or high:
+            return {
+                "ok": True,
+                "sent": {"default": low, "high": high},
+                "hint": "Deux messages envoyes. Si seul le second s'affiche, le telephone "
+                        "silencie les notifications normales (concentration, diffusion "
+                        "silencieuse, ou abonnement en sourdine).",
+            }
+        raise HTTPException(status_code=500, detail="Echec de l'envoi des notifications de test")
+
     ok = await send_sms("THEIA - Notification test. Tout fonctionne !", config)
     if ok:
         return {"ok": True}

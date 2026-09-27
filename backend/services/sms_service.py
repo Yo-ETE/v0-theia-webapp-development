@@ -135,7 +135,7 @@ async def send_ntfy(
     return ok
 
 
-async def send_sms(message: str, config: dict, title: str = "THEIA") -> bool:
+async def send_sms(message: str, config: dict, title: str = "THEIA", priority: str | None = None) -> bool:
     """
     Send SMS/notification using configured provider.
     config should contain:
@@ -171,7 +171,7 @@ async def send_sms(message: str, config: dict, title: str = "THEIA") -> bool:
             title=title,
             message=message,
             server=config.get("ntfy_server", "https://ntfy.sh"),
-            priority=str(config.get("ntfy_priority", "high")),
+            priority=priority or str(config.get("ntfy_priority", "high")),
         )
     else:
         print(f"[THEIA-SMS] Unknown provider: {provider}")

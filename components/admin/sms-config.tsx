@@ -96,7 +96,8 @@ export function SmsConfig() {
       })
       const data = await res.json()
       if (data.ok) {
-        setMessage({ type: "success", text: "SMS de test envoye avec succes" })
+        // ntfy sends two messages at two priorities; the hint explains what to compare.
+        setMessage({ type: "success", text: data.hint || "Notification de test envoyee" })
       } else {
         setMessage({ type: "error", text: data.detail || "Echec de l'envoi" })
       }
