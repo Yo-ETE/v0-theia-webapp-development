@@ -9,7 +9,7 @@ import type { VisualConfig } from "@/hooks/use-visual-config"
 import { VISUAL_DEFAULTS } from "@/hooks/use-visual-config"
 import HeatmapCanvas from "./heatmap-canvas"
 import OccupancyCanvas from "./occupancy-canvas"
-import { buildGrid, type SensorReading } from "@/lib/occupancy-grid"
+import { extendGrid, type IncrementalGrid, type SensorReading } from "@/lib/occupancy-grid"
 import { groupSidesByBearing } from "@/lib/facade-utils"
 import { updateTracks, visibleTracks, trackSpeed, trackHeading, type Track, type Observation } from "@/lib/tracking"
 import { fuseGroup, gateForExtent, circleIntersections, type RawDetection, type Prior } from "@/lib/detection-fusion"
@@ -341,6 +341,13 @@ export default function MapInner({
    * it is describing. It starts collapsed below sm and open above -- declared here, with the
    * other hooks, so it stays ahead of the early return further down.
    */
+  /*
+   * The occupancy grid, kept between renders rather than rebuilt from the whole history each
+   * time. A ref and not state on purpose: extendGrid mutates the grid in place and returns
+   * it, so storing it in state would either need a copy on every tick -- the cost this
+   * removes -- or lie to React about having changed.
+   */
+  const occupancyRef = useRef<IncrementalGrid | null>(null)
   const [legendOpen, setLegendOpen] = useState(true)
   useEffect(() => {
     if (typeof window !== "undefined") setLegendOpen(window.innerWidth >= 640)
@@ -1503,11 +1510,22 @@ export default function MapInner({
           distM: presenceOnly ? 0 : dist / 100,
           targetX: Number(p.x ?? 0) / 100,
           targetY: Number(p.y ?? 0) / 100,
+          // Identity of the reading, so the grid can fold in only what is new instead of
+          // replaying the whole history on every tick.
+          key: String(evt.id),
         })
       }
 
-      if (readings.length === 0) return null
-      return buildGrid(readings, 0.5)
+      if (readings.length === 0) {
+        occupancyRef.current = null
+        return null
+      }
+      // Log-odds are additive, so keeping the grid and integrating the new readings gives
+      // the same cells as a rebuild -- verified cell for cell -- for a fraction of the work.
+      // extendGrid rebuilds by itself when it cannot accumulate honestly: a reading outside
+      // the bounds it was sized around, or one that has disappeared after a purge.
+      occupancyRef.current = extendGrid(occupancyRef.current, readings, 0.5)
+      return occupancyRef.current?.grid ?? null
     } catch (e) {
       console.warn("[THEIA] occupancy grid error:", e)
       return null

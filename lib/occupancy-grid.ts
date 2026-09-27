@@ -55,6 +55,12 @@ export interface SensorReading {
   targetY?: number
   /** presence-only sensors carry no geometry beyond their cone */
   presenceOnly?: boolean
+  /**
+   * Stable identity of the reading, for incremental accumulation (see extendGrid). The
+   * event id does the job. Without it a grid must be rebuilt from the whole history on
+   * every tick, which is what this exists to avoid.
+   */
+  key?: string
 }
 
 export interface GridOptions {
@@ -242,4 +248,106 @@ export function buildGrid(
   if (!grid) return null
   for (const r of readings) integrateReading(grid, r, options)
   return grid
+}
+
+
+/**
+ * An occupancy grid kept across updates, with the readings already folded into it.
+ *
+ * Rebuilding from the entire history on every tick was the last thing tying the cumulative
+ * overlays to how much history fits in memory: past the event cap the grid quietly forgot
+ * the rooms swept first. It does not have to work that way -- the grid is log-odds, so
+ * integrating a reading is `+=`, and the order does not matter. Keeping the grid and folding
+ * in only what is new gives exactly the same numbers for a fraction of the work.
+ */
+export interface IncrementalGrid {
+  grid: OccupancyGrid
+  /** Keys already integrated, so a reordered or re-delivered list changes nothing. */
+  consumed: Set<string>
+  /** The point cloud the grid was sized around; a reading outside it forces a rebuild. */
+  bounds: PointBounds
+}
+
+/** The two points buildGrid uses to size the grid around a reading. */
+function extentPoints(r: SensorReading): Array<[number, number]> {
+  return [
+    [r.sx, r.sy],
+    [r.sx + r.nx * r.maxRangeM, r.sy + r.ny * r.maxRangeM],
+  ]
+}
+
+/**
+ * The point cloud a full rebuild would measure -- NOT the grid's own extent.
+ *
+ * gridForBounds pads around the points, so comparing a new reading against the grid box was
+ * wrong: a reading can sit comfortably inside the padding while still pushing the bounds a
+ * rebuild would compute outward. The test caught it -- accumulating gave a 41x42 grid where
+ * rebuilding gave 44x42, and 329 cells disagreed. Track what buildGrid tracks.
+ */
+interface PointBounds { minX: number; maxX: number; minY: number; maxY: number }
+
+function boundsOf(readings: SensorReading[]): PointBounds | null {
+  let b: PointBounds | null = null
+  for (const r of readings) {
+    for (const [x, y] of extentPoints(r)) {
+      if (!b) b = { minX: x, maxX: x, minY: y, maxY: y }
+      else {
+        if (x < b.minX) b.minX = x
+        if (x > b.maxX) b.maxX = x
+        if (y < b.minY) b.minY = y
+        if (y > b.maxY) b.maxY = y
+      }
+    }
+  }
+  return b
+}
+
+function within(b: PointBounds, r: SensorReading): boolean {
+  return extentPoints(r).every(([x, y]) => x >= b.minX && x <= b.maxX && y >= b.minY && y <= b.maxY)
+}
+
+/**
+ * Fold new readings into an existing grid, rebuilding only when it cannot be avoided.
+ *
+ * Rebuilds when there is no grid yet, when a reading has appeared that the current bounds do
+ * not cover (a sensor moved, or one was added), or when a reading that had been integrated
+ * is no longer in the list -- a purge or a changed filter, where carrying the old evidence
+ * forward would be wrong.
+ *
+ * Readings without a `key` cannot be tracked, so their presence forces the full rebuild the
+ * caller would have done anyway. Nothing silently half-updates.
+ */
+export function extendGrid(
+  prev: IncrementalGrid | null,
+  readings: SensorReading[],
+  res = 0.5,
+  options: Partial<GridOptions> = {},
+): IncrementalGrid | null {
+  if (readings.length === 0) return null
+
+  const rebuild = (): IncrementalGrid | null => {
+    const grid = buildGrid(readings, res, options)
+    const bounds = boundsOf(readings)
+    if (!grid || !bounds) return null
+    return { grid, bounds, consumed: new Set(readings.map((r, i) => r.key ?? `#${i}`)) }
+  }
+
+  if (!prev || readings.some((r) => !r.key)) return rebuild()
+
+  const keys = new Set(readings.map((r) => r.key!))
+  // A reading we had integrated is gone: a purge, or a changed filter. Carrying its evidence
+  // forward would draw something the operator has explicitly cleared.
+  if ([...prev.consumed].some((k) => !keys.has(k))) return rebuild()
+
+  const fresh = readings.filter((r) => !prev.consumed.has(r.key!))
+  if (fresh.length === 0) return prev
+  // Anything outside the cloud the grid was sized around changes the grid a rebuild would
+  // produce, so accumulating into the current one would no longer match.
+  if (fresh.some((r) => !within(prev.bounds, r))) return rebuild()
+
+  for (const r of fresh) {
+    integrateReading(prev.grid, r, options)
+    prev.consumed.add(r.key!)
+  }
+  return prev
 }
