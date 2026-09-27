@@ -234,6 +234,30 @@
       font-size: 16px;
     }
   }
+
+  /*
+   * Touch targets. Roughly eighteen controls across the app are 24 to 32px -- deleting a
+   * sensor, dismissing an alert, the per-zone actions -- which is fine for a mouse and not
+   * for a gloved finger on a tablet.
+   *
+   * Raised only on coarse pointers, and as a MINIMUM: a button already larger keeps its
+   * size, and the dense desktop layout is untouched. The alternative -- an invisible 44px
+   * hit area over a small button -- makes neighbouring targets overlap in tight rows, and a
+   * mis-tap on "supprimer" costs more than the density it would save.
+   */
+  @media (pointer: coarse) {
+    button:not([data-slot="sidebar-menu-sub-button"]),
+    [role="button"] {
+      min-height: 40px;
+      min-width: 40px;
+    }
+    /* Leaflet draws its own controls and expects to own their box. */
+    .leaflet-container button,
+    .leaflet-container [role="button"] {
+      min-height: 0;
+      min-width: 0;
+    }
+  }
 }
 
 /* Leaflet: keep below dialogs */

@@ -3,7 +3,7 @@
 import { backendOrigin } from "@/lib/backend"
 import { useState, useCallback, useEffect, useRef, useMemo } from "react"
 import Link from "next/link"
-import { useParams } from "next/navigation"
+import { useParams, useSearchParams } from "next/navigation"
 import {
   ArrowLeft, Radio, MapPin, Clock, Users, BarChart3, Plus,
   Pencil, Play, Pause, CheckCircle, Trash2, Building2, Home,
@@ -200,7 +200,14 @@ export default function MissionDetailPage() {
     }, 1500) // debounce 1.5s after last move
   }, [id])
 
-  const [activeTab, setActiveTab] = useState("live")
+  /*
+   * Honour ?tab= so the former standalone /history and /sensors URLs still land where their
+   * content now lives, instead of 404-ing or dumping the operator on Live.
+   */
+  const initialTab = useSearchParams().get("tab")
+  const [activeTab, setActiveTab] = useState(
+    ["live", "history", "sensors", "timelapse"].includes(initialTab ?? "") ? initialTab! : "live",
+  )
   const [showNotifConfig, setShowNotifConfig] = useState(false)
   /*
    * Default replay window: the mission's own span. Opening the tab on "the last hour" showed

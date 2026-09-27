@@ -283,11 +283,11 @@ export function BatteryChart() {
             Chargement...
           </div>
         ) : !hasData ? (
-          <div className="flex flex-col items-center justify-center py-6 text-xs text-muted-foreground gap-1">
-            <Battery className="h-8 w-8 text-muted-foreground/40" />
-            <p>{"Aucune donnee batterie pour cette periode"}</p>
-            <p className="text-xs">{"Les donnees s'accumuleront des que les capteurs transmettront."}</p>
-          </div>
+          // One line, not a panel. Two empty charts used to reserve most of a screen to say
+          // there was nothing to show -- on a page whose point is the sensor table above.
+          <p className="py-1 text-xs text-muted-foreground">
+            {"Aucune donnee sur cette periode. Elles s'accumuleront des que les capteurs transmettront."}
+          </p>
         ) : (
           <>
             {/* Device filter */}
