@@ -16,6 +16,7 @@ from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 
 from backend.database import get_db
+from backend.permissions import invalidate, permissions_for
 
 router = APIRouter(prefix="/auth", tags=["auth"])
 
@@ -141,10 +142,13 @@ class CreateUserRequest(BaseModel):
     username: str
     password: str
     role: str = "viewer"
+    # The UI has always sent this; until now the model dropped it silently.
+    permissions: dict | None = None
 
 class UpdateUserRequest(BaseModel):
     password: str | None = None
     role: str | None = None
+    permissions: dict | None = None
 
 # ---------------------------------------------------------------------------
 # Routes
@@ -218,7 +222,14 @@ async def me(request: Request):
     user = getattr(request.state, "user", None)
     if not user:
         raise HTTPException(401, "Not authenticated")
-    return {"id": user["sub"], "username": user["username"], "role": user["role"]}
+    perms = await permissions_for(int(user["sub"]))
+    # The UI hides what it must from these; the middleware is what actually enforces them.
+    return {
+        "id": user["sub"],
+        "username": user["username"],
+        "role": user["role"],
+        "permissions": perms,
+    }
 
 
 # ---------------------------------------------------------------------------
@@ -231,9 +242,20 @@ async def list_users(request: Request):
     if not user or user.get("role") != "admin":
         raise HTTPException(403, "Admin only")
     db = await get_db()
-    cursor = await db.execute("SELECT id, username, role, created_at, last_login FROM users ORDER BY id")
+    cursor = await db.execute(
+        "SELECT id, username, role, permissions, created_at, last_login FROM users ORDER BY id"
+    )
     rows = await cursor.fetchall()
-    return [dict(r) for r in rows]
+    out = []
+    for r in rows:
+        d = dict(r)
+        raw = d.pop("permissions", None)
+        try:
+            d["permissions"] = json.loads(raw) if raw else None
+        except (TypeError, ValueError):
+            d["permissions"] = None
+        out.append(d)
+    return out
 
 
 @router.post("/users")
@@ -255,9 +277,11 @@ async def create_user(req: CreateUserRequest, request: Request):
         raise HTTPException(409, "Username already exists")
 
     pw_hash = _hash_password(req.password)
+    # An admin is granted by role, so stored flags would only ever go stale against it.
+    perms_json = json.dumps(req.permissions) if (req.permissions and req.role != "admin") else None
     await db.execute(
-        "INSERT INTO users (username, password_hash, role) VALUES (?, ?, ?)",
-        (req.username, pw_hash, req.role)
+        "INSERT INTO users (username, password_hash, role, permissions) VALUES (?, ?, ?, ?)",
+        (req.username, pw_hash, req.role, perms_json)
     )
     await db.commit()
     return {"ok": True, "message": f"User '{req.username}' created"}
@@ -287,7 +311,16 @@ async def update_user(user_id: int, req: UpdateUserRequest, request: Request):
         )
     if req.role:
         await db.execute("UPDATE users SET role = ? WHERE id = ?", (req.role, user_id))
+        if req.role == "admin":
+            await db.execute("UPDATE users SET permissions = NULL WHERE id = ?", (user_id,))
+    if req.permissions is not None:
+        await db.execute(
+            "UPDATE users SET permissions = ? WHERE id = ?",
+            (json.dumps(req.permissions), user_id),
+        )
     await db.commit()
+    # Rights are read from the DB behind a short cache, so a revocation must not wait for it.
+    invalidate(user_id)
     return {"ok": True}
 
 

@@ -8,6 +8,7 @@ from starlette.responses import JSONResponse
 
 from backend.routers.auth import jwt_decode
 from backend.security import is_allowed_origin
+from backend.permissions import allows, required_permissions
 
 
 def _cors_response(request: Request, data: dict, status_code: int) -> JSONResponse:
@@ -114,5 +115,21 @@ class AuthMiddleware(BaseHTTPMiddleware):
 
         if is_admin_route and payload.get("role") != "admin":
             return _cors_response(request, {"detail": "Admin access required"}, 403)
+
+        # Per-user permissions. Until now the 17 switches in the interface only hid buttons:
+        # anyone who could call the API kept every right the UI pretended to have removed.
+        if payload.get("role") != "admin":
+            needed = required_permissions(method, path)
+            if needed:
+                try:
+                    user_id = int(payload.get("sub"))
+                except (TypeError, ValueError):
+                    return _cors_response(request, {"detail": "Invalid session"}, 401)
+                if not await allows(user_id, needed):
+                    return _cors_response(
+                        request,
+                        {"detail": f"Permission requise : {' ou '.join(needed)}"},
+                        403,
+                    )
 
         return await call_next(request)

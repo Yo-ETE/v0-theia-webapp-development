@@ -481,4 +481,12 @@ async def init_tables(db: aiosqlite.Connection):
     except Exception as e:
         print(f"[THEIA] Device name migration skipped: {e}")
 
+    # Per-user permissions (JSON). The interface has offered 17 switches per user for a
+    # long time, but there was nowhere to put them: the column did not exist, so every
+    # account was simply admin-or-viewer. NULL means "use the role default".
+    try:
+        await db.execute("ALTER TABLE users ADD COLUMN permissions TEXT DEFAULT NULL")
+    except Exception:
+        pass
+
     await db.commit()
