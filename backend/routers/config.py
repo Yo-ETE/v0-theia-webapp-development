@@ -12,10 +12,11 @@ import shutil
 import time
 from datetime import datetime
 from fastapi import APIRouter, Request
-from fastapi.responses import JSONResponse
+from fastapi.responses import FileResponse, JSONResponse
 
+from backend.database import get_db
 from backend.security import (
-    valid_backup_filename, valid_git_ref, valid_host, valid_ssid,
+    is_within, valid_backup_filename, valid_git_ref, valid_host, valid_ssid,
     valid_timezone, valid_wpa_passphrase, UPDATE_LOCK,
 )
 
@@ -981,15 +982,51 @@ async def create_backup():
         filename = f"theia_backup_{ts}.tar.gz"
         filepath = os.path.join(BACKUP_DIR, filename)
 
+        # Fold the write-ahead log into the database first. The API keeps the DB open in WAL
+        # mode, so tar would otherwise archive theia.db together with a separate -wal that is
+        # mid-transaction: recoverable in most cases, but not something to bet a mission
+        # history on. After a TRUNCATE checkpoint the main file is self-contained.
+        try:
+            db = await get_db()
+            await db.execute("PRAGMA wal_checkpoint(TRUNCATE)")
+        except Exception as e:
+            logger.warning("Backup: WAL checkpoint failed (%s), archiving anyway", e)
+
         def _create():
             subprocess.run(
                 ["tar", "-czf", filepath, "-C", os.path.dirname(DATA_DIR), os.path.basename(DATA_DIR)],
                 check=True, timeout=120
             )
         await asyncio.get_event_loop().run_in_executor(None, _create)
-        return {"status": "success", "filename": filename, "message": f"Sauvegarde creee: {filename}"}
+        size = os.path.getsize(filepath) if os.path.exists(filepath) else 0
+        return {
+            "status": "success",
+            "filename": filename,
+            "size": size,
+            # A backup that only exists on the card it is meant to protect is not a backup.
+            "message": f"Sauvegarde creee: {filename}. Telechargez-la hors du Raspberry.",
+        }
     except Exception as e:
         return {"status": "error", "message": str(e)}
+
+
+@router.get("/backups/download/{filename}")
+async def download_backup(filename: str):
+    """
+    Send a backup file to the browser.
+
+    Without this the archive only ever existed in /opt/theia/backups -- on the very SD card
+    it is meant to protect. The only way off the hub was scp, which needs a terminal and SSH
+    access the operator may not have in the field.
+    """
+    if not valid_backup_filename(filename):
+        return JSONResponse({"status": "error", "message": "Nom de sauvegarde invalide"}, status_code=400)
+    filepath = os.path.join(BACKUP_DIR, filename)
+    # valid_backup_filename already refuses separators and traversal; this is the belt to
+    # that pair of braces, in case the validator is ever loosened.
+    if not is_within(BACKUP_DIR, filepath) or not os.path.isfile(filepath):
+        return JSONResponse({"status": "error", "message": "Sauvegarde introuvable"}, status_code=404)
+    return FileResponse(filepath, media_type="application/gzip", filename=filename)
 
 
 @router.post("/backups/restore")

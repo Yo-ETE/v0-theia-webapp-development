@@ -1613,7 +1613,19 @@ export default function AdminPage() {
                             </p>
                           </div>
                           <div className="flex gap-1">
-                            <Button size="icon" variant="ghost" className="h-7 w-7 text-primary"
+                            {/* A backup that never leaves the SD card does not protect against
+                                the SD card. Until now the only way off the hub was scp. */}
+                            <Button asChild size="icon" variant="ghost" className="min-h-[36px] min-w-[36px] text-primary">
+                              <a
+                                href={`${backendOrigin()}/api/config/backups/download/${encodeURIComponent(backup.filename)}`}
+                                download={backup.filename}
+                                title="Telecharger hors du Raspberry"
+                                aria-label={`Telecharger ${backup.filename}`}
+                              >
+                                <Download className="h-3 w-3" />
+                              </a>
+                            </Button>
+                            <Button size="icon" variant="ghost" className="min-h-[36px] min-w-[36px] text-primary"
                               onClick={() => handleRestoreBackup(backup.filename)} title="Restaurer">
                               <RotateCcw className="h-3 w-3" />
                             </Button>
