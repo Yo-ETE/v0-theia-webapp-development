@@ -202,6 +202,24 @@ export default function MissionDetailPage() {
 
   const [activeTab, setActiveTab] = useState("live")
   const [showNotifConfig, setShowNotifConfig] = useState(false)
+  /*
+   * Default replay window: the mission's own span. Opening the tab on "the last hour" showed
+   * an empty replay for any mission that is not running right now, which reads as broken.
+   * Database timestamps are already local wall-clock time, so the string is reshaped rather
+   * than parsed -- no timezone conversion, nothing to get wrong.
+   */
+  const replayRange = useMemo(() => {
+    const toInput = (ts?: string | null) => {
+      if (!ts) return undefined
+      const s = ts.replace(" ", "T")
+      return s.length >= 16 ? s.slice(0, 16) : undefined
+    }
+    const stamps = (events ?? []).map((e) => e.timestamp).filter(Boolean).sort()
+    return {
+      from: toInput(mission?.started_at) ?? toInput(stamps[0]),
+      to: toInput(mission?.ended_at) ?? toInput(stamps[stamps.length - 1]),
+    }
+  }, [mission?.started_at, mission?.ended_at, events])
   /** Whether this mission will actually send anything: rules present, enabled, with a channel. */
   const notifRulesActive = useMemo(() => {
     const raw = mission?.notification_config
@@ -1679,6 +1697,8 @@ export default function MissionDetailPage() {
                       <DetectionTimelapse
                         missionId={id}
                         onDetection={handleReplayDetection}
+                        defaultFrom={replayRange.from}
+                        defaultTo={replayRange.to}
                       />
                     </div>
                   )}
@@ -1830,6 +1850,8 @@ export default function MissionDetailPage() {
                       <DetectionTimelapse
                         missionId={id}
                         onDetection={handleReplayDetection}
+                        defaultFrom={replayRange.from}
+                        defaultTo={replayRange.to}
                       />
                     </div>
                   )}
@@ -1936,6 +1958,8 @@ export default function MissionDetailPage() {
                       <DetectionTimelapse
                         missionId={id}
                         onDetection={handleReplayDetection}
+                        defaultFrom={replayRange.from}
+                        defaultTo={replayRange.to}
                       />
                     </div>
                   )}

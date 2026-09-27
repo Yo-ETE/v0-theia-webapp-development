@@ -9,20 +9,31 @@ import type { DetectionEvent, LiveDetection } from "@/lib/types"
 
 /** 
  * Parse a timestamp string from the database as UTC.
- * The backend stores timestamps in UTC.
+ * The backend does NOT store timestamps in UTC.
+ *
+ * events.timestamp is written by SQLite as datetime('now','localtime'), so it is already the
+ * hub's wall-clock time. Parsing it as UTC added two hours in summer: asking the replay for
+ * 17:00-20:00 returned 125 events instead of 26, because it was really showing 15:00-18:00.
+ * Silently, and with the timeline labelled with the shifted times, so nothing looked wrong --
+ * you would review the wrong stretch of an operation and never know.
+ *
+ * Parsed as local time, which is what it is. Range filtering compares the strings directly
+ * (see below): same format, same clock, no conversion to get wrong.
  */
-function parseAsUTC(ts: string): Date {
+function parseLocal(ts: string): Date {
   if (!ts) return new Date(NaN)
-  if (ts.includes("Z") || /[+-]\d{2}:\d{2}$/.test(ts)) {
-    return new Date(ts)
-  }
-  return new Date(ts.replace(" ", "T") + "Z")
+  // Strip any timezone marker the API may add; the value itself is local either way.
+  const cleaned = ts.replace("Z", "").replace(/[+-]\d{2}:\d{2}$/, "").replace(" ", "T")
+  return new Date(cleaned)
 }
 
 // LiveDetection is imported from @/lib/types
 
 interface DetectionTimelapseProps {
   missionId: string
+  /** "YYYY-MM-DDTHH:mm", the mission's own span when the caller knows it. */
+  defaultFrom?: string
+  defaultTo?: string
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   onDetection: (detections: Record<string, any>) => void
   onClose?: () => void
@@ -68,7 +79,7 @@ function buildActivityHistogram(events: DetectionEvent[], slots: number = 48): {
   if (!events.length) return []
   
   // Get time range (UTC)
-  const timestamps = events.map(e => parseAsUTC(e.timestamp).getTime()).filter(t => !isNaN(t))
+  const timestamps = events.map(e => parseLocal(e.timestamp).getTime()).filter(t => !isNaN(t))
   if (!timestamps.length) return []
   
   const minTs = Math.min(...timestamps)
@@ -90,22 +101,27 @@ function buildActivityHistogram(events: DetectionEvent[], slots: number = 48): {
     return {
       slot: i,
       count,
-      label: slotTs.toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit", timeZone: "Europe/Paris" }),
+      label: slotTs.toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit" }),
       pct: (count / maxCount) * 100,
     }
   })
 }
 
-export function DetectionTimelapse({ missionId, onDetection, onClose }: DetectionTimelapseProps) {
-  // Time range: default to last 1 hour (local time for datetime-local inputs)
-  const now = new Date()
-  const oneHourAgo = new Date(now.getTime() - 3600 * 1000)
+export function DetectionTimelapse({ missionId, onDetection, onClose, defaultFrom, defaultTo }: DetectionTimelapseProps) {
   const toLocalDatetime = (d: Date) => {
     const pad = (n: number) => String(n).padStart(2, "0")
     return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`
   }
-  const [fromTime, setFromTime] = useState(toLocalDatetime(oneHourAgo))
-  const [toTime, setToTime] = useState(toLocalDatetime(now))
+  /*
+   * Default to the mission's own span, not to the last hour. A mission that ran four days ago
+   * opened on an empty hour with nothing to say why -- the replay looked broken when it was
+   * simply pointed at a window containing no detections. Falls back to the last hour only
+   * when the caller has nothing better to offer.
+   */
+  const now = new Date()
+  const fallbackFrom = new Date(now.getTime() - 3600 * 1000)
+  const [fromTime, setFromTime] = useState(defaultFrom ?? toLocalDatetime(fallbackFrom))
+  const [toTime, setToTime] = useState(defaultTo ?? toLocalDatetime(now))
   const [loaded, setLoaded] = useState(false)
 
   // Playback state
@@ -134,14 +150,15 @@ export function DetectionTimelapse({ missionId, onDetection, onClose }: Detectio
     if (!rawEvents) return []
     // Convert local datetime-local input to UTC timestamp for comparison
     // datetime-local input is in browser local time (Paris)
-    const fromMs = new Date(fromTime).getTime()
-    const toMs = new Date(toTime + ":59").getTime()
+    // "YYYY-MM-DDTHH:mm" from the input, "YYYY-MM-DD HH:MM:SS" from the database: same clock,
+    // same ordering, so comparing the strings is exact and cannot drift with a timezone.
+    const fromStr = fromTime.replace("T", " ") + ":00"
+    const toStr = toTime.replace("T", " ") + ":59"
     return rawEvents
       .filter(e => {
         if (!e.timestamp) return false
-        // Parse DB timestamp as UTC
-        const evtMs = parseAsUTC(e.timestamp).getTime()
-        return evtMs >= fromMs && evtMs <= toMs
+        const ts = e.timestamp.replace("T", " ").replace("Z", "")
+        return ts >= fromStr && ts <= toStr
       })
       .slice()
       .reverse()
@@ -171,7 +188,7 @@ export function DetectionTimelapse({ missionId, onDetection, onClose }: Detectio
     }
     const ev = events[currentIdx]
     const det = parseEventToDetection(ev)
-    const currentTsMs = parseAsUTC(ev.timestamp).getTime()
+    const currentTsMs = parseLocal(ev.timestamp).getTime()
 
     // Update rolling window with current detection
     if (det) {
@@ -228,7 +245,7 @@ export function DetectionTimelapse({ missionId, onDetection, onClose }: Detectio
   }, [onDetection])
 
   const currentEvent = events[currentIdx]
-  const currentTs = currentEvent?.timestamp ? parseAsUTC(currentEvent.timestamp) : null
+  const currentTs = currentEvent?.timestamp ? parseLocal(currentEvent.timestamp) : null
 
   const handleLoad = useCallback(() => {
     setLoaded(true)
@@ -242,7 +259,7 @@ export function DetectionTimelapse({ missionId, onDetection, onClose }: Detectio
     <div className="rounded-lg border border-border/50 bg-card p-4">
       {/* Header */}
       <div className="flex items-center justify-between mb-4">
-        <h3 className="text-sm font-semibold text-foreground font-mono tracking-wide">TIMELAPSE</h3>
+        <h3 className="text-sm font-semibold text-foreground font-mono tracking-wide">REJEU</h3>
         {onClose && (
           <Button variant="ghost" size="sm" className="h-7 w-7 p-0" onClick={onClose}>
             <X className="h-4 w-4" />
@@ -253,7 +270,7 @@ export function DetectionTimelapse({ missionId, onDetection, onClose }: Detectio
       {/* Time range selector */}
       <div className="flex flex-col gap-2 mb-4 sm:flex-row sm:items-end">
         <div className="flex-1 min-w-0">
-          <label className="text-xs text-muted-foreground font-mono block mb-1">FROM</label>
+          <label className="text-xs text-muted-foreground font-mono block mb-1">DEBUT</label>
           <input
             type="datetime-local"
             value={fromTime}
@@ -262,7 +279,7 @@ export function DetectionTimelapse({ missionId, onDetection, onClose }: Detectio
           />
         </div>
         <div className="flex-1 min-w-0">
-          <label className="text-xs text-muted-foreground font-mono block mb-1">TO</label>
+          <label className="text-xs text-muted-foreground font-mono block mb-1">FIN</label>
           <input
             type="datetime-local"
             value={toTime}
@@ -271,7 +288,7 @@ export function DetectionTimelapse({ missionId, onDetection, onClose }: Detectio
           />
         </div>
         <Button size="sm" className="h-10 text-xs px-4 shrink-0 w-full sm:w-auto" onClick={handleLoad} disabled={isLoading}>
-          {isLoading ? "..." : loaded ? "Reload" : "Load"}
+          {isLoading ? "..." : loaded ? "Recharger" : "Charger"}
         </Button>
       </div>
 
@@ -286,7 +303,7 @@ export function DetectionTimelapse({ missionId, onDetection, onClose }: Detectio
             return (
               <div className="mb-3">
                 <div className="flex items-center justify-between mb-1">
-                  <span className="text-xs font-mono text-muted-foreground">ACTIVITY</span>
+                  <span className="text-xs font-mono text-muted-foreground">ACTIVITE</span>
                   <span className="text-xs font-mono text-muted-foreground">
                     {events.length} detections
                   </span>
@@ -324,7 +341,7 @@ export function DetectionTimelapse({ missionId, onDetection, onClose }: Detectio
                 {events[0]?.timestamp ? formatTime(events[0].timestamp) : "--"}
               </span>
               <span className="text-xs font-mono font-bold text-primary">
-                {currentTs ? currentTs.toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit", second: "2-digit", timeZone: "Europe/Paris" }) : "--"}
+                {currentTs ? currentTs.toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit", second: "2-digit" }) : "--"}
               </span>
               <span className="text-xs font-mono text-muted-foreground">
                 {events[events.length - 1]?.timestamp ? formatTime(events[events.length - 1].timestamp) : "--"}
