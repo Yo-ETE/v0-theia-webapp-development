@@ -89,14 +89,44 @@ async def send_sms_twilio(account_sid: str, auth_token: str, from_number: str, t
     return ok
 
 
-async def send_ntfy(topic: str, title: str, message: str, server: str = "https://ntfy.sh") -> bool:
-    """Send notification via ntfy.sh (or self-hosted ntfy)."""
+def _header_value(value: str) -> str:
+    """
+    HTTP headers are ASCII. Mission names are not -- "Forcene" is fine, "Operation" with an
+    accent is not, and urllib encodes headers as latin-1, so anything outside it raises
+    before the request is even sent. RFC 2047 is what ntfy documents for this.
+    """
+    if all(ord(c) < 128 for c in value):
+        return value
+    import base64
+    return "=?UTF-8?B?" + base64.b64encode(value.encode("utf-8")).decode("ascii") + "?="
+
+
+async def send_ntfy(
+    topic: str,
+    title: str,
+    message: str,
+    server: str = "https://ntfy.sh",
+    priority: str = "high",
+    tags: str = "rotating_light",
+) -> bool:
+    """
+    Send notification via ntfy.sh (or self-hosted ntfy).
+
+    Priority defaults to high: these are detections during an incident, and at the default
+    priority iOS is free to batch them quietly, which is the opposite of the point. It is
+    still below `urgent`, which bypasses Do Not Disturb -- that is the operator's call to
+    make on their phone, not ours to force.
+    """
     import urllib.parse
     if urllib.parse.urlparse(server).scheme not in ("http", "https"):
         print("[THEIA-SMS] ntfy server must be http(s)")
         return False
     url = f"{server.rstrip('/')}/{urllib.parse.quote(topic, safe='')}"
-    status, body = await _http_post(url, data=message, headers={"Title": title})
+    status, body = await _http_post(url, data=message, headers={
+        "Title": _header_value(title),
+        "Priority": priority,
+        "Tags": tags,
+    })
     ok = 200 <= status < 300
     if ok:
         print(f"[THEIA-SMS] ntfy notification sent to {topic}")
@@ -105,7 +135,7 @@ async def send_ntfy(topic: str, title: str, message: str, server: str = "https:/
     return ok
 
 
-async def send_sms(message: str, config: dict) -> bool:
+async def send_sms(message: str, config: dict, title: str = "THEIA") -> bool:
     """
     Send SMS/notification using configured provider.
     config should contain:
@@ -136,9 +166,12 @@ async def send_sms(message: str, config: dict) -> bool:
     elif provider == "ntfy":
         return await send_ntfy(
             topic=config.get("ntfy_topic", "theia"),
-            title="THEIA Detection",
+            # The mission name, not a constant: on a lock screen "THEIA Detection" is the
+            # same line whichever operation it came from.
+            title=title,
             message=message,
             server=config.get("ntfy_server", "https://ntfy.sh"),
+            priority=str(config.get("ntfy_priority", "high")),
         )
     else:
         print(f"[THEIA-SMS] Unknown provider: {provider}")

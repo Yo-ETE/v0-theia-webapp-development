@@ -208,7 +208,7 @@ class PortReader:
                     sms_row = await cursor2.fetchone()
                     if sms_row:
                         sms_config = json.loads(sms_row["value"]) if isinstance(sms_row["value"], str) else sms_row["value"]
-                        await send_sms(msg, sms_config)
+                        await send_sms(msg, sms_config, title=f"THEIA - {mission_name}")
                 except Exception as e:
                     print(f"[THEIA-NOTIF] SMS error: {e}")
 
