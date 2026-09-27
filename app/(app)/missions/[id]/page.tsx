@@ -2494,9 +2494,11 @@ export default function MissionDetailPage() {
           {activeTab === "history" && (
             <Card className="border-border/50 bg-card">
               <CardHeader className="pb-2">
-                <div className="flex items-center justify-between">
-                  <CardTitle className="text-sm">Events ({floorFilteredEvents.length})</CardTitle>
-                  <div className="flex items-center gap-2">
+                {/* Five buttons in a row that could not wrap: on a phone "Purger" ran off the
+                    side of the page. The title and the toolbar now stack, and the buttons wrap. */}
+                <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+                  <CardTitle className="text-sm">Evenements ({floorFilteredEvents.length})</CardTitle>
+                  <div className="flex items-center gap-2 flex-wrap">
                   {sensorPlacements.length > 0 && (
                     <Button
                       variant={showFov ? "default" : "outline"}

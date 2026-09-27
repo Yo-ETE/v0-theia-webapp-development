@@ -729,7 +729,11 @@ export default function AdminPage() {
     <>
       <TopHeader title="Configuration" description="Administration reseau et systeme du Raspberry Pi" />
 <main className="flex-1 overflow-auto p-4">
-<div className="grid gap-4 sm:gap-6 lg:grid-cols-2">
+{/* [&>*]:min-w-0 is the systemic half of this. A grid item defaults to min-width:auto,
+              so one unbreakable string -- an IP, an SSID, a commit hash -- stretches its card
+              past the column and drags the page sideways with it. Clamping every child to the
+              column turns that into a truncation instead of an overflow. */}
+          <div className="grid gap-4 sm:gap-6 lg:grid-cols-2 [&>*]:min-w-0">
 
           {/* ── Connection Status ── */}
           <Card className="border-border/50 bg-card">
@@ -943,7 +947,7 @@ export default function AdminPage() {
                       Notez-le maintenant : sans reseau, c&apos;est ce mot de passe qui permet de rejoindre le hub.
                       Utilise aussi bien par le demarrage automatique que par le bouton ci-dessus.
                     </p>
-                    <div className="flex items-center gap-2">
+                    <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
                       <Input
                         type="text"
                         value={hotspotPwDraft}
@@ -1134,7 +1138,7 @@ export default function AdminPage() {
                     </div>
                   )}
 
-                  <div className="flex gap-2">
+                  <div className="flex gap-2 flex-wrap">
                     {tsStatus.running ? (
                       <Button variant="outline" size="sm" onClick={handleTsDown} disabled={!!tsAction} className="gap-1.5 bg-transparent">
                         {tsAction === "down" ? <Loader2 className="h-3 w-3 animate-spin" /> : <PowerOff className="h-3 w-3" />}
@@ -1666,7 +1670,7 @@ export default function AdminPage() {
                               {backup.size > 0 ? `${(backup.size / 1024 / 1024).toFixed(2)} Mo` : "Vide"}
                             </p>
                           </div>
-                          <div className="flex gap-1">
+                          <div className="flex gap-1 shrink-0">
                             {/* A backup that never leaves the SD card does not protect against
                                 the SD card. Until now the only way off the hub was scp. */}
                             <Button asChild size="icon" variant="ghost" className="min-h-[36px] min-w-[36px] text-primary">
@@ -1717,7 +1721,7 @@ export default function AdminPage() {
                   <AlertDescription className="text-warning text-xs">{systemMessage}</AlertDescription>
                 </Alert>
               )}
-              <div className="flex gap-3">
+              <div className="flex flex-col gap-3 sm:flex-row">
                 <Button onClick={handleReboot} disabled={isRebooting || isShuttingDown} variant="outline" className="gap-2 bg-transparent flex-1">
                   {isRebooting ? <Loader2 className="h-4 w-4 animate-spin" /> : <RefreshCw className="h-4 w-4" />}
                   Redemarrer
