@@ -141,23 +141,42 @@ install_arduino_cli() {
 # ============================================
 # STEP 2: Node.js (via NodeSource) + pnpm
 # ============================================
+# Does node actually RUN, or does it merely report a version?
+#
+# Seen on the hub 2026-09-27: `node -v` printed v20.20.2 while every script died with
+# "Failed to load the startup snapshot because it was built with Node.js version
+# 20.20.21.3.1-e00v73@" -- a corrupted install, most likely from an unclean shutdown.
+# theia-web restart-looped 87 times. The version check below passed it as healthy, so
+# re-running install.sh would have skipped straight past the broken runtime. Same trap as
+# arduino-cli, same fix: execute something and see.
+node_works() {
+    command -v node &>/dev/null && node -e "process.exit(0)" &>/dev/null
+}
+
 install_nodejs() {
-    if command -v node &>/dev/null; then
+    local need_install=1
+    if node_works; then
         local current_version
         current_version=$(node -v | cut -d'v' -f2 | cut -d'.' -f1)
         if [[ "$current_version" -ge "$NODE_MAJOR" ]]; then
             ok "Node.js $(node -v) already installed"
+            need_install=0
         else
-            info "Installing Node.js ${NODE_MAJOR}.x..."
-            curl -fsSL "https://deb.nodesource.com/setup_${NODE_MAJOR}.x" | bash -
-            apt-get install -y -qq nodejs
-            ok "Node.js $(node -v) installed"
+            info "Node.js $(node -v) is older than ${NODE_MAJOR}.x"
         fi
-    else
+    elif command -v node &>/dev/null; then
+        warn "Node.js reports $(node -v) but cannot run a script -- reinstalling"
+    fi
+
+    if [[ "$need_install" -eq 1 ]]; then
         info "Installing Node.js ${NODE_MAJOR}.x..."
         curl -fsSL "https://deb.nodesource.com/setup_${NODE_MAJOR}.x" | bash -
-        apt-get install -y -qq nodejs
-        ok "Node.js $(node -v) installed"
+        apt-get install -y -qq --reinstall nodejs
+        if node_works; then
+            ok "Node.js $(node -v) installed"
+        else
+            warn "Node.js still cannot run a script. theia-web will restart-loop. Check: node -e 'console.log(1)'"
+        fi
     fi
 
     # Install pnpm (required for Next.js 16 lockfile handling)
