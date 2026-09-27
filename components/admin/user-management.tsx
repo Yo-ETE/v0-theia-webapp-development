@@ -547,7 +547,7 @@ export function UserManagement() {
                         <button
                           onClick={() => handleDelete(u.id)}
                           disabled={deleting === u.id}
-                          className="flex items-center justify-center h-7 w-7 rounded text-muted-foreground hover:text-destructive hover:bg-destructive/10 transition-colors"
+                          className="flex items-center justify-center min-h-[40px] min-w-[40px] rounded text-muted-foreground hover:text-destructive hover:bg-destructive/10 transition-colors"
                           title="Supprimer"
                         >
                           {deleting === u.id ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Trash2 className="h-3.5 w-3.5" />}

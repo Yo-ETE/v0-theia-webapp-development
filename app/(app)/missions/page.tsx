@@ -274,7 +274,7 @@ export default function MissionsPage() {
 
   return (
     <>
-      <TopHeader title="Missions" description="Manage surveillance operations" />
+      <TopHeader title="Missions" description="Gerer les operations de surveillance" />
       <main className="flex-1 overflow-auto p-4">
         <div className="flex flex-col gap-4">
           <div className="flex items-center justify-between">

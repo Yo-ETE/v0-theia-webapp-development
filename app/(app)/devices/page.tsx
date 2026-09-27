@@ -25,7 +25,7 @@ import { RssiChart } from "@/components/rssi-chart"
 import { FirmwareManager } from "@/components/admin/firmware-manager"
 import { useAuth } from "@/lib/auth-context"
 import { createDevice, deleteDevice, updateDevice } from "@/lib/api-client"
-import { deviceStatusConfig, formatRelativeLocal } from "@/lib/format"
+import { deviceStatusConfig, formatAgeFr, formatRelativeLocal, measuresAreStale } from "@/lib/format"
 import { cn } from "@/lib/utils"
 
 export default function DevicesPage() {
@@ -339,7 +339,7 @@ export default function DevicesPage() {
 
   return (
     <>
-      <TopHeader title="Devices" description="TX/RX device management and enrollment" />
+      <TopHeader title="Capteurs" description="Gestion et enrolement des modules TX/RX" />
       <main className="flex-1 overflow-auto p-4">
         <div className="flex flex-col gap-4">
           {/* Stats + Enroll button */}
@@ -353,12 +353,12 @@ export default function DevicesPage() {
               <div className="flex items-center gap-1.5">
                 <span className="h-2 w-2 rounded-full bg-success" />
                 <span className="text-sm font-medium text-success">{onlineCount}</span>
-                <span className="text-xs text-muted-foreground">Online</span>
+                <span className="text-xs text-muted-foreground">En ligne</span>
               </div>
               <div className="flex items-center gap-1.5">
                 <span className="h-2 w-2 rounded-full bg-destructive" />
                 <span className="text-sm font-medium text-destructive">{offlineCount}</span>
-                <span className="text-xs text-muted-foreground">Offline</span>
+                <span className="text-xs text-muted-foreground">Hors ligne</span>
               </div>
               {disabledCount > 0 && (
                 <div className="flex items-center gap-1.5">
@@ -389,7 +389,7 @@ export default function DevicesPage() {
 
           <Card className="border-border/50 bg-card">
             <CardHeader className="pb-2">
-              <CardTitle className="text-sm">All Devices</CardTitle>
+              <CardTitle className="text-sm">Tous les capteurs</CardTitle>
             </CardHeader>
             <CardContent>
               {isLoading ? (
@@ -406,18 +406,23 @@ export default function DevicesPage() {
                 <Table>
                   <TableHeader>
                     <TableRow className="border-border/50">
-                      <TableHead className="text-xs">Name</TableHead>
-                      <TableHead className="text-xs">DEV EUI</TableHead>
-                      <TableHead className="text-xs">Port</TableHead>
-                      <TableHead className="text-xs">Sensor</TableHead>
-                      <TableHead className="text-xs">Status</TableHead>
-                      <TableHead className="text-xs">Mission</TableHead>
-                      <TableHead className="text-xs">Zone / Side</TableHead>
-                      <TableHead className="text-xs">RSSI</TableHead>
-                      <TableHead className="text-xs">Battery</TableHead>
-                      <TableHead className="text-xs">Last Seen</TableHead>
-                      <TableHead className="text-xs">Firmware</TableHead>
-                      <TableHead className="text-xs">Enabled</TableHead>
+                      {/* Thirteen columns with no breakpoints meant a sideways scroll on
+                          anything narrower than a laptop. The ones that answer "which sensor,
+                          is it alive, how much battery" stay at every width; identifiers and
+                          housekeeping appear as the screen allows. Nothing is removed -- the
+                          row still scrolls horizontally if you want the rest. */}
+                      <TableHead className="text-xs">Nom</TableHead>
+                      <TableHead className="text-xs hidden xl:table-cell">DEV EUI</TableHead>
+                      <TableHead className="text-xs hidden xl:table-cell">Port</TableHead>
+                      <TableHead className="text-xs hidden md:table-cell">Capteur</TableHead>
+                      <TableHead className="text-xs">Etat</TableHead>
+                      <TableHead className="text-xs hidden lg:table-cell">Mission</TableHead>
+                      <TableHead className="text-xs hidden lg:table-cell">Zone / Cote</TableHead>
+                      <TableHead className="text-xs hidden sm:table-cell">RSSI</TableHead>
+                      <TableHead className="text-xs">Batterie</TableHead>
+                      <TableHead className="text-xs">Derniere reception</TableHead>
+                      <TableHead className="text-xs hidden xl:table-cell">Firmware</TableHead>
+                      <TableHead className="text-xs hidden md:table-cell">Actif</TableHead>
                       <TableHead className="text-xs"></TableHead>
                     </TableRow>
                   </TableHeader>
@@ -448,13 +453,13 @@ export default function DevicesPage() {
                               )}
                             </div>
                           </TableCell>
-                          <TableCell className="font-mono text-xs text-muted-foreground">
+                          <TableCell className="font-mono text-xs text-muted-foreground hidden xl:table-cell">
                             {device.dev_eui ?? device.hw_id ?? "---"}
                           </TableCell>
-                          <TableCell className="font-mono text-xs text-muted-foreground">
+                          <TableCell className="font-mono text-xs text-muted-foreground hidden xl:table-cell">
                             {device.serial_port || "---"}
                           </TableCell>
-                          <TableCell>
+                          <TableCell className="hidden md:table-cell">
                             <Select
                               value={device.type ?? "microwave_tx"}
                               onValueChange={async (val) => {
@@ -481,10 +486,10 @@ export default function DevicesPage() {
                               {sCfg.label}
                             </Badge>
                           </TableCell>
-                          <TableCell className="text-xs text-foreground">
+                          <TableCell className="hidden lg:table-cell text-xs text-foreground">
                             {getMissionName(device.mission_id)}
                           </TableCell>
-                          <TableCell className="text-xs text-muted-foreground">
+                          <TableCell className="hidden lg:table-cell text-xs text-muted-foreground">
                             {device.zone_label ? (
                               <span>
                                 {device.zone_label}
@@ -492,12 +497,24 @@ export default function DevicesPage() {
                               </span>
                             ) : "---"}
                           </TableCell>
-                          <TableCell>
+                          {/* A sensor silent for months still had an RSSI and a voltage, and they
+                              used to be drawn exactly like a live one's: "TX04 4.24V" reads as
+                              ready to deploy when that node has not spoken since May. Past an
+                              hour the numbers are history, so they are shown as history --
+                              dimmed, uncoloured, with the age in the tooltip. Nothing is hidden. */}
+                          <TableCell className="hidden sm:table-cell">
                             {device.rssi != null && device.rssi !== 0 ? (
-                              <span className={cn(
-                                "font-mono text-xs",
-                                device.rssi >= -70 ? "text-success" : device.rssi >= -85 ? "text-warning" : "text-destructive"
-                              )}>
+                              <span
+                                className={cn(
+                                  "font-mono text-xs",
+                                  measuresAreStale(device.last_seen)
+                                    ? "text-muted-foreground/60 line-through decoration-muted-foreground/40"
+                                    : device.rssi >= -70 ? "text-success" : device.rssi >= -85 ? "text-warning" : "text-destructive"
+                                )}
+                                title={measuresAreStale(device.last_seen)
+                                  ? `Derniere mesure il y a ${formatAgeFr(device.last_seen!)}`
+                                  : undefined}
+                              >
                                 {Math.round(device.rssi)}dBm
                               </span>
                             ) : (
@@ -509,18 +526,38 @@ export default function DevicesPage() {
                               <div className="flex items-center gap-1">
                                 <Battery className={cn(
                                   "h-3 w-3",
-                                  Number(device.battery) > 4.0 ? "text-success" : Number(device.battery) > 3.5 ? "text-warning" : "text-destructive"
+                                  measuresAreStale(device.last_seen)
+                                    ? "text-muted-foreground/50"
+                                    : Number(device.battery) > 4.0 ? "text-success" : Number(device.battery) > 3.5 ? "text-warning" : "text-destructive"
                                 )} />
-                                <span className="font-mono text-xs">{Number(device.battery).toFixed(2)}V</span>
+                                <span
+                                  className={cn(
+                                    "font-mono text-xs",
+                                    measuresAreStale(device.last_seen) && "text-muted-foreground/60 line-through decoration-muted-foreground/40",
+                                  )}
+                                  title={measuresAreStale(device.last_seen)
+                                    ? `Derniere mesure il y a ${formatAgeFr(device.last_seen!)}`
+                                    : undefined}
+                                >
+                                  {Number(device.battery).toFixed(2)}V
+                                </span>
                               </div>
                             ) : (
                               <span className="text-xs text-muted-foreground">---</span>
                             )}
                           </TableCell>
-                          <TableCell className="text-xs text-muted-foreground">
-                            {device.last_seen ? formatRelativeLocal(device.last_seen) : "Never"}
+                          <TableCell className="text-xs">
+                            {device.last_seen ? (
+                              <span className={measuresAreStale(device.last_seen)
+                                ? "text-warning font-mono"
+                                : "text-muted-foreground"}>
+                                {formatRelativeLocal(device.last_seen)}
+                              </span>
+                            ) : (
+                              <span className="text-warning font-mono">jamais vu</span>
+                            )}
                           </TableCell>
-                          <TableCell>
+                          <TableCell className="hidden xl:table-cell">
                             <div className="flex items-center gap-2">
                               <span className="text-2xs text-muted-foreground font-mono">v{device.firmware_version || '1.0.0'}</span>
                               {device.needs_update ? (
@@ -528,7 +565,7 @@ export default function DevicesPage() {
                               ) : null}
                             </div>
                           </TableCell>
-                          <TableCell>
+                          <TableCell className="hidden md:table-cell">
                             <Switch
                               checked={!!device.enabled}
                               onCheckedChange={() => handleToggle(device.id, !!device.enabled)}
@@ -539,10 +576,12 @@ export default function DevicesPage() {
                           <TableCell>
                             <Button
                               variant="ghost" size="sm"
-                              className="h-6 w-6 p-0 text-destructive/60 hover:text-destructive"
+                              aria-label={`Supprimer ${device.name}`}
+                              title={`Supprimer ${device.name}`}
+                              className="min-h-[40px] min-w-[40px] p-0 text-destructive/60 hover:text-destructive"
                               onClick={() => handleDelete(device.id, device.name)}
                             >
-                              <Trash2 className="h-3 w-3" />
+                              <Trash2 className="h-4 w-4" />
                             </Button>
                           </TableCell>
                         </TableRow>
@@ -595,7 +634,8 @@ export default function DevicesPage() {
                           <Button
                             variant="outline"
                             size="sm"
-                            className="h-7 text-xs px-2 gap-1 border-destructive/30 text-destructive hover:bg-destructive/10"
+                            aria-label={`Supprimer definitivement ${device.name}`}
+                            className="min-h-[40px] text-xs px-3 gap-1 border-destructive/30 text-destructive hover:bg-destructive/10"
                             onClick={async () => {
                               if (!confirm(`Supprimer definitivement "${device.name}" ? Cette action est irreversible.`)) return
                               try { await deleteDevice(device.id, true) } catch (err) { console.error("[THEIA] Hard delete failed:", err) }
@@ -634,7 +674,7 @@ export default function DevicesPage() {
           </DialogHeader>
           <div className="flex flex-col gap-3 py-2">
             <div className="flex flex-col gap-1.5">
-              <Label className="text-xs">Device Name</Label>
+              <Label className="text-xs">Nom du capteur</Label>
               <Input
                 placeholder="TX-Facade-Nord"
                 value={enrollForm.name}
@@ -686,7 +726,7 @@ export default function DevicesPage() {
             </div>
           </div>
           <DialogFooter>
-            <Button variant="ghost" size="sm" onClick={() => setEnrollOpen(false)}>Cancel</Button>
+            <Button variant="ghost" size="sm" onClick={() => setEnrollOpen(false)}>Annuler</Button>
             <Button
               size="sm"
               onClick={handleEnroll}

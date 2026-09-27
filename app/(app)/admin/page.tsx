@@ -1683,7 +1683,7 @@ export default function AdminPage() {
                               onClick={() => handleRestoreBackup(backup.filename)} title="Restaurer">
                               <RotateCcw className="h-3 w-3" />
                             </Button>
-                            <Button size="icon" variant="ghost" className="h-7 w-7 text-destructive"
+                            <Button size="icon" variant="ghost" className="min-h-[40px] min-w-[40px] text-destructive"
                               onClick={() => handleDeleteBackup(backup.filename)} title="Supprimer">
                               <Trash2 className="h-3 w-3" />
                             </Button>

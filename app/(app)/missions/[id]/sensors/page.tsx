@@ -87,13 +87,13 @@ export default function SensorsPage() {
                 <Table>
                   <TableHeader>
                     <TableRow className="border-border/50">
-                      <TableHead className="text-xs">Name</TableHead>
+                      <TableHead className="text-xs">Nom</TableHead>
                       <TableHead className="text-xs">TX ID</TableHead>
-                      <TableHead className="text-xs">Status</TableHead>
+                      <TableHead className="text-xs">Etat</TableHead>
                       <TableHead className="text-xs">Zone / Side</TableHead>
                       <TableHead className="text-xs">RSSI</TableHead>
                       <TableHead className="text-xs">Battery</TableHead>
-                      <TableHead className="text-xs">Last Seen</TableHead>
+                      <TableHead className="text-xs">Derniere reception</TableHead>
                       <TableHead className="text-xs">Action</TableHead>
                     </TableRow>
                   </TableHeader>
@@ -182,10 +182,10 @@ export default function SensorsPage() {
                 <Table>
                   <TableHeader>
                     <TableRow className="border-border/50">
-                      <TableHead className="text-xs">Name</TableHead>
+                      <TableHead className="text-xs">Nom</TableHead>
                       <TableHead className="text-xs">TX ID</TableHead>
                       <TableHead className="text-xs">Type</TableHead>
-                      <TableHead className="text-xs">Status</TableHead>
+                      <TableHead className="text-xs">Etat</TableHead>
                       <TableHead className="text-xs">Action</TableHead>
                     </TableRow>
                   </TableHeader>

@@ -98,7 +98,8 @@ class PortReader:
         self._PRESENCE_WITHOUT_EMPTY_LIMIT = 200
         self._mission_status_cache: dict[str, tuple[str, float]] = {}
         self._device_last_seen: dict[str, float] = {}
-        self._notif_cooldown: dict[tuple[str, str], float] = {}
+        # (type, device) -> (when it was last filed, the severity it was filed at)
+        self._notif_cooldown: dict[tuple[str, str], tuple[float, str | None]] = {}
         self._detection_notif_ts: dict[tuple[str, str], float] = {}  # (mission_id, zone_id or device_name) -> ts
         self._bg_tasks: set[asyncio.Task] = set()
 
@@ -108,14 +109,22 @@ class PortReader:
         self._bg_tasks.add(task)
         task.add_done_callback(self._bg_tasks.discard)
 
+    # A condition that has not changed is not news. A battery that stays low used to file a
+    # fresh critical every hour, for as long as it stayed low: roughly 720 rows a month per
+    # sensor, in both `notifications` and `logs`. That buries the audit trail exactly where
+    # you go looking to reconstruct what happened. Re-notify when the STATE changes -- low
+    # becoming critical is worth knowing -- and otherwise only as a distant reminder.
+    NOTIF_STATE_REMINDER_S = 12 * 3600
+
     async def _create_notification(self, ntype: str, severity: str, device_id: str | None, device_name: str, message: str):
-        """Create a notification with 1-hour anti-spam per (type, device_id)."""
+        """File a notification, unless it repeats an unchanged condition."""
         cooldown_key = (ntype, device_id or device_name)
         now = time.time()
-        last = self._notif_cooldown.get(cooldown_key, 0)
-        if now - last < 3600:
+        last_at, last_severity = self._notif_cooldown.get(cooldown_key, (0.0, None))
+        changed = last_severity != severity
+        if not changed and now - last_at < self.NOTIF_STATE_REMINDER_S:
             return
-        self._notif_cooldown[cooldown_key] = now
+        self._notif_cooldown[cooldown_key] = (now, severity)
         try:
             db = await get_db()
             await db.execute(

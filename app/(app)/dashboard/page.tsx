@@ -149,7 +149,7 @@ export default function DashboardPage() {
   if (isLoading || !status) {
     return (
       <>
-        <TopHeader title="Dashboard" description="Vue d'ensemble du systeme" />
+        <TopHeader title="Tableau de bord" description="Vue d'ensemble du systeme" />
         <main className="flex-1 p-4">
           <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-5">
             {Array.from({ length: 10 }).map((_, i) => (
@@ -206,7 +206,7 @@ export default function DashboardPage() {
 
   return (
     <>
-      <TopHeader title="Dashboard" description="Vue d'ensemble du systeme" />
+      <TopHeader title="Tableau de bord" description="Vue d'ensemble du systeme" />
       <main className="flex-1 overflow-auto p-4">
         <div className="flex flex-col gap-4">
           {/* ── Active Alerts ── */}

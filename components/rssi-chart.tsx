@@ -317,7 +317,7 @@ export function RssiChart() {
             Chargement...
           </div>
         ) : !hasData ? (
-          <div className="flex flex-col items-center justify-center h-[220px] text-xs text-muted-foreground gap-2">
+          <div className="flex flex-col items-center justify-center py-6 text-xs text-muted-foreground gap-1">
             <Signal className="h-8 w-8 text-muted-foreground/40" />
             <p>{"Aucune donnee RSSI pour cette periode"}</p>
             <p className="text-xs">{"Les donnees s'accumuleront des que les capteurs transmettront."}</p>

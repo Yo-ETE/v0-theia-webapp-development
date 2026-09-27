@@ -90,7 +90,7 @@ export default function LogsPage() {
 
   return (
     <>
-      <TopHeader title="Logs" description="Application, device et systeme" />
+      <TopHeader title="Journaux" description="Application, capteurs et systeme" />
       <main className="flex-1 overflow-auto p-4">
         <div className="flex flex-col gap-4">
           {/* Tabs */}
@@ -149,7 +149,7 @@ export default function LogsPage() {
                   <SelectValue placeholder="Source" />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="all">All Sources</SelectItem>
+                  <SelectItem value="all">Toutes les sources</SelectItem>
                   <SelectItem value="system">System</SelectItem>
                   <SelectItem value="api">API</SelectItem>
                   <SelectItem value="lora">LoRa</SelectItem>
@@ -163,7 +163,7 @@ export default function LogsPage() {
                   <SelectValue placeholder="Level" />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="all">All Levels</SelectItem>
+                  <SelectItem value="all">Tous les niveaux</SelectItem>
                   <SelectItem value="debug">Debug</SelectItem>
                   <SelectItem value="info">Info</SelectItem>
                   <SelectItem value="warning">Warning</SelectItem>

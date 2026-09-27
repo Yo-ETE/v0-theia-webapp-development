@@ -175,7 +175,7 @@ export default function NewMissionPage() {
 
   return (
     <>
-      <TopHeader title="New Mission" description="Mission creation wizard" />
+      <TopHeader title="Nouvelle mission" description="Assistant de creation" />
       <main className="flex-1 overflow-auto p-4">
         <div className="mx-auto max-w-3xl">
           <div className="mb-4">

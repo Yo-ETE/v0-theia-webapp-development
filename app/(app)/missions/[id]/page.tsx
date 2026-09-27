@@ -1004,7 +1004,7 @@ export default function MissionDetailPage() {
   if (isLoading || !mission) {
     return (
       <>
-        <TopHeader title="Mission" description="Loading..." />
+        <TopHeader title="Mission" description="Chargement..." />
         <main className="flex-1 p-4">
           <div className="animate-pulse space-y-4">
             <div className="h-8 w-48 rounded bg-muted" />
@@ -1277,14 +1277,14 @@ export default function MissionDetailPage() {
             }}>
               <TabsList className="h-9 w-full">
                 <TabsTrigger value="live" className="text-xs gap-1 px-2 min-h-[36px] flex-1">
-                  <Zap className="h-3.5 w-3.5" /><span className="hidden sm:inline">Live</span>
+                  <Zap className="h-3.5 w-3.5" /><span className="hidden sm:inline">Direct</span>
                 </TabsTrigger>
                 <TabsTrigger value="history" className="text-xs gap-1 px-2 min-h-[36px] flex-1">
-                  <BarChart3 className="h-3.5 w-3.5" /><span className="hidden sm:inline">History</span>
+                  <BarChart3 className="h-3.5 w-3.5" /><span className="hidden sm:inline">Historique</span>
                 </TabsTrigger>
                 {(canAssign || canUnassign) && (
                   <TabsTrigger value="sensors" className="text-xs gap-1 px-2 min-h-[36px] flex-1">
-                    <Radio className="h-3.5 w-3.5" /><span className="hidden sm:inline">Sensors</span>
+                    <Radio className="h-3.5 w-3.5" /><span className="hidden sm:inline">Capteurs</span>
                   </TabsTrigger>
                 )}
                 <TabsTrigger value="timelapse" className="text-xs gap-1 px-2 min-h-[36px] flex-1">
@@ -1944,7 +1944,7 @@ export default function MissionDetailPage() {
                         >
                           {drawingMode
                             ? <><Pencil className="h-3.5 w-3.5 animate-pulse" />Drawing...</>
-                            : <><Plus className="h-3.5 w-3.5" />Draw Zone</>}
+                            : <><Plus className="h-3.5 w-3.5" />Dessiner une zone</>}
                         </Button>
                       )}
                     </div>
@@ -2800,13 +2800,13 @@ export default function MissionDetailPage() {
                     <Table>
                       <TableHeader>
                         <TableRow className="border-border/50">
-                          <TableHead className="text-xs">Name</TableHead>
+                          <TableHead className="text-xs">Nom</TableHead>
                           <TableHead className="text-xs">TX ID</TableHead>
-                          <TableHead className="text-xs">Status</TableHead>
+                          <TableHead className="text-xs">Etat</TableHead>
                           <TableHead className="text-xs">Zone / Side</TableHead>
                           <TableHead className="text-xs">RSSI</TableHead>
                           <TableHead className="text-xs">Battery</TableHead>
-                          <TableHead className="text-xs">Last Seen</TableHead>
+                          <TableHead className="text-xs">Derniere reception</TableHead>
                           <TableHead className="text-xs">Action</TableHead>
                         </TableRow>
                       </TableHeader>
@@ -2874,10 +2874,10 @@ export default function MissionDetailPage() {
                     <Table>
                       <TableHeader>
                         <TableRow className="border-border/50">
-                          <TableHead className="text-xs">Name</TableHead>
+                          <TableHead className="text-xs">Nom</TableHead>
                           <TableHead className="text-xs">TX ID</TableHead>
                           <TableHead className="text-xs">Type</TableHead>
-                          <TableHead className="text-xs">Status</TableHead>
+                          <TableHead className="text-xs">Etat</TableHead>
                           <TableHead className="text-xs">Action</TableHead>
                         </TableRow>
                       </TableHeader>
@@ -3061,7 +3061,7 @@ export default function MissionDetailPage() {
             </p>
           </div>
           <DialogFooter>
-            <Button variant="ghost" size="sm" onClick={() => setZoneDialog(false)}>Cancel</Button>
+            <Button variant="ghost" size="sm" onClick={() => setZoneDialog(false)}>Annuler</Button>
             <Button size="sm" onClick={saveZone} disabled={!zoneName.trim()}>Save Zone</Button>
           </DialogFooter>
         </DialogContent>
@@ -3136,7 +3136,7 @@ export default function MissionDetailPage() {
             )}
           </div>
           <DialogFooter>
-            <Button variant="ghost" size="sm" onClick={() => setEditZoneDialog(null)}>Cancel</Button>
+            <Button variant="ghost" size="sm" onClick={() => setEditZoneDialog(null)}>Annuler</Button>
             <Button size="sm" onClick={saveEditZone} disabled={!editZoneName.trim()}>Save</Button>
           </DialogFooter>
         </DialogContent>

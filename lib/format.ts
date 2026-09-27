@@ -165,6 +165,23 @@ export function formatRelative(iso: string): string {
   return `${Math.floor(hours / 24)}d ago`
 }
 
+/**
+ * Past this, a sensor's last reported values stop describing the present.
+ *
+ * A node reports every few seconds while it is alive, so an hour of silence already means
+ * something is wrong; a day means the reading is history. The threshold only governs how the
+ * numbers are PRESENTED -- nothing is hidden, it stops being asserted as current.
+ */
+export const STALE_MEASURE_MS = 60 * 60 * 1000
+
+/** True when a device's last contact is old enough that its measurements are not news. */
+export function measuresAreStale(lastSeen: string | null | undefined): boolean {
+  if (!lastSeen) return true
+  const t = parseAsUTC(lastSeen).getTime()
+  if (!Number.isFinite(t)) return true
+  return Date.now() - t > STALE_MEASURE_MS
+}
+
 /** Age of a database timestamp, in French, for UI copy: "maintenant", "12min", "3h", "2j". */
 export function formatAgeFr(iso: string): string {
   const diff = Date.now() - parseAsUTC(iso).getTime()

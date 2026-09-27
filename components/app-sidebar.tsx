@@ -36,10 +36,10 @@ import type { UserPermissions } from "@/lib/types"
 type PermissionKey = keyof UserPermissions
 
 const navItems: { title: string; href: string; icon: typeof LayoutDashboard; permission: PermissionKey }[] = [
-  { title: "Dashboard", href: "/dashboard", icon: LayoutDashboard, permission: "dashboard" },
+  { title: "Tableau de bord", href: "/dashboard", icon: LayoutDashboard, permission: "dashboard" },
   { title: "Missions", href: "/missions", icon: Crosshair, permission: "missions" },
-  { title: "Devices", href: "/devices", icon: Radio, permission: "devices" },
-  { title: "Logs", href: "/logs", icon: ScrollText, permission: "logs" },
+  { title: "Capteurs", href: "/devices", icon: Radio, permission: "devices" },
+  { title: "Journaux", href: "/logs", icon: ScrollText, permission: "logs" },
   { title: "Administration", href: "/admin", icon: Settings, permission: "administration" },
   { title: "A propos", href: "/about", icon: Info, permission: "dashboard" }, // A propos accessible if dashboard is
 ]
