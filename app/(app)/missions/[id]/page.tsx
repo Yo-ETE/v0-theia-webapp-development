@@ -44,6 +44,7 @@ import { useSSE } from "@/hooks/use-sse"
 import { useNotificationSound } from "@/hooks/use-notification-sound"
 import { updateMission, updateDevice } from "@/lib/api-client"
 import { remapForInsert, remapForDelete, type PolygonEdit } from "@/lib/side-remap"
+import { toast } from "sonner"
 import { missionStatusConfig, eventTypeConfig, deviceStatusConfig, formatRelative, formatRelativeLocal, formatTime, formatTimeLocal, formatDateTime } from "@/lib/format"
 import { cn } from "@/lib/utils"
 import type { Zone, Floor, DetectionEvent, LiveDetection } from "@/lib/types"
@@ -681,6 +682,15 @@ export default function MissionDetailPage() {
    * it per gesture would fire a device PATCH for every tap on a "+".
    */
   const pendingSideRemapRef = useRef<Record<string, { side: string; sensor_position: number }>>({})
+  /*
+   * Devices whose wall was not merely renumbered but MERGED -- the two walls meeting at a
+   * deleted vertex become one straight wall. Inserting is exact and needs no attention
+   * (measured at 0cm on the user's own zone). Deleting is not: a sensor placed against the
+   * corner that was removed can end up metres from the new wall -- 2.40m on a 4.5m zone --
+   * and no arithmetic can avoid that, because the wall genuinely moved away from the device.
+   * Those are the ones worth naming, so the operator can go and check the placement.
+   */
+  const mergedDeviceIdsRef = useRef<Set<string>>(new Set())
 
   const updateZonePolygon = useCallback((
     zoneId: string,
@@ -701,8 +711,17 @@ export default function MissionDetailPage() {
           const remapped = edit.type === "insert"
             ? remapForInsert(affected, before, edit.edgeIndex, edit.point)
             : remapForDelete(affected, before, edit.vertexIndex)
+          if (edit.type === "delete") {
+            // The two walls meeting at the removed vertex; a sensor on either had its wall
+            // replaced, not renumbered.
+            const n = before.length
+            const merged = new Set([(edit.vertexIndex - 1 + n) % n, edit.vertexIndex])
+            for (const a of affected) {
+              if (merged.has(a.side.charCodeAt(0) - 65)) mergedDeviceIdsRef.current.add(a.id)
+            }
+          }
           for (const r of remapped) {
-            pendingSideRemapRef.current[r.id] = { side: r.side, sensor_position: r.sensor_position }
+            pendingSideRemapRef.current[r.id] = { side: r.side, sensor_position: Number(r.sensor_position) }
           }
         }
       }
@@ -713,6 +732,7 @@ export default function MissionDetailPage() {
   // Start editing: copy polygon to local state
   const startEditingZone = useCallback((zoneId: string | null) => {
     pendingSideRemapRef.current = {}
+    mergedDeviceIdsRef.current = new Set()
     if (zoneId) {
       const zone = (mission?.zones ?? []).find(z => z.id === zoneId)
       if (zone) setEditingPolygon([...zone.polygon])
@@ -758,12 +778,45 @@ export default function MissionDetailPage() {
       })
       // The device rows carry the same binding and drive the live map, so they move too.
       await Promise.all(remappedIds.map((deviceId) => updateDevice(deviceId, remaps[deviceId])))
-      if (remappedIds.length > 0) mutateDevices()
+      if (remappedIds.length > 0) {
+        mutateDevices()
+        // Say what moved. The remap is silent by design -- the sensor stays where it
+        // physically was -- but an operator who has just changed the outline should be told
+        // the bindings were adjusted rather than left to wonder, or to trust it blindly.
+        const nameOf = (deviceId: string) =>
+          (allDevices ?? []).find((d) => d.id === deviceId)?.name ?? deviceId
+        const merged = remappedIds.filter((deviceId) => mergedDeviceIdsRef.current.has(deviceId))
+        const shifted = remappedIds.filter((deviceId) => !mergedDeviceIdsRef.current.has(deviceId))
+
+        if (shifted.length > 0) {
+          toast.success(
+            shifted.length === 1
+              ? `1 capteur suit son mur : ${nameOf(shifted[0])}`
+              : `${shifted.length} capteurs suivent leur mur`,
+            { description: shifted.length > 1 ? shifted.map(nameOf).join(", ") : undefined },
+          )
+        }
+        if (merged.length > 0) {
+          // Not a failure -- the best available placement -- but the wall these sensors were
+          // on no longer exists, so their position is an estimate and deserves a look.
+          toast.warning(
+            merged.length === 1
+              ? `${nameOf(merged[0])} : le mur a disparu, position a verifier`
+              : `${merged.length} capteurs : leur mur a disparu, positions a verifier`,
+            {
+              description: merged.map(nameOf).join(", "),
+              duration: 10000,
+            },
+          )
+        }
+      }
     } catch (err) {
       console.warn("[THEIA] Failed to save zone polygon:", err)
+      toast.error("Le contour n'a pas pu etre enregistre")
       mutate()
     }
     pendingSideRemapRef.current = {}
+    mergedDeviceIdsRef.current = new Set()
     setEditingZoneId(null)
     setEditingPolygon(null)
   }, [mission, editingZoneId, editingPolygon, id, mutate, mutateDevices])

@@ -34,8 +34,8 @@ export type PolygonEdit =
 export interface SidePlacement {
   /** Segment key: "A" is segment 0, "B" is segment 1. See resolveSideIdx. */
   side: string
-  /** Position along that segment, 0..1. */
-  sensor_position: number
+  /** Position along that segment, 0..1. Stored as TEXT by SQLite; see asT. */
+  sensor_position: number | string
 }
 
 const idxToLetter = (i: number) => String.fromCharCode(65 + i)
@@ -48,6 +48,18 @@ function dist(a: Pt, b: Pt): number {
 /** Clamp to the range placement already uses, so a remapped sensor never lands on a corner. */
 function clampT(t: number): number {
   return Math.max(0.02, Math.min(0.98, t))
+}
+
+/**
+ * `devices.sensor_position` is declared TEXT in SQLite (see the ALTER TABLE in
+ * backend/database.py), so the API hands back "0.528933973859624", a string. The arithmetic
+ * below survives that by coercion today -- `"0.5" / 2` is 0.25 -- but a single `+` added
+ * later would concatenate instead of add and put a sensor at position 0.50.5. Coerce once,
+ * at the boundary, and fall back to the middle of the wall rather than propagating NaN.
+ */
+function asT(value: number | string): number {
+  const n = Number(value)
+  return Number.isFinite(n) ? n : 0.5
 }
 
 /**
@@ -83,7 +95,7 @@ export function remapForInsert<T extends SidePlacement>(
     }
 
     // On the split edge: it belongs to whichever half it already sat in.
-    const t = p.sensor_position
+    const t = asT(p.sensor_position)
     if (split <= 0 || split >= 1) return p
     if (t < split) {
       return { ...p, sensor_position: clampT(t / split) }
@@ -110,18 +122,37 @@ export function remapForDelete<T extends SidePlacement>(
   // In the new polygon the merged wall starts at the vertex before the one removed.
   const mergedIdx = vertexIndex === 0 ? n - 2 : vertexIndex - 1
 
-  const lenPrev = dist(polygonBefore[prevSeg], polygonBefore[(prevSeg + 1) % n])
-  const lenNext = dist(polygonBefore[nextSeg], polygonBefore[(nextSeg + 1) % n])
-  const total = lenPrev + lenNext
+  // The merged wall: straight from the vertex before the removed one to the vertex after.
+  const mergeStart = polygonBefore[prevSeg]
+  const mergeEnd = polygonBefore[(nextSeg + 1) % n]
+  const mdx = mergeEnd[0] - mergeStart[0]
+  const mdy = mergeEnd[1] - mergeStart[1]
+  const mergeLen2 = mdx * mdx + mdy * mdy
 
   return placements.map((p) => {
     const seg = letterToIdx(p.side)
     if (seg < 0 || seg >= n) return p
 
     if (seg === prevSeg || seg === nextSeg) {
-      // Both walls become one, so the position has to be rescaled onto the whole of it.
-      const along = seg === prevSeg ? p.sensor_position * lenPrev : lenPrev + p.sensor_position * lenNext
-      const t = total > 0 ? along / total : 0.5
+      /*
+       * Project where the sensor physically is onto the new wall, rather than keeping its
+       * fraction of the old two-wall path.
+       *
+       * The device has not moved: the user corrected a drawing, not the building. So the
+       * mapping that stays closest to the truth is the nearest point on the new wall, not
+       * the same percentage along it. Measured on the user's own zone (4.5m walls): keeping
+       * the fraction threw a sensor 2.40m across the room when a corner was removed, while
+       * projecting puts it where it actually stands. The two agree whenever the merged walls
+       * were collinear, which is the case a proportional rule handles correctly anyway.
+       */
+      const t0 = asT(p.sensor_position)
+      const a = polygonBefore[seg]
+      const b = polygonBefore[(seg + 1) % n]
+      const px = a[0] + (b[0] - a[0]) * t0
+      const py = a[1] + (b[1] - a[1]) * t0
+      const t = mergeLen2 > 0
+        ? ((px - mergeStart[0]) * mdx + (py - mergeStart[1]) * mdy) / mergeLen2
+        : 0.5
       return { ...p, side: idxToLetter(mergedIdx), sensor_position: clampT(t) }
     }
 
