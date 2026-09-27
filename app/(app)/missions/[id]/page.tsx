@@ -46,7 +46,7 @@ import { useNotificationSound } from "@/hooks/use-notification-sound"
 import { updateMission, updateDevice } from "@/lib/api-client"
 import { remapForInsert, remapForDelete, type PolygonEdit } from "@/lib/side-remap"
 import { toast } from "sonner"
-import { missionStatusConfig, eventTypeConfig, deviceStatusConfig, formatRelative, formatRelativeLocal, formatTime, formatTimeLocal, formatDateTime, parseDbTime } from "@/lib/format"
+import { missionStatusConfig, eventTypeConfig, deviceStatusConfig, formatRelative, formatTime, formatDateTime, parseDbTime } from "@/lib/format"
 import { cn } from "@/lib/utils"
 import type { Zone, Floor, DetectionEvent, LiveDetection } from "@/lib/types"
 import { groupSidesByBearing } from "@/lib/facade-utils"
@@ -1618,7 +1618,7 @@ export default function MissionDetailPage() {
                       </div>
                       {det?.timestamp && (
                         <span className="text-2xs font-mono text-muted-foreground shrink-0">
-                          {formatTimeLocal(det.timestamp)}
+                          {formatTime(det.timestamp)}
                         </span>
                       )}
                     </div>
@@ -2160,7 +2160,7 @@ export default function MissionDetailPage() {
               {/* Assigned devices */}
               <Card className="border-border/50 bg-card">
                 <CardHeader className="pb-2">
-                  <CardTitle className="text-xs">Assigned Devices ({floorFilteredDevices.length})</CardTitle>
+                  <CardTitle className="text-xs">Capteurs assignes ({floorFilteredDevices.length})</CardTitle>
                 </CardHeader>
                 <CardContent className="flex flex-col gap-1.5">
                   {missionDevices.length === 0 ? (
@@ -2458,7 +2458,7 @@ export default function MissionDetailPage() {
                       const txName = det.tx_id || det.device_name || det.zone_label || "Unknown"
                       // Show relative time for expired feed (last detection reference)
                       const showRelativeTime = feedExpired && i === 0
-                      const relativeTime = showRelativeTime ? formatRelativeLocal(det.timestamp) : null
+                      const relativeTime = showRelativeTime ? formatRelative(det.timestamp) : null
                       return (
                       <div
                         key={`det-${det.timestamp}-${i}`}
@@ -2484,7 +2484,7 @@ export default function MissionDetailPage() {
                               </span>
                             )}
                             <span className="text-2xs text-muted-foreground font-mono ml-auto shrink-0">
-                              {showRelativeTime ? relativeTime : formatTimeLocal(det.timestamp)}
+                              {showRelativeTime ? relativeTime : formatTime(det.timestamp)}
                             </span>
                           </div>
                           <div className="flex items-center gap-2 mt-0.5 flex-wrap">
@@ -2838,7 +2838,7 @@ export default function MissionDetailPage() {
                 <CardHeader className="pb-2">
                   <CardTitle className="flex items-center gap-2 text-sm">
                     <Radio className="h-4 w-4 text-primary" />
-                    Assigned Devices ({floorFilteredDevices.length})
+                    Capteurs assignes ({floorFilteredDevices.length})
                   </CardTitle>
                 </CardHeader>
                 <CardContent>
@@ -2892,7 +2892,7 @@ export default function MissionDetailPage() {
                                   </div>
                                 ) : <span className="text-xs text-muted-foreground">---</span>}
                               </TableCell>
-                              <TableCell className="text-xs text-muted-foreground">{device.last_seen ? formatRelativeLocal(device.last_seen) : "Never"}</TableCell>
+                              <TableCell className="text-xs text-muted-foreground">{device.last_seen ? formatRelative(device.last_seen) : "jamais vu"}</TableCell>
                               <TableCell>
                                 {canUnassign && (
                                   <Button variant="ghost" size="sm" className="h-6 text-xs px-2 text-destructive hover:text-destructive/80" onClick={() => unassignDevice(device.id)}>

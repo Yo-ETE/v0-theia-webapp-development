@@ -15,6 +15,8 @@ interface AuthContextType {
   user: User | null
   isAdmin: boolean
   isLoading: boolean
+  /** The hub did not answer at all -- distinct from being signed out. */
+  hubUnreachable: boolean
   permissions: UserPermissions
   hasPermission: (permission: keyof UserPermissions) => boolean
   login: (username: string, password: string) => Promise<void>
@@ -57,6 +59,13 @@ function purgeLegacyToken() {
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<User | null>(null)
   const [isLoading, setIsLoading] = useState(true)
+  /*
+   * "Not logged in" and "the hub is not answering" are different facts and used to land on
+   * the same screen. Reloading while the hub was down sent the operator to the login form,
+   * which reads as an expired session -- so he would type his password, fail again, and
+   * still not know the hub was the problem. A failed request is not a failed login.
+   */
+  const [hubUnreachable, setHubUnreachable] = useState(false)
 
   const refresh = useCallback(async () => {
     try {
@@ -64,14 +73,17 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         credentials: "include",
         headers: authHeaders(),
       })
+      setHubUnreachable(false)
       if (res.ok) {
         const data = await res.json()
         setUser(data)
       } else {
+        // The hub answered and said no: that really is an authentication problem.
         setUser(null)
       }
     } catch {
-      setUser(null)
+      // Nothing answered. Keep whatever user we had rather than pretending they signed out.
+      setHubUnreachable(true)
     } finally {
       setIsLoading(false)
     }
@@ -123,6 +135,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       user,
       isAdmin: user?.role === "admin",
       isLoading,
+      hubUnreachable,
       permissions,
       hasPermission,
       login,

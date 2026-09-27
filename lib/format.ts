@@ -109,9 +109,10 @@ export const eventTypeConfig: Record<
  * returned 125 events for a window that contains 26.
  *
  * It went unnoticed because the shift is uniform: everything was equally wrong, so nothing
- * looked out of place next to anything else. The `...Local` variants further down exist
- * because someone hit this on the SSE path and added a parallel set of functions rather than
- * correcting the assumption; they are now the same thing and kept only for their callers.
+ * looked out of place next to anything else. There used to be a parallel set of `...Local`
+ * helpers here, added by someone who hit this on the SSE path and worked around it rather
+ * than correcting the assumption; with the assumption fixed they were the same functions
+ * twice, so they are gone.
  *
  * Any timezone marker is stripped rather than honoured: the backend sometimes appends a "Z"
  * to a value that is not UTC, and the wall-clock reading is the one that matches the hub.
@@ -143,22 +144,6 @@ export function formatTime(iso: string): string {
   })
 }
 
-/** Format time for timestamps that are already in local Paris time (e.g. SSE live data).
- * The backend may send timestamps with "Z" suffix but the value is actually Paris time.
- * We strip the Z to display the raw time value without UTC conversion.
- */
-export function formatTimeLocal(iso: string): string {
-  if (!iso) return ""
-  // Strip Z suffix and timezone offsets to display raw time value as-is
-  const cleaned = iso.replace("Z", "").replace(/[+-]\d{2}:\d{2}$/, "").replace(" ", "T")
-  const date = new Date(cleaned)
-  return date.toLocaleTimeString("fr-FR", {
-    hour: "2-digit",
-    minute: "2-digit",
-    second: "2-digit",
-  })
-}
-
 export function formatDateTime(iso: string): string {
   return `${formatDate(iso)} ${formatTime(iso)}`
 }
@@ -166,12 +151,12 @@ export function formatDateTime(iso: string): string {
 export function formatRelative(iso: string): string {
   const diff = Date.now() - parseDbTime(iso).getTime()
   const secs = Math.floor(diff / 1000)
-  if (secs < 60) return `${secs}s ago`
+  if (secs < 60) return `il y a ${secs}s`
   const mins = Math.floor(secs / 60)
-  if (mins < 60) return `${mins}m ago`
+  if (mins < 60) return `il y a ${mins}min`
   const hours = Math.floor(mins / 60)
-  if (hours < 24) return `${hours}h ago`
-  return `${Math.floor(hours / 24)}d ago`
+  if (hours < 24) return `il y a ${hours}h`
+  return `il y a ${Math.floor(hours / 24)}j`
 }
 
 /**
@@ -203,17 +188,3 @@ export function formatAgeFr(iso: string): string {
   return `${Math.floor(hours / 24)}j`
 }
 
-/** Format relative time for timestamps that are already in local Paris time (e.g. SSE live data) */
-export function formatRelativeLocal(iso: string): string {
-  if (!iso) return ""
-  // Strip Z suffix and timezone offsets to parse raw time value
-  const cleaned = iso.replace("Z", "").replace(/[+-]\d{2}:\d{2}$/, "").replace(" ", "T")
-  const diff = Date.now() - new Date(cleaned).getTime()
-  const secs = Math.floor(diff / 1000)
-  if (secs < 60) return `${secs}s ago`
-  const mins = Math.floor(secs / 60)
-  if (mins < 60) return `${mins}m ago`
-  const hours = Math.floor(mins / 60)
-  if (hours < 24) return `${hours}h ago`
-  return `${Math.floor(hours / 24)}d ago`
-}

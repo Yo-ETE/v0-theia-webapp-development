@@ -9,17 +9,42 @@ import { ConnectionStatus } from "@/components/connection-status"
 import { Toaster } from "@/components/ui/sonner"
 import { useRouter } from "next/navigation"
 import { useEffect } from "react"
-import { Loader2 } from "lucide-react"
+import { Loader2, RefreshCw, WifiOff } from "lucide-react"
+import { Button } from "@/components/ui/button"
 
 function AuthGate({ children }: { children: React.ReactNode }) {
-  const { user, isLoading } = useAuth()
+  const { user, isLoading, hubUnreachable, refresh } = useAuth()
   const router = useRouter()
 
   useEffect(() => {
-    if (!isLoading && !user) {
+    // Only send someone to the login form when the hub actually said they are not
+    // authenticated. If nothing answered, the login form is a lie: it invites a password
+    // that cannot be checked, and hides the real problem.
+    if (!isLoading && !user && !hubUnreachable) {
       router.replace("/login")
     }
-  }, [isLoading, user, router])
+  }, [isLoading, user, hubUnreachable, router])
+
+  if (!isLoading && hubUnreachable && !user) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-background p-6">
+        <div className="flex max-w-sm flex-col items-center gap-4 text-center">
+          <WifiOff className="h-10 w-10 text-destructive" />
+          <div className="flex flex-col gap-1">
+            <p className="text-sm font-medium text-foreground">Hub injoignable</p>
+            <p className="text-xs text-muted-foreground">
+              Le hub ne repond pas. Ce n&apos;est pas un probleme de session : inutile de vous
+              reconnecter tant qu&apos;il n&apos;a pas repondu.
+            </p>
+          </div>
+          <Button variant="outline" size="sm" className="gap-2" onClick={() => refresh()}>
+            <RefreshCw className="h-4 w-4" />
+            Reessayer
+          </Button>
+        </div>
+      </div>
+    )
+  }
 
   if (isLoading) {
     return (

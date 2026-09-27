@@ -25,7 +25,7 @@ import { RssiChart } from "@/components/rssi-chart"
 import { FirmwareManager } from "@/components/admin/firmware-manager"
 import { useAuth } from "@/lib/auth-context"
 import { createDevice, deleteDevice, updateDevice } from "@/lib/api-client"
-import { deviceStatusConfig, formatAgeFr, formatRelativeLocal, measuresAreStale } from "@/lib/format"
+import { deviceStatusConfig, formatAgeFr, formatRelative, measuresAreStale } from "@/lib/format"
 import { cn } from "@/lib/utils"
 
 export default function DevicesPage() {
@@ -551,7 +551,7 @@ export default function DevicesPage() {
                               <span className={measuresAreStale(device.last_seen)
                                 ? "text-warning font-mono"
                                 : "text-muted-foreground"}>
-                                {formatRelativeLocal(device.last_seen)}
+                                {formatRelative(device.last_seen)}
                               </span>
                             ) : (
                               <span className="text-warning font-mono">jamais vu</span>

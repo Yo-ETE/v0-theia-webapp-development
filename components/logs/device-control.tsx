@@ -121,7 +121,7 @@ export function DeviceControl() {
   }
 
   const formatLastSeen = (lastSeen: string | null) => {
-    if (!lastSeen) return "Never"
+    if (!lastSeen) return "jamais vu"
     const date = new Date(lastSeen)
     const now = new Date()
     const diffSec = (now.getTime() - date.getTime()) / 1000

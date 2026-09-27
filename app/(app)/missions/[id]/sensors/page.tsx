@@ -13,7 +13,7 @@ import {
 } from "@/components/ui/table"
 import { useMission, useDevices } from "@/hooks/use-api"
 import { updateDevice, updateMission } from "@/lib/api-client"
-import { deviceStatusConfig, formatRelativeLocal } from "@/lib/format"
+import { deviceStatusConfig, formatRelative } from "@/lib/format"
 import { cn } from "@/lib/utils"
 
 export default function SensorsPage() {
@@ -73,7 +73,7 @@ export default function SensorsPage() {
             <CardHeader className="pb-2">
               <CardTitle className="flex items-center gap-2 text-sm">
                 <Radio className="h-4 w-4 text-primary" />
-                Assigned Devices ({missionDevices.length})
+                Capteurs assignes ({missionDevices.length})
               </CardTitle>
             </CardHeader>
             <CardContent>
@@ -148,7 +148,7 @@ export default function SensorsPage() {
                             )}
                           </TableCell>
                           <TableCell className="text-xs text-muted-foreground">
-                            {device.last_seen ? formatRelativeLocal(device.last_seen) : "Never"}
+                            {device.last_seen ? formatRelative(device.last_seen) : "jamais vu"}
                           </TableCell>
                           <TableCell>
                             <Button

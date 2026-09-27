@@ -148,8 +148,8 @@ function MissionCard({
             </span>
           </div>
           <div className="mt-2 flex items-center justify-between text-xs text-muted-foreground">
-            <span>Created {formatDate(mission.created_at)}</span>
-            <span>Updated {formatRelative(mission.updated_at)}</span>
+            <span>Cree le {formatDate(mission.created_at)}</span>
+            <span>Modifie {formatRelative(mission.updated_at)}</span>
           </div>
         </CardContent>
       </Link>
