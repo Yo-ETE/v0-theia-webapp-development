@@ -8,6 +8,7 @@ from datetime import datetime
 from fastapi import APIRouter, HTTPException, Request
 from pydantic import BaseModel, Field
 from backend.database import get_db
+from backend.permissions import ensure
 
 router = APIRouter(prefix="/missions", tags=["missions"])
 
@@ -195,8 +196,17 @@ async def create_mission(body: MissionCreate):
 
 
 @router.patch("/{mission_id}")
-async def patch_mission(mission_id: str, body: MissionUpdate):
+async def patch_mission(mission_id: str, body: MissionUpdate, request: Request):
     """Partial update -- only updates fields that are not None."""
+    # One endpoint, two intents: changing the status is Start/Pause/Stop, everything else is
+    # editing the mission. The middleware cannot tell them apart -- it never sees the body --
+    # so the distinction between missions_control and missions_edit is made here.
+    sent = body.model_dump(exclude_unset=True)
+    if "status" in sent:
+        await ensure(request, "missions_control")
+    if any(k != "status" for k in sent):
+        await ensure(request, "missions_edit")
+
     db = await get_db()
     cursor = await db.execute("SELECT id FROM missions WHERE id=?", (mission_id,))
     if not await cursor.fetchone():

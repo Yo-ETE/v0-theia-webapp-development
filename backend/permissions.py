@@ -39,11 +39,13 @@ VIEWER_DEFAULT: dict[str, bool] = {
 # open to any authenticated account: the live view is the reason someone is given an account
 # at all, and the UI already hides what a viewer cannot act on.
 #
-# PATCH on a mission maps to edit OR control because one endpoint serves both -- changing a
-# zone and pressing Pause are the same call. Splitting them would mean reading the request
-# body inside the middleware, which means consuming and replaying the stream; the union is
-# the honest simplification, and it only differs from the fine-grained intent for a custom
-# account granted one of the two and not the other. Neither shipped preset does that.
+# Where one endpoint serves two intents -- editing a mission vs pressing Pause, attaching a
+# sensor vs detaching it -- the entry below lists BOTH permissions and is only a coarse
+# pre-filter: it refuses an account that has neither, early and cheaply. The handler then
+# separates them with `ensure()`, because it can see the body and the middleware cannot.
+#
+# The union alone was not enough, and that showed the first time it was used in anger:
+# revoking missions_control changed nothing, since missions_edit still satisfied the route.
 PERMISSION_ROUTES: list[tuple[str, str, bool, tuple[str, ...]]] = [
     ("POST",   "/api/missions",  True,  ("missions_create",)),
     ("PATCH",  "/api/missions/", False, ("missions_edit", "missions_control")),
@@ -117,3 +119,30 @@ async def permissions_for(user_id: int) -> dict[str, bool]:
 async def allows(user_id: int, needed: tuple[str, ...]) -> bool:
     perms = await permissions_for(user_id)
     return any(perms.get(p, False) for p in needed)
+
+
+async def ensure(request, *needed: str) -> None:
+    """
+    Check a permission from inside a route handler, where the parsed body is available.
+
+    The middleware can only see the method and the path, so PATCH on a mission had to accept
+    `missions_edit` OR `missions_control`: one endpoint serves both editing a zone and
+    pressing Pause. Tested on the hub, that union is too coarse to be worth much -- revoking
+    `missions_control` alone changed nothing, because `missions_edit` still satisfied the
+    route. Handlers that can tell the two intents apart call this instead.
+
+    Admins pass by role, as everywhere else.
+    """
+    from fastapi import HTTPException  # local: keeps this module free of web framework at import
+
+    user = getattr(getattr(request, "state", None), "user", None)
+    if not user:
+        raise HTTPException(status_code=401, detail="Not authenticated")
+    if user.get("role") == "admin":
+        return
+    try:
+        user_id = int(user.get("sub"))
+    except (TypeError, ValueError):
+        raise HTTPException(status_code=401, detail="Invalid session")
+    if not await allows(user_id, needed):
+        raise HTTPException(status_code=403, detail=f"Permission requise : {' ou '.join(needed)}")

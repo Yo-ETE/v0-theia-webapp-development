@@ -3,9 +3,10 @@ THEIA - Devices CRUD router (with PATCH support for zone/side/floor assignment)
 """
 import uuid
 from datetime import datetime, timedelta
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Request
 from pydantic import BaseModel
 from backend.database import get_db
+from backend.permissions import ensure
 from backend.services.lora_bridge import blacklist_tx
 
 
@@ -113,7 +114,18 @@ async def create_device(body: DeviceCreate):
 
 
 @router.patch("/{device_id}")
-async def patch_device(device_id: str, body: DeviceUpdate):
+async def patch_device(device_id: str, body: DeviceUpdate, request: Request):
+    # Same endpoint for attaching a sensor to a zone and for detaching it, so the middleware
+    # cannot separate devices_assign from devices_unassign. Clearing zone_id or mission_id is
+    # an unassignment; setting either is an assignment.
+    sent = body.model_dump(exclude_unset=True)
+    binding = {k: sent[k] for k in ("mission_id", "zone_id") if k in sent}
+    if binding:
+        if any(v for v in binding.values()):
+            await ensure(request, "devices_assign")
+        else:
+            await ensure(request, "devices_unassign")
+
     db = await get_db()
     cursor = await db.execute("SELECT * FROM devices WHERE id=?", (device_id,))
     if not await cursor.fetchone():
