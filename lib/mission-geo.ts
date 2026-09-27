@@ -20,6 +20,17 @@ export function haversineM(lat1: number, lon1: number, lat2: number, lon2: numbe
 /**
  * Where a sensor sits along its wall, as a human-readable distance.
  *
+ * `side` is a SEGMENT INDEX written as a letter -- "A" is segment 0, "B" is segment 1 -- which
+ * is the convention `map-inner.tsx` and `getDisplaySide` already read. This function used to
+ * treat it as a bearing GROUP letter from `groupSidesByBearing` and search the groups for a
+ * match. The two agree on a rectangle, where segments 0..3 fall into quadrants A..D in order,
+ * so the disagreement stayed invisible: every zone and every side-remap test is a rectangle.
+ *
+ * Delete a vertex and it shows. A square minus one corner gives the groups [A, C, D] -- no B,
+ * because no edge of the triangle points that way. A sensor correctly remapped to segment 1
+ * ("B") then matched no group, and its distance came back empty while its marker and its face
+ * label were both right.
+ *
  * A polygon here is either lat/lon (a real building on the map) or pixels (a plan image
  * calibrated in the editor). Pixels have no metric meaning until the plan is calibrated, so
  * they are reported as a percentage of the wall rather than a fabricated distance -- hence the
@@ -30,24 +41,17 @@ export function getSideDistanceM(
   polygon: [number, number][],
   side: string,
   sensorPos: number,
-  groupSides: (p: [number, number][]) => { segmentToGroup: Record<number, string> },
 ): string {
   if (!polygon || polygon.length < 3 || !side) return ""
-  const { segmentToGroup } = groupSides(polygon)
-  // Find the first polygon edge matching this side letter
-  for (let i = 0; i < polygon.length; i++) {
-    const groupKey = segmentToGroup[i] ?? String.fromCharCode(65 + i)
-    if (groupKey === side) {
-      const j = (i + 1) % polygon.length
-      const isPixel = polygon.some(([a, b]: [number, number]) => Math.abs(a) > 200 || Math.abs(b) > 200)
-      if (isPixel) {
-        const pct = Math.round(sensorPos * 100)
-        return `${pct}%`
-      }
-      const edgeLen = haversineM(polygon[i][0], polygon[i][1], polygon[j][0], polygon[j][1])
-      const dist = edgeLen * sensorPos
-      return dist < 1 ? `${Math.round(dist * 100)}cm` : `${dist.toFixed(1)}m`
-    }
-  }
-  return ""
+  // Legacy rows can hold a facade NAME rather than a segment key. Those carry no index, and
+  // guessing one would put a distance against the wrong wall, so they get no distance at all
+  // -- which is what they got before, by falling through the group search.
+  if (side.length !== 1 || side < "A" || side > "Z") return ""
+  const i = side.charCodeAt(0) - 65
+  if (i >= polygon.length) return ""
+  const j = (i + 1) % polygon.length
+  const isPixel = polygon.some(([a, b]: [number, number]) => Math.abs(a) > 200 || Math.abs(b) > 200)
+  if (isPixel) return `${Math.round(sensorPos * 100)}%`
+  const dist = haversineM(polygon[i][0], polygon[i][1], polygon[j][0], polygon[j][1]) * sensorPos
+  return dist < 1 ? `${Math.round(dist * 100)}cm` : `${dist.toFixed(1)}m`
 }

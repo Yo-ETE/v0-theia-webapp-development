@@ -2106,7 +2106,7 @@ export default function MissionDetailPage() {
                     const battVal = liveData?.vbatt_tx ?? d.battery
                     // Compute distance along wall
                     const zone = mission?.zones?.find(z => z.id === d.zone_id)
-                    const wallDist = zone && d.side ? getSideDistanceM(zone.polygon, d.side, d.sensor_position ?? 0.5, groupSidesByBearing) : ""
+                    const wallDist = zone && d.side ? getSideDistanceM(zone.polygon, d.side, d.sensor_position ?? 0.5) : ""
                     // Status color
                     const statusColor = d.status === "online" ? "text-success" : d.status === "idle" ? "text-warning" : "text-muted-foreground"
                     return (
