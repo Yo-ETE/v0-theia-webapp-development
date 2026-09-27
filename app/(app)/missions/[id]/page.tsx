@@ -41,6 +41,7 @@ import { useVisualConfig, VISUAL_DEFAULTS, type VisualConfigKey } from "@/hooks/
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
 import { Switch } from "@/components/ui/switch"
 import { useSSE } from "@/hooks/use-sse"
+import { useMissionEvents } from "@/hooks/use-mission-events"
 import { useNotificationSound } from "@/hooks/use-notification-sound"
 import { updateMission, updateDevice } from "@/lib/api-client"
 import { remapForInsert, remapForDelete, type PolygonEdit } from "@/lib/side-remap"
@@ -125,8 +126,9 @@ export default function MissionDetailPage() {
    * Declared as state because `sseConnected` comes from a hook further down.
    */
   const [eventsPollMs, setEventsPollMs] = useState(SSE_DOWN_POLL_MS)
-  const { data: events, mutate: mutateEvents } = useEvents({
-    mission_id: id,
+  // Incremental: the first load pulls the history, every poll after that asks only for what
+  // is newer than the newest event we hold. See hooks/use-mission-events.ts.
+  const { events, refresh: mutateEvents, reset: resetEvents } = useMissionEvents(id, {
     limit: EVENTS_LIMIT,
     refreshInterval: eventsPollMs,
   })
@@ -2548,7 +2550,7 @@ export default function MissionDetailPage() {
                         fetch(`${backendUrl}/api/events?mission_id=${id}`, { method: "DELETE", credentials: "include", headers: _ah }),
                       ])
                       // Clear SWR cache, do NOT revalidate (backend may insert stale events)
-                      await mutateEvents([], false)
+                      await resetEvents()
                     }}
                   >
                     <Trash2 className="h-3.5 w-3.5" />Purger
