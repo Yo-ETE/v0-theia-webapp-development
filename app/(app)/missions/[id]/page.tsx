@@ -202,6 +202,17 @@ export default function MissionDetailPage() {
 
   const [activeTab, setActiveTab] = useState("live")
   const [showNotifConfig, setShowNotifConfig] = useState(false)
+  /** Whether this mission will actually send anything: rules present, enabled, with a channel. */
+  const notifRulesActive = useMemo(() => {
+    const raw = mission?.notification_config
+    if (!raw) return false
+    try {
+      const cfg = typeof raw === "string" ? JSON.parse(raw) : raw
+      return Boolean(cfg?.enabled) && Array.isArray(cfg?.channels) && cfg.channels.length > 0
+    } catch {
+      return false
+    }
+  }, [mission?.notification_config])
   const [timelapseMode, setTimelapseMode] = useState(false)
   const [heatmapMode, setHeatmapMode] = useState(false)
   const [estimatePosition, setEstimatePosition] = useState(false)
@@ -1363,6 +1374,18 @@ export default function MissionDetailPage() {
                 >
                   <WifiOff className="h-3 w-3" />FLUX COUPE
                 </span>
+              )}
+              {/* An active mission with no alert rules sends nothing, anywhere, and nothing
+                  said so: the user spent an evening on his phone's notification settings while
+                  the mission simply had no notification_config. */}
+              {mission.status === "active" && !notifRulesActive && (
+                <button
+                  onClick={() => setShowNotifConfig(true)}
+                  className="flex items-center gap-1 text-xs text-warning font-mono"
+                  title="Aucune regle d'alerte : aucune notification ne partira pour cette mission."
+                >
+                  <BellOff className="h-3 w-3" />SANS ALERTE
+                </button>
               )}
               <div className="flex items-center gap-1.5 ml-auto">
                 {canControl && mission.status === "draft" && (isFloorMode ? missionFloors.length > 0 : (isPlanMode ? !!planImageUrl : zones.length > 0)) && (

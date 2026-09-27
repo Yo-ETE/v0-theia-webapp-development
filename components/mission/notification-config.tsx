@@ -153,6 +153,9 @@ export function NotificationConfig({ missionId, missionName, zones = [], initial
                   />
                   Web Push
                 </label>
+                {/* Called "sms" in the config, but the channel is whatever provider is set in
+                    Administration -- Free Mobile, Twilio OR ntfy. Labelling it SMS sent the
+                    user hunting through iOS settings while this box was simply unticked. */}
                 <label className="flex items-center gap-1.5 text-xs cursor-pointer">
                   <input
                     type="checkbox"
@@ -160,9 +163,12 @@ export function NotificationConfig({ missionId, missionName, zones = [], initial
                     onChange={() => toggleChannel("sms")}
                     className="rounded border-border"
                   />
-                  SMS
+                  SMS / ntfy
                 </label>
               </div>
+              <p className="text-2xs text-muted-foreground">
+                Le canal SMS / ntfy utilise le fournisseur configure dans Administration.
+              </p>
 
               {/* Push subscription status */}
               {config.channels.includes("web_push") && (
