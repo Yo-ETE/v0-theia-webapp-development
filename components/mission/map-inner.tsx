@@ -262,6 +262,45 @@ function generateZoneGrid(polygon: [number, number][]): {
   return { gridLines, cellLabels }
 }
 
+// ── Base layers ──────────────────────────────────────────────
+//
+// Names double as localStorage values, so renaming one silently resets that preference.
+const BASEMAP_OSM = "Plan (OSM)"
+const BASEMAP_ESRI = "Satellite (Esri)"
+const BASEMAP_IGN = "Satellite (IGN)"
+const OVERLAY_CADASTRE = "Cadastre (IGN)"
+const BASEMAPS = [BASEMAP_OSM, BASEMAP_ESRI, BASEMAP_IGN]
+const BASEMAP_PREF = "theia.map.basemap"
+const CADASTRE_PREF = "theia.map.cadastre"
+
+/**
+ * IGN Geoplateforme WMTS, free and keyless under the Etalab open licence. Checked 2026-09-28
+ * on the Forcene mission (Haute-Corse): both layers answer up to zoom 19 and 404 beyond, so
+ * they get the same maxNativeZoom as OSM and Esri and Leaflet upscales past it.
+ */
+const IGN_WMTS =
+  "https://data.geopf.fr/wmts?SERVICE=WMTS&REQUEST=GetTile&VERSION=1.0.0&STYLE=normal" +
+  "&TILEMATRIXSET=PM&TILEMATRIX={z}&TILEROW={y}&TILECOL={x}"
+const IGN_ORTHO_URL = `${IGN_WMTS}&LAYER=ORTHOIMAGERY.ORTHOPHOTOS&FORMAT=image/jpeg`
+const IGN_CADASTRE_URL = `${IGN_WMTS}&LAYER=CADASTRALPARCELS.PARCELLAIRE_EXPRESS&FORMAT=image/png`
+const IGN_ATTRIBUTION = '&copy; <a href="https://geoservices.ign.fr/">IGN</a> - Geoplateforme'
+
+/** localStorage can be absent or throw (private mode, blocked site data): never let it break the map. */
+function readPref(key: string): string | null {
+  try {
+    return window.localStorage.getItem(key)
+  } catch {
+    return null
+  }
+}
+function writePref(key: string, value: string) {
+  try {
+    window.localStorage.setItem(key, value)
+  } catch {
+    /* preference is a convenience; losing it is fine */
+  }
+}
+
 export default function MapInner({
   centerLat: rawLat,
   centerLon: rawLon,
@@ -530,6 +569,29 @@ export default function MapInner({
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const [mapInstance, setMapInstance] = useState<any>(null)
+  // Read once: LayersControl only honours `checked` on mount, the control owns it afterwards.
+  const [initialBasemap] = useState(() => {
+    const saved = readPref(BASEMAP_PREF)
+    return saved && BASEMAPS.includes(saved) ? saved : BASEMAP_OSM
+  })
+  const [initialCadastre] = useState(() => readPref(CADASTRE_PREF) === "1")
+  useEffect(() => {
+    if (!mapInstance) return
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const onBase = (e: any) => { if (BASEMAPS.includes(e.name)) writePref(BASEMAP_PREF, e.name) }
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const onAdd = (e: any) => { if (e.name === OVERLAY_CADASTRE) writePref(CADASTRE_PREF, "1") }
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const onRemove = (e: any) => { if (e.name === OVERLAY_CADASTRE) writePref(CADASTRE_PREF, "0") }
+    mapInstance.on("baselayerchange", onBase)
+    mapInstance.on("overlayadd", onAdd)
+    mapInstance.on("overlayremove", onRemove)
+    return () => {
+      mapInstance.off("baselayerchange", onBase)
+      mapInstance.off("overlayadd", onAdd)
+      mapInstance.off("overlayremove", onRemove)
+    }
+  }, [mapInstance])
   const mapInstanceSet = useRef(false)
   const containerDivRef = useRef<HTMLDivElement>(null)
   const [mapKey, setMapKey] = useState(0)
@@ -1729,11 +1791,13 @@ export default function MapInner({
         style={{ minHeight: "300px" }}
       >
         {/* Base layer switcher: OSM building outlines are crowd-sourced and can lag behind a
-            real extension/renovation for years. Esri satellite is an actual photo, so it's
-            immune to that specific staleness (though the photo itself has its own capture
-            date). Selection persists per-browser (localStorage), not per-mission. */}
+            real extension/renovation for years. Esri and IGN are actual photos, each with its
+            own capture date -- neither is reliably newer, so both are offered to compare. The
+            cadastre overlay draws declared parcels and buildings; undeclared outbuildings are
+            missing from it (seen on the Forcene house), so it complements a photo rather than
+            replacing one. Selection persists per-browser (localStorage), not per-mission. */}
         <LayersControl position="topright">
-          <LayersControl.BaseLayer checked name="Plan (OSM)">
+          <LayersControl.BaseLayer checked={initialBasemap === BASEMAP_OSM} name={BASEMAP_OSM}>
             <TileLayer
               attribution={'&copy; <a href="https://www.openstreetmap.org/copyright">OSM</a>'}
               url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
@@ -1741,7 +1805,7 @@ export default function MapInner({
               maxNativeZoom={19}
             />
           </LayersControl.BaseLayer>
-          <LayersControl.BaseLayer name="Satellite (Esri)">
+          <LayersControl.BaseLayer checked={initialBasemap === BASEMAP_ESRI} name={BASEMAP_ESRI}>
             <TileLayer
               attribution={'Tiles &copy; Esri &mdash; Esri, Maxar, Earthstar Geographics, and the GIS User Community'}
               url="https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}"
@@ -1749,6 +1813,23 @@ export default function MapInner({
               maxNativeZoom={19}
             />
           </LayersControl.BaseLayer>
+          <LayersControl.BaseLayer checked={initialBasemap === BASEMAP_IGN} name={BASEMAP_IGN}>
+            <TileLayer
+              attribution={IGN_ATTRIBUTION}
+              url={IGN_ORTHO_URL}
+              maxZoom={22}
+              maxNativeZoom={19}
+            />
+          </LayersControl.BaseLayer>
+          <LayersControl.Overlay checked={initialCadastre} name={OVERLAY_CADASTRE}>
+            <TileLayer
+              attribution={IGN_ATTRIBUTION}
+              url={IGN_CADASTRE_URL}
+              maxZoom={22}
+              maxNativeZoom={19}
+              opacity={0.85}
+            />
+          </LayersControl.Overlay>
         </LayersControl>
 
         {/* ── Saved zones ── */}
