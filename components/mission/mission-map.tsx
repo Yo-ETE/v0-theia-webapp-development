@@ -1,6 +1,6 @@
 "use client"
 
-import type { Zone, DetectionEvent, LiveDetection } from "@/lib/types"
+import type { Zone, DetectionEvent, LiveDetection, MapOverlay } from "@/lib/types"
 import type { PolygonEdit } from "@/lib/side-remap"
 import type { VisualConfig } from "@/hooks/use-visual-config"
 import { cn } from "@/lib/utils"
@@ -46,6 +46,11 @@ interface MissionMapProps {
   showGrid?: boolean  // Alphanumeric grid overlay (A-Q, 1-12)
   replayMode?: boolean
   visualConfig?: VisualConfig | null
+  /** Pinned images (hand-drawn plans), already filtered to what should show. */
+  overlays?: MapOverlay[]
+  overlayImageUrl?: (overlay: MapOverlay) => string
+  editingOverlayId?: string | null
+  onOverlayCornersChange?: (id: string, corners: [number, number][]) => void
 }
 
 export function MissionMap({ className, ...props }: MissionMapProps) {

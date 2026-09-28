@@ -157,6 +157,8 @@ export interface Mission {
   device_placements?: Record<string, { zone_id: string; side: string; sensor_position: number; orientation: string; device_name: string }> // Persisted TX positions for timelapse replay
   notification_config?: { enabled: boolean; cooldown_minutes: number; channels: string[]; zones: string[] } | null
   visual_config?: Record<string, unknown> | null
+  /** Images pinned on the map by four corners: a hand-drawn plan, later a drone photo. */
+  overlays?: MapOverlay[]
   device_count: number
   event_count: number
 }
@@ -302,4 +304,30 @@ export interface PaginatedResponse<T> extends ApiResponse<T[]> {
   total: number
   page: number
   per_page: number
+}
+
+/**
+ * An image laid on the mission map by its four corners.
+ *
+ * A reference picture only: it never feeds detection geometry or the occupancy grid. A plan
+ * drawn from memory by a neighbour is not to scale, and the walls on it must not move a
+ * target.
+ */
+export interface MapOverlay {
+  id: string
+  kind: "sketch" | "photo"
+  label: string
+  /** Server-side image id (see /api/missions/{id}/overlay-images/{image}). */
+  image: string
+  /** Size of the stored image, px. */
+  width: number
+  height: number
+  /** Part of the image kept, as fractions of it. */
+  crop: { x: number; y: number; w: number; h: number }
+  style: { removeBackground: boolean; sensitivity: number; inkColor: string }
+  /** Where the corners of the CROPPED image sit, [lat, lon]: top-left, top-right, bottom-right, bottom-left. */
+  corners: [number, number][]
+  opacity: number
+  floor: number
+  visible: boolean
 }

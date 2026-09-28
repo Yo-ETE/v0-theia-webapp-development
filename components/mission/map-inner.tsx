@@ -3,13 +3,14 @@
 import React, { useEffect, useState, useCallback, useRef, useMemo } from "react"
 import type { PolygonEdit } from "@/lib/side-remap"
 import { haversineM } from "@/lib/mission-geo"
-import type { Zone, DetectionEvent, LiveDetection } from "@/lib/types"
+import type { Zone, DetectionEvent, LiveDetection, MapOverlay } from "@/lib/types"
 import { cn } from "@/lib/utils"
 import { ChevronDown, Flame, Grid3X3 } from "lucide-react"
 import type { VisualConfig } from "@/hooks/use-visual-config"
 import { VISUAL_DEFAULTS } from "@/hooks/use-visual-config"
 import HeatmapCanvas from "./heatmap-canvas"
 import OccupancyCanvas from "./occupancy-canvas"
+import ImageOverlayLayer from "./image-overlay-layer"
 import { extendGrid, type IncrementalGrid, type SensorReading } from "@/lib/occupancy-grid"
 import { groupSidesByBearing } from "@/lib/facade-utils"
 import { updateTracks, visibleTracks, trackSpeed, trackHeading, type Track, type Observation } from "@/lib/tracking"
@@ -81,6 +82,10 @@ interface MapInnerProps {
   liveByDevice?: Record<string, LiveDetection>
   sensorPlacements?: SensorPlacement[]
   heatmapMode?: boolean
+  overlays?: MapOverlay[]
+  overlayImageUrl?: (overlay: MapOverlay) => string
+  editingOverlayId?: string | null
+  onOverlayCornersChange?: (id: string, corners: [number, number][]) => void
   estimatePosition?: boolean  // Triangulate position from multiple simultaneous detections
   className?: string
   drawingMode?: boolean
@@ -311,6 +316,10 @@ export default function MapInner({
   liveByDevice = {},
   sensorPlacements = [],
   heatmapMode = false,
+  overlays = [],
+  overlayImageUrl,
+  editingOverlayId = null,
+  onOverlayCornersChange,
   estimatePosition = false,
   className,
   drawingMode = false,
@@ -2379,6 +2388,23 @@ export default function MapInner({
         enabled={heatmapMode && overlayMode === "heatmap" && heatPoints.length > 0}
         zonePolygons={zones.map(z => z.polygon)}
       />
+
+      {/* Pinned images: hand-drawn plans, between the basemap and the vectors */}
+      {overlayImageUrl && overlays.length > 0 && (
+        <ImageOverlayLayer
+          map={mapInstance}
+          L={leafletL}
+          overlays={overlays}
+          imageUrl={overlayImageUrl}
+          editingId={editingOverlayId}
+          onCornersChange={onOverlayCornersChange}
+        />
+      )}
+      {overlays.some((o) => o.kind === "sketch") && (
+        <div className="absolute bottom-10 left-2 z-[500] rounded bg-card/90 backdrop-blur px-2 py-1 shadow-sm pointer-events-none">
+          <span className="text-2xs text-warning">Croquis affiche -- non a l&apos;echelle</span>
+        </div>
+      )}
 
       {/* Bayesian occupancy grid overlay (alternative to the heatmap) */}
       <OccupancyCanvas

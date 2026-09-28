@@ -40,7 +40,9 @@ import { remapForInsert, remapForDelete, type PolygonEdit } from "@/lib/side-rem
 import { toast } from "sonner"
 import { missionStatusConfig, eventTypeConfig, deviceStatusConfig, formatRelative, formatTime, formatDateTime, parseDbTime } from "@/lib/format"
 import { cn } from "@/lib/utils"
-import type { Zone, Floor, DetectionEvent, LiveDetection } from "@/lib/types"
+import type { Zone, Floor, DetectionEvent, LiveDetection, MapOverlay } from "@/lib/types"
+import { SketchImportDialog, overlayImageUrl } from "@/components/mission/dialogs/sketch-import-dialog"
+import { SketchOverlaysCard } from "@/components/mission/sketch-overlays-card"
 import { groupSidesByBearing } from "@/lib/facade-utils"
 import { getSideDistanceM } from "@/lib/mission-geo"
 import {
@@ -918,6 +920,37 @@ export default function MissionDetailPage() {
     return eventList.filter(e => !e.zone_id || floorZoneIds.has(e.zone_id))
   }, [eventList, filteredZones, floorLevels.length])
 
+  // ── Pinned plans (hand-drawn sketches) ──
+  const [editingOverlayId, setEditingOverlayId] = useState<string | null>(null)
+  const [sketchDialog, setSketchDialog] = useState<{ open: boolean; initial: MapOverlay | null }>({ open: false, initial: null })
+  const floorOverlays = useMemo(() => {
+    const all = mission?.overlays ?? []
+    return floorLevels.length > 1 ? all.filter((o) => (o.floor ?? 0) === selectedFloor) : all
+  }, [mission?.overlays, floorLevels.length, selectedFloor])
+  // Shown on the map: the visible ones, plus the one being pinned even if it was hidden.
+  const mapOverlays = useMemo(
+    () => floorOverlays.filter((o) => o.visible || o.id === editingOverlayId),
+    [floorOverlays, editingOverlayId],
+  )
+  const overlayUrl = useCallback((o: MapOverlay) => overlayImageUrl(id, o.image), [id])
+
+  const saveOverlays = useCallback(async (next: MapOverlay[]) => {
+    if (!mission) return
+    mutate({ ...mission, overlays: next }, false)
+    try {
+      const updated = await updateMission(id, { overlays: next })
+      mutate(updated, false)
+    } catch (err) {
+      console.warn("[THEIA] Failed to save overlays:", err)
+      toast.error("Le croquis n'a pas pu etre enregistre")
+      mutate()
+    }
+  }, [mission, id, mutate])
+
+  const updateOverlay = useCallback((overlayId: string, patch: Partial<MapOverlay>) => {
+    saveOverlays((mission?.overlays ?? []).map((o) => (o.id === overlayId ? { ...o, ...patch } : o)))
+  }, [mission?.overlays, saveOverlays])
+
   // TTL useEffect - Update last activity time when new detections arrive (must be before conditional return)
   useEffect(() => {
     if (liveDetections.length > 0) {
@@ -974,6 +1007,64 @@ export default function MissionDetailPage() {
   }
 
   const statusCfg = missionStatusConfig[mission.status] ?? missionStatusConfig.draft
+
+  /**
+   * First placement of a new plan: fitted into the zones drawn on this floor, keeping the
+   * picture's proportions, so it lands roughly on the building and only needs its corners
+   * nudged. Without zones, 30 m wide around the mission centre.
+   */
+  const initialOverlayCorners = (aspect: number): [number, number][] => {
+    const pts = filteredZones.flatMap((z) => (z.polygon ?? []) as [number, number][])
+      .filter(([a, b]) => Math.abs(a) <= 90 && Math.abs(b) <= 180)
+    const mLat = 111320
+    let cLat = mission.center_lat
+    let cLon = mission.center_lon
+    const mLon = mLat * Math.cos((cLat * Math.PI) / 180)
+    let boxW = 30
+    let boxH = 30
+    if (pts.length >= 2) {
+      const lats = pts.map((p) => p[0])
+      const lons = pts.map((p) => p[1])
+      cLat = (Math.min(...lats) + Math.max(...lats)) / 2
+      cLon = (Math.min(...lons) + Math.max(...lons)) / 2
+      boxW = Math.max(5, (Math.max(...lons) - Math.min(...lons)) * mLon * 1.1)
+      boxH = Math.max(5, (Math.max(...lats) - Math.min(...lats)) * mLat * 1.1)
+    }
+    let w = boxW
+    let h = boxW / aspect
+    if (h > boxH) { h = boxH; w = boxH * aspect }
+    const dLat = h / 2 / mLat
+    const dLon = w / 2 / mLon
+    return [
+      [cLat + dLat, cLon - dLon],
+      [cLat + dLat, cLon + dLon],
+      [cLat - dLat, cLon + dLon],
+      [cLat - dLat, cLon - dLon],
+    ]
+  }
+
+  const handleSketchSaved = (draft: Pick<MapOverlay, "image" | "width" | "height" | "crop" | "style" | "label">) => {
+    const existing = sketchDialog.initial
+    if (existing) {
+      updateOverlay(existing.id, draft)
+    } else {
+      const aspect = (draft.crop.w * draft.width) / Math.max(1, draft.crop.h * draft.height)
+      const overlay: MapOverlay = {
+        id: `ov-${Date.now().toString(36)}`,
+        kind: "sketch",
+        ...draft,
+        corners: initialOverlayCorners(aspect),
+        opacity: 0.85,
+        floor: selectedFloor,
+        visible: true,
+      }
+      saveOverlays([...(mission.overlays ?? []), overlay])
+      // No toast: the banner above the map says the same, and a toast sits on top of the
+      // map's upper edge on a phone -- exactly where corners 1 and 2 land.
+      setEditingOverlayId(overlay.id)
+    }
+    setSketchDialog({ open: false, initial: null })
+  }
 
   // ── Environment / mode detection ──
   const env = mission?.environment ?? "habitation"
@@ -1484,6 +1575,10 @@ export default function MissionDetailPage() {
                   showFov={showFov}
                   showGrid={showGrid}
                   replayMode={false}
+                  overlays={mapOverlays}
+                  overlayImageUrl={overlayUrl}
+                  editingOverlayId={editingOverlayId}
+                  onOverlayCornersChange={(overlayId, corners) => updateOverlay(overlayId, { corners })}
                   visualConfig={visualConfig}
                 />
               </ErrorBoundary>
@@ -1786,6 +1881,16 @@ export default function MissionDetailPage() {
               ) : (
                 /* ── Horizontal: Map ── */
             <>
+          {/* Plan pinning banner */}
+          {editingOverlayId && (
+            <div className="flex items-center justify-between gap-2 rounded-lg border border-warning/50 bg-warning/10 px-3 py-2 mb-2">
+              <p className="text-xs text-warning">
+                Calage de <span className="font-semibold">{floorOverlays.find((o) => o.id === editingOverlayId)?.label ?? "croquis"}</span> :
+                faites glisser les coins 1 a 4 sur les angles correspondants, la poignee bleue deplace tout.
+              </p>
+              <Button variant="ghost" size="sm" className="h-7 px-2 text-xs text-warning shrink-0" onClick={() => setEditingOverlayId(null)}>Terminer</Button>
+            </div>
+          )}
           {/* Sensor placement banner (normal map) */}
           {sensorPlaceMode && (
             <div className="flex items-center justify-between gap-2 rounded-lg border border-info/50 bg-info/10 px-3 py-2 mb-2">
@@ -1837,6 +1942,10 @@ export default function MissionDetailPage() {
                       showFov={showFov}
                       showGrid={showGrid}
                       replayMode={timelapseMode}
+                      overlays={mapOverlays}
+                      overlayImageUrl={overlayUrl}
+                      editingOverlayId={editingOverlayId}
+                      onOverlayCornersChange={(overlayId, corners) => updateOverlay(overlayId, { corners })}
                       visualConfig={visualConfig}
                     />
                   </ErrorBoundary>
@@ -2082,6 +2191,22 @@ export default function MissionDetailPage() {
                   })}
                 </CardContent>
               </Card>
+              )}
+
+              {!isFloorMode && !isPlanMode && (
+                <SketchOverlaysCard
+                  overlays={floorOverlays}
+                  canEdit={canEdit}
+                  editingId={editingOverlayId}
+                  onImport={() => setSketchDialog({ open: true, initial: null })}
+                  onToggleEdit={(overlayId) => setEditingOverlayId((cur) => (cur === overlayId ? null : overlayId))}
+                  onUpdate={updateOverlay}
+                  onEditStyle={(o) => setSketchDialog({ open: true, initial: o })}
+                  onDelete={(overlayId) => {
+                    if (editingOverlayId === overlayId) setEditingOverlayId(null)
+                    saveOverlays((mission.overlays ?? []).filter((o) => o.id !== overlayId))
+                  }}
+                />
               )}
 
               {/* Assigned devices */}
@@ -2963,6 +3088,15 @@ export default function MissionDetailPage() {
         onClose={() => { setAssignDialog(null); setAssignStep(null) }}
         onAssignWithoutSide={(deviceId) => { if (assignDialog) assignDevice(deviceId, assignDialog) }}
         onPlaceSensor={setSensorPlaceMode}
+      />
+
+      <SketchImportDialog
+        open={sketchDialog.open}
+        onClose={() => setSketchDialog({ open: false, initial: null })}
+        missionId={id}
+        initial={sketchDialog.initial}
+        defaultLabel={`Croquis ${(mission.overlays?.length ?? 0) + 1}`}
+        onSave={handleSketchSaved}
       />
 
       <GravityConfigDialog

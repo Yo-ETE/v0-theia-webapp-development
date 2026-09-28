@@ -3,6 +3,9 @@ THEIA - Missions CRUD router
 Field names aligned with frontend: center_lat, center_lon, zoom, environment, location
 """
 import json
+import re
+import shutil
+import time
 import uuid
 from datetime import datetime
 from fastapi import APIRouter, HTTPException, Request
@@ -69,6 +72,7 @@ class MissionUpdate(BaseModel):
     ended_at: str | None = None
     visual_config: dict | str | None = None
     device_placements: dict | str | None = None
+    overlays: list | str | None = None
     notification_config: dict | str | None = None
     device_count: int | None = None
     event_count: int | None = None
@@ -89,6 +93,11 @@ def _row_to_dict(row) -> dict:
             d["visual_config"] = json.loads(d["visual_config"])
         except Exception:
             d["visual_config"] = None
+    if "overlays" in d:
+        try:
+            d["overlays"] = json.loads(d["overlays"]) if isinstance(d["overlays"], str) else (d["overlays"] or [])
+        except Exception:
+            d["overlays"] = []
     # Parse device_placements JSON
     if "device_placements" in d and isinstance(d["device_placements"], str):
         try:
@@ -222,6 +231,12 @@ async def patch_mission(mission_id: str, body: MissionUpdate, request: Request):
         return await _get_full_mission(db, mission_id)
 
     # JSON-serialize list/dict fields
+    if "overlays" in updates:
+        ov = updates["overlays"]
+        if ov is None:
+            updates["overlays"] = "[]"
+        elif not isinstance(ov, str):
+            updates["overlays"] = json.dumps(ov)
     for json_field in ("zones", "floors"):
         if json_field in updates:
             updates[json_field] = json.dumps(updates[json_field])
@@ -260,6 +275,9 @@ async def patch_mission(mission_id: str, body: MissionUpdate, request: Request):
     await db.execute(f"UPDATE missions SET {set_clause} WHERE id=?", values)
     await db.commit()
 
+    if "overlays" in updates:
+        _prune_overlay_images(mission_id, updates["overlays"])
+
     # Invalidate LoRa bridge mission status cache so recording starts/stops immediately
     if "status" in updates:
         try:
@@ -290,6 +308,7 @@ async def delete_mission(mission_id: str):
     # Then delete the mission
     await db.execute("DELETE FROM missions WHERE id=?", (mission_id,))
     await db.commit()
+    shutil.rmtree(_overlay_dir(mission_id), ignore_errors=True)
     return {"ok": True}
 
 
@@ -432,3 +451,100 @@ async def get_plan_image(mission_id: str):
             media = {"jpg": "image/jpeg", "jpeg": "image/jpeg", "png": "image/png", "webp": "image/webp"}[ext]
             return FileResponse(filepath, media_type=media)
     raise HTTPException(status_code=404, detail="Plan image not found")
+
+
+# ── Map overlay images (hand-drawn plan, drone photo) ────────────────────
+#
+# The overlay itself -- which image, its four corners on the map, opacity, floor -- lives in
+# the mission's `overlays` JSON and goes through PATCH like everything else. This only stores
+# the pixels. Images are addressed by a random id, never by a client-supplied name, so a path
+# cannot be smuggled in.
+
+OVERLAYS_DIR = os.path.join(_DATA_DIR, "overlays")
+_OVERLAY_ID = re.compile(r"^[0-9a-f]{32}$")
+# Big enough to read a pencil sketch, small enough for a phone to process and the Pi to serve.
+_OVERLAY_MAX_DIM = 2400
+
+
+def _overlay_dir(mission_id: str) -> str:
+    # mission ids are server-generated, but they end up in a path: refuse anything odd.
+    if not re.match(r"^[A-Za-z0-9_-]+$", mission_id or ""):
+        raise HTTPException(status_code=400, detail="Mission id invalide")
+    return os.path.join(OVERLAYS_DIR, mission_id)
+
+
+def _prune_overlay_images(mission_id: str, overlays_json: str) -> None:
+    """Delete image files no overlay references any more.
+
+    Only files older than an hour: an image is uploaded first and referenced by the PATCH
+    that follows, so a fresh unreferenced file is most likely one whose PATCH is in flight.
+    """
+    try:
+        overlays = json.loads(overlays_json or "[]")
+        used = {o.get("image") for o in overlays if isinstance(o, dict)}
+        folder = _overlay_dir(mission_id)
+        if not os.path.isdir(folder):
+            return
+        cutoff = time.time() - 3600
+        for name in os.listdir(folder):
+            image_id = name.split(".", 1)[0]
+            path = os.path.join(folder, name)
+            if image_id not in used and os.path.getmtime(path) < cutoff:
+                os.remove(path)
+    except Exception as e:
+        print(f"[THEIA] overlay prune failed for {mission_id}: {e}")
+
+
+@router.post("/{mission_id}/overlay-images")
+async def upload_overlay_image(mission_id: str, request: Request):
+    """Store one overlay image, converted to JPEG. Raw body, like the plan image upload.
+    Returns the id to put in the overlay's `image` field."""
+    await ensure(request, "missions_edit")
+    db = await get_db()
+    cursor = await db.execute("SELECT id FROM missions WHERE id=?", (mission_id,))
+    if not await cursor.fetchone():
+        raise HTTPException(status_code=404, detail="Mission not found")
+
+    content = await request.body()
+    if not content:
+        raise HTTPException(status_code=400, detail="Image vide")
+    if len(content) > 30 * 1024 * 1024:
+        raise HTTPException(status_code=413, detail="Image trop volumineuse (max 30 Mo)")
+
+    folder = _overlay_dir(mission_id)
+    os.makedirs(folder, exist_ok=True)
+    image_id = uuid.uuid4().hex
+    tmp_path = os.path.join(folder, f"{image_id}.tmp")
+    final_path = os.path.join(folder, f"{image_id}.jpg")
+    with open(tmp_path, "wb") as f:
+        f.write(content)
+    try:
+        ct = request.headers.get("content-type", "")
+        name = request.headers.get("x-filename", "").lower()
+        if "heic" in ct or name.endswith((".heic", ".heif")):
+            try:
+                import pillow_heif
+                pillow_heif.register_heif_opener()
+            except ImportError:
+                pass
+        width, height = _convert_to_jpeg(tmp_path, final_path, max_dim=_OVERLAY_MAX_DIM)
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=f"Image illisible : {e}")
+    finally:
+        if os.path.exists(tmp_path):
+            os.remove(tmp_path)
+
+    return {"image": image_id, "width": width, "height": height}
+
+
+@router.get("/{mission_id}/overlay-images/{image_id}")
+async def get_overlay_image(mission_id: str, image_id: str):
+    from fastapi.responses import FileResponse
+    if not _OVERLAY_ID.match(image_id):
+        raise HTTPException(status_code=400, detail="Identifiant d'image invalide")
+    path = os.path.join(_overlay_dir(mission_id), f"{image_id}.jpg")
+    if not os.path.exists(path):
+        raise HTTPException(status_code=404, detail="Image introuvable")
+    # Immutable: an id is never reused for different pixels.
+    return FileResponse(path, media_type="image/jpeg",
+                        headers={"Cache-Control": "private, max-age=31536000, immutable"})

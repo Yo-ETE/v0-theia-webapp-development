@@ -401,6 +401,12 @@ async def init_tables(db: aiosqlite.Connection):
         await db.execute("ALTER TABLE missions ADD COLUMN plan_scale REAL DEFAULT NULL")
     except Exception:
         pass
+    # Image overlays pinned on the map by four corners: a hand-drawn plan supplied on site,
+    # later a drone photo. JSON list; the images themselves live in DATA_DIR/overlays/<mission>.
+    try:
+        await db.execute("ALTER TABLE missions ADD COLUMN overlays TEXT DEFAULT '[]'")
+    except Exception:
+        pass
     # Mission detection_reset_at (ISO timestamp: ignore events before this)
     try:
         await db.execute("ALTER TABLE missions ADD COLUMN detection_reset_at TEXT DEFAULT NULL")
