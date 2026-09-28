@@ -61,6 +61,13 @@ import { SmsConfig } from "@/components/admin/sms-config"
 
 // ── Types ──
 
+interface WifiInterface {
+  device: string
+  state: string
+  /** Empty when the card is not connected, or is running the hotspot. */
+  ssid: string
+}
+
 interface WifiStatus {
   connected: boolean
   ssid: string
@@ -69,6 +76,8 @@ interface WifiStatus {
   ipLocal: string
   hasInternet: boolean
   pingMs: number
+  /** Every WiFi card. The hub can carry two, and the single `ssid` above describes one. */
+  interfaces?: WifiInterface[]
 }
 
 interface EthernetStatus {
@@ -295,6 +304,13 @@ export default function AdminPage() {
       if (hotspot) setHotspotStatus(hotspot)
     } catch { /* ignore */ }
   }, [])
+
+  /** True when ANY card is on a network -- the legacy `connected` field describes one card. */
+  const wifiUp = !!wifiStatus?.connected || (wifiStatus?.interfaces ?? []).some((i) => i.ssid)
+
+  /** The card a network is currently up on, if any. */
+  const activeDeviceFor = (ssid: string): string | null =>
+    wifiStatus?.interfaces?.find((i) => i.ssid === ssid)?.device ?? null
 
   const fetchSavedNetworks = useCallback(async () => {
     try {
@@ -757,10 +773,26 @@ export default function AdminPage() {
               {/* WiFi */}
               <div className="flex flex-col gap-3">
                 <div className="flex items-center gap-2">
-                  {wifiStatus?.connected ? <Wifi className="h-4 w-4 text-success" /> : <WifiOff className="h-4 w-4 text-muted-foreground" />}
+                  {wifiUp ? <Wifi className="h-4 w-4 text-success" /> : <WifiOff className="h-4 w-4 text-muted-foreground" />}
                   <span className="text-sm font-medium text-foreground">Wi-Fi</span>
-                  {wifiStatus?.connected && <span className="ml-auto text-xs text-success">Connecte</span>}
+                  {wifiUp && <span className="ml-auto text-xs text-success">Connecte</span>}
                 </div>
+                {(wifiStatus?.interfaces?.length ?? 0) > 1 && (
+                  <div className="flex flex-col gap-1 pl-6">
+                    {wifiStatus!.interfaces!.map((i) => (
+                      <div key={i.device} className="flex items-center gap-2 text-xs">
+                        <span className="font-mono text-muted-foreground w-14 shrink-0">{i.device}</span>
+                        {i.ssid ? (
+                          <span className="text-foreground truncate">{i.ssid}</span>
+                        ) : (
+                          <span className="text-muted-foreground">
+                            {i.state === "connected" ? "point d'acces" : "libre"}
+                          </span>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                )}
                 {wifiStatus?.connected ? (
                   <div className="grid grid-cols-1 gap-3 pl-6 text-sm sm:grid-cols-2">
                     <div>
@@ -799,9 +831,9 @@ export default function AdminPage() {
                       )}
                     </div>
                   </div>
-                ) : (
+                ) : !wifiUp ? (
                   <p className="pl-6 text-xs text-muted-foreground">Non connecte</p>
-                )}
+                ) : null}
               </div>
 
               <div className="border-t border-border/50" />
@@ -1213,7 +1245,12 @@ export default function AdminPage() {
                         {network.security !== "Open" ? <Lock className="h-4 w-4 text-muted-foreground" /> : <Unlock className="h-4 w-4 text-muted-foreground" />}
                         <span className="text-sm font-medium text-foreground">{network.ssid}</span>
                         {savedNetworks.includes(network.ssid) && <Star className="h-3 w-3 text-warning fill-warning" aria-label="Reseau enregistre" />}
-                        {wifiStatus?.ssid === network.ssid && <CheckCircle2 className="h-4 w-4 text-success" />}
+                        {activeDeviceFor(network.ssid) && (
+                          <span className="flex items-center gap-1 text-2xs text-success">
+                            <CheckCircle2 className="h-3.5 w-3.5" />
+                            {activeDeviceFor(network.ssid)}
+                          </span>
+                        )}
                       </div>
                       <div className="flex items-center gap-2">
                         <span className="text-xs text-muted-foreground">{network.signal}%</span>
@@ -1238,20 +1275,28 @@ export default function AdminPage() {
                       </span>
                     )}
                   </div>
-                  {savedNetworks.includes(selectedNetwork) ? (
+                  {activeDeviceFor(selectedNetwork) ? (
                     <p className="text-xs text-muted-foreground">
-                      Ce reseau est deja enregistre. Cliquez sur Se connecter pour vous reconnecter.
+                      Deja connecte sur {activeDeviceFor(selectedNetwork)}.
                     </p>
-                  ) : (
+                  ) : savedNetworks.includes(selectedNetwork) ? (
+                    <p className="text-xs text-muted-foreground">
+                      Reseau enregistre : laissez le mot de passe vide pour utiliser celui en memoire,
+                      ou saisissez-le pour le remplacer.
+                    </p>
+                  ) : null}
+                  {!activeDeviceFor(selectedNetwork) && (
                     <div className="flex flex-col gap-2">
-                      <Label htmlFor="wifi-password" className="text-xs">Mot de passe</Label>
+                      <Label htmlFor="wifi-password" className="text-xs">
+                        {savedNetworks.includes(selectedNetwork) ? "Mot de passe (optionnel)" : "Mot de passe"}
+                      </Label>
                       <div className="relative">
                         <Input
                           id="wifi-password"
                           type={showPassword ? "text" : "password"}
                           value={wifiPassword}
                           onChange={(e) => setWifiPassword(e.target.value)}
-                          placeholder="Mot de passe Wi-Fi"
+                          placeholder={savedNetworks.includes(selectedNetwork) ? "Laisser vide pour garder l'actuel" : "Mot de passe Wi-Fi"}
                           className="pr-10"
                         />
                         <Button type="button" variant="ghost" size="icon"
@@ -1262,7 +1307,11 @@ export default function AdminPage() {
                       </div>
                     </div>
                   )}
-                  <Button onClick={handleConnect} disabled={isConnecting} className="w-full gap-2">
+                  <Button
+                    onClick={handleConnect}
+                    disabled={isConnecting || !!activeDeviceFor(selectedNetwork)}
+                    className="w-full gap-2"
+                  >
                     {isConnecting ? <Loader2 className="h-4 w-4 animate-spin" /> : <Wifi className="h-4 w-4" />}
                     {isConnecting ? "Connexion..." : "Se connecter"}
                   </Button>

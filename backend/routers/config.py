@@ -148,6 +148,158 @@ def _get_scan_capable_interface():
     return wifi_interfaces[0] if wifi_interfaces else "wlan0"
 
 
+# ── NetworkManager helpers ────────────────────────────────────────
+#
+# The hub can carry TWO WiFi cards (on the field hub: wlan0 internal, wlan1 USB). Every call
+# below names its device explicitly. Letting nmcli choose is what broke on 2026-09-28: asked to
+# connect to a network already up on wlan1, nmcli tried wlan0, created a second profile for the
+# same SSID there -- with no key -- and failed with "Secrets were required".
+
+def _nmcli_split(line: str) -> list:
+    """Split one `nmcli -t` / `-g` line. Values escape ':' and '\' with a backslash.
+
+    Deliberately never strips: an SSID may end in a space. The Freebox on the field hub is
+    literally "Freebox-Stl " -- trimming it is why a hand-typed `nmcli ... Freebox-Stl` found
+    neither the network nor its profile.
+    """
+    out, cur, i = [], [], 0
+    while i < len(line):
+        c = line[i]
+        if c == "\\" and i + 1 < len(line):
+            cur.append(line[i + 1])
+            i += 2
+            continue
+        if c == ":":
+            out.append("".join(cur))
+            cur = []
+        else:
+            cur.append(c)
+        i += 1
+    out.append("".join(cur))
+    return out
+
+
+def _nm_wifi_devices() -> list:
+    """WiFi devices NetworkManager manages, with their state and active profile UUID."""
+    r = subprocess.run(
+        ["nmcli", "-t", "-f", "DEVICE,TYPE,STATE,CON-UUID", "device", "status"],
+        capture_output=True, text=True, timeout=5,
+    )
+    devices = []
+    if r.returncode == 0:
+        for line in r.stdout.splitlines():
+            f = _nmcli_split(line)
+            if len(f) >= 4 and f[1] == "wifi":
+                devices.append({"device": f[0], "state": f[2], "uuid": f[3] or None})
+    return devices
+
+
+def _nm_profile_info(uuid: str):
+    """SSID, mode and device binding of a WiFi profile. None if it cannot be read."""
+    r = subprocess.run(
+        ["nmcli", "-g", "802-11-wireless.ssid,802-11-wireless.mode,connection.interface-name",
+         "connection", "show", "uuid", uuid],
+        capture_output=True, text=True, timeout=5,
+    )
+    if r.returncode != 0:
+        return None
+    lines = r.stdout.split("\n")
+    while len(lines) < 3:
+        lines.append("")
+    return {
+        "ssid": _nmcli_split(lines[0])[0],
+        "mode": _nmcli_split(lines[1])[0],
+        "interface": _nmcli_split(lines[2])[0],
+    }
+
+
+def _nm_saved_client_profiles() -> list:
+    """Saved WiFi CLIENT profiles -- hotspot (mode ap) profiles are not networks to join."""
+    r = subprocess.run(
+        ["nmcli", "-t", "-f", "NAME,UUID,TYPE,TIMESTAMP", "connection", "show"],
+        capture_output=True, text=True, timeout=5,
+    )
+    profiles = []
+    if r.returncode != 0:
+        return profiles
+    for line in r.stdout.splitlines():
+        f = _nmcli_split(line)
+        if len(f) < 4 or f[2] != "802-11-wireless":
+            continue
+        info = _nm_profile_info(f[1])
+        if not info or info["mode"] == "ap":
+            continue
+        try:
+            ts = int(f[3] or 0)
+        except ValueError:
+            ts = 0
+        profiles.append({
+            "name": f[0], "uuid": f[1], "timestamp": ts,
+            "ssid": info["ssid"], "interface": info["interface"],
+        })
+    return profiles
+
+
+def _nm_active_ssids(devices: list) -> dict:
+    """{device: ssid} for every connected WiFi device that is a client, not a hotspot."""
+    active = {}
+    for d in devices:
+        if d["state"] != "connected" or not d["uuid"]:
+            continue
+        info = _nm_profile_info(d["uuid"])
+        if info and info["mode"] != "ap":
+            active[d["device"]] = info["ssid"]
+    return active
+
+
+def _pick_client_device(devices: list):
+    """The card a new client connection should use, or None.
+
+    Never a card running a hotspot. With more than one usable card, the one the hotspot would
+    take (`_get_ap_capable_interface`) is left alone, so joining a network never steals it.
+    Among what remains, a free card beats one that is already connected elsewhere.
+    """
+    usable = []
+    for d in devices:
+        if d["state"].startswith(("unavailable", "unmanaged")):
+            continue
+        if d["uuid"]:
+            info = _nm_profile_info(d["uuid"])
+            if info and info["mode"] == "ap":
+                continue
+        usable.append(d)
+    if not usable:
+        return None
+    if len(usable) > 1:
+        reserved = _get_ap_capable_interface()
+        others = [d for d in usable if d["device"] != reserved]
+        if others:
+            usable = others
+    free = [d for d in usable if d["state"] == "disconnected"]
+    return (free or usable)[0]["device"]
+
+
+def _explain_nmcli_failure(result, ssid: str, device: str) -> str:
+    """Turn an nmcli failure into something an operator can act on, in French."""
+    raw = (result.stderr or "").strip() or (result.stdout or "").strip()
+    if "Secrets were required" in raw or "802-11-wireless-security.psk" in raw:
+        return (f"Mot de passe requis ou refuse pour {ssid}. "
+                "Saisissez-le dans le champ mot de passe puis reessayez.")
+    if "No network with SSID" in raw:
+        return f"{ssid} n'est pas visible depuis {device}. Relancez un scan."
+    if "not available on device" in raw:
+        return f"Le profil de {ssid} ne peut pas etre active sur {device}."
+    if raw:
+        return raw
+    # nmcli usually explains itself on stderr. When it does not, say WHY there is nothing to
+    # report: seen on the hub 2026-09-27, a corrupted nmcli died on SIGILL (returncode -4,
+    # no output) and the admin page showed the same generic failure as a wrong passphrase.
+    if result.returncode < 0:
+        return (f"nmcli s'est arrete sur le signal {-result.returncode}"
+                " (binaire corrompu ?). Verifier: nmcli device status")
+    return f"nmcli a echoue (code {result.returncode}) sans message"
+
+
 # ── WiFi ──────────────────────────────────────────────────────────
 
 @router.get("/wifi/status")
@@ -203,6 +355,21 @@ async def wifi_status():
             except Exception:
                 pass
 
+            # Every card, not just the first: with two, the old single "ssid" field silently
+            # described one of them, and the page could not say where a network was up.
+            interfaces = []
+            try:
+                devices = _nm_wifi_devices()
+                active = _nm_active_ssids(devices)
+                for d in devices:
+                    interfaces.append({
+                        "device": d["device"],
+                        "state": d["state"],
+                        "ssid": active.get(d["device"], ""),
+                    })
+            except Exception:
+                pass
+
             return {
                 "connected": connected,
                 "ssid": ssid,
@@ -212,6 +379,7 @@ async def wifi_status():
                 "hasInternet": has_internet,
                 "pingMs": ping_ms,
                 "interface": iface,
+                "interfaces": interfaces,
             }
         data = await asyncio.get_event_loop().run_in_executor(None, _get)
         return data
@@ -278,56 +446,81 @@ async def wifi_scan():
 
 @router.post("/wifi/connect")
 async def wifi_connect(body: dict):
-    """Connect to a WiFi network."""
+    """Join a WiFi network on an explicitly chosen card.
+
+    A network already up on any card is left alone. A saved network is re-activated through
+    its existing profile -- never `device wifi connect`, which may spawn a duplicate -- and a
+    password, when given, replaces the one stored in that profile.
+    """
     ssid = body.get("ssid", "")
-    password = body.get("password", "")
+    password = body.get("password", "") or ""
     if not valid_ssid(ssid):
         return {"status": "error", "message": "SSID invalide"}
     try:
         def _connect():
-            # Use nmcli to connect
-            cmd = ["sudo", "nmcli", "device", "wifi", "connect", ssid]
-            if password:
-                cmd += ["password", password]
-            result = subprocess.run(cmd, capture_output=True, text=True, timeout=30)
-            if result.returncode == 0:
-                return {"status": "success", "message": f"Connecte a {ssid}"}
-            # nmcli usually explains itself on stderr. When it does not, say WHY there is
-            # nothing to report instead of printing a bare "Echec de connexion": seen on the
-            # hub 2026-09-27, a corrupted nmcli died on SIGILL (returncode -4, no output) and
-            # the admin page showed the same generic failure as a wrong passphrase.
-            detail = result.stderr.strip() or result.stdout.strip()
-            if not detail:
-                if result.returncode < 0:
-                    detail = (
-                        f"nmcli s'est arrete sur le signal {-result.returncode}"
-                        " (binaire corrompu ?). Verifier: nmcli device status"
+            devices = _nm_wifi_devices()
+            if not devices:
+                return {"status": "error", "message": "Aucune carte Wi-Fi geree par NetworkManager"}
+
+            for device, active_ssid in _nm_active_ssids(devices).items():
+                if active_ssid == ssid:
+                    return {"status": "success", "message": f"Deja connecte a {ssid} sur {device}",
+                            "device": device}
+
+            profiles = [p for p in _nm_saved_client_profiles() if p["ssid"] == ssid]
+            if profiles:
+                # Several profiles for one SSID is the leftover of earlier failures. The one that
+                # last connected is the one known to hold a working key; a never-connected
+                # duplicate has TIMESTAMP 0.
+                profile = max(profiles, key=lambda p: p["timestamp"])
+                # A profile pinned to a card (netplan does this) only runs there.
+                device = profile["interface"] or _pick_client_device(devices)
+                if not device:
+                    return {"status": "error", "message": "Aucune carte Wi-Fi libre pour se connecter"}
+                if password:
+                    mod = subprocess.run(
+                        ["sudo", "nmcli", "connection", "modify", "uuid", profile["uuid"],
+                         "802-11-wireless-security.key-mgmt", "wpa-psk",
+                         "802-11-wireless-security.psk", password,
+                         # 0 = stored in the system profile, so the API can reconnect later
+                         # without a secret agent -- the flag the broken duplicate lacked.
+                         "802-11-wireless-security.psk-flags", "0"],
+                        capture_output=True, text=True, timeout=10,
                     )
-                else:
-                    detail = f"nmcli a echoue (code {result.returncode}) sans message"
-            return {"status": "error", "message": detail}
-        data = await asyncio.get_event_loop().run_in_executor(None, _connect)
-        return data
+                    if mod.returncode != 0:
+                        return {"status": "error", "message": _explain_nmcli_failure(mod, ssid, device)}
+                cmd = ["sudo", "nmcli", "-w", "30", "connection", "up", "uuid", profile["uuid"],
+                       "ifname", device]
+            else:
+                device = _pick_client_device(devices)
+                if not device:
+                    return {"status": "error", "message": "Aucune carte Wi-Fi libre pour se connecter"}
+                cmd = ["sudo", "nmcli", "-w", "30", "device", "wifi", "connect", ssid, "ifname", device]
+                if password:
+                    cmd += ["password", password]
+
+            result = subprocess.run(cmd, capture_output=True, text=True, timeout=45)
+            if result.returncode == 0:
+                return {"status": "success", "message": f"Connecte a {ssid} sur {device}", "device": device}
+            return {"status": "error", "message": _explain_nmcli_failure(result, ssid, device)}
+        return await asyncio.get_event_loop().run_in_executor(None, _connect)
+    except subprocess.TimeoutExpired:
+        return {"status": "error", "message": f"Delai depasse en se connectant a {ssid}"}
     except Exception as e:
         return {"status": "error", "message": str(e)}
 
 
 @router.get("/wifi/saved")
 async def wifi_saved():
-    """List saved WiFi networks."""
+    """SSIDs that have a saved client profile.
+
+    Returns SSIDs rather than profile names: the page compares them with scanned SSIDs, and
+    the two differ -- "netplan-wlan0-SMS-3.0" is the profile for SSID "SMS-3.0", which the old
+    name-based list never marked as saved.
+    """
     try:
         def _saved():
-            result = subprocess.run(
-                ["nmcli", "-t", "-f", "NAME,TYPE", "connection", "show"],
-                capture_output=True, text=True, timeout=5
-            )
-            saved = []
-            if result.returncode == 0:
-                for line in result.stdout.strip().split("\n"):
-                    parts = line.split(":")
-                    if len(parts) >= 2 and "wireless" in parts[1]:
-                        saved.append(parts[0])
-            return saved
+            return sorted({p["ssid"] for p in _nm_saved_client_profiles() if p["ssid"]})
         saved = await asyncio.get_event_loop().run_in_executor(None, _saved)
         return {"saved": saved}
     except Exception:
