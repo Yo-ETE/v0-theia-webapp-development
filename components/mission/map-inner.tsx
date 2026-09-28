@@ -1764,12 +1764,14 @@ export default function MapInner({
               positions={isBeingEdited ? (localPoly ?? zone.polygon) : zone.polygon}
               interactive={!isBeingEdited}
               pathOptions={{
-                color: isBeingEdited ? "#f59e0b" : (heatmapMode ? "#666" : zc),
+                color: isBeingEdited ? "#f59e0b" : zc,
                 fillColor: isBeingEdited ? "#f59e0b" : (heatmapMode ? "transparent" : zc),
                 fillOpacity: isBeingEdited ? 0.05 : (heatmapMode ? 0 : (hasPresence ? vc.zone_fill_opacity : vc.zone_fill_opacity + 0.04)),
-                opacity: isBeingEdited ? 1 : (heatmapMode ? 0.5 : vc.zone_stroke_opacity),
-                weight: isBeingEdited ? 0 : (heatmapMode ? 1 : (hasPresence ? 2 : 1.5)),
-                dashArray: heatmapMode ? "4 4" : undefined,
+                // In heatmap mode the overlay canvas redraws the walls on top of its cells
+                // (lib/zone-outline.ts); this stroke is what shows when no canvas is drawn.
+                // It used to be a 1px 50% grey dash, which vanished on satellite imagery.
+                opacity: isBeingEdited ? 1 : (heatmapMode ? 0.9 : vc.zone_stroke_opacity),
+                weight: isBeingEdited ? 0 : (heatmapMode ? 2 : (hasPresence ? 2 : 1.5)),
               }}
               eventHandlers={onZoneClick && !isBeingEdited ? { click: () => onZoneClick(zone.id) } : undefined}
             >
@@ -2303,6 +2305,7 @@ export default function MapInner({
         grid={occupancyGrid}
         toLatLon={toLatLon}
         enabled={heatmapMode && overlayMode === "occupancy"}
+        zonePolygons={zones.map(z => z.polygon)}
       />
 
       {/* Coords overlay */}

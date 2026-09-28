@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useCallback } from "react"
 import { probabilityAt, cellCenter, type OccupancyGrid } from "@/lib/occupancy-grid"
+import { strokeZoneOutlines } from "@/lib/zone-outline"
 
 interface OccupancyCanvasProps {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -13,6 +14,8 @@ interface OccupancyCanvasProps {
   enabled?: boolean
   /** cells this close to 0.5 are left transparent: unknown is not a finding */
   unknownBand?: number
+  /** Zone walls, drawn over the cells so the grid can be read against the building. */
+  zonePolygons?: [number, number][][]
 }
 
 /**
@@ -30,6 +33,7 @@ export default function OccupancyCanvas({
   opacity = 0.65,
   enabled = true,
   unknownBand = 0.06,
+  zonePolygons,
 }: OccupancyCanvasProps) {
   const canvasRef = useRef<HTMLCanvasElement | null>(null)
 
@@ -66,7 +70,12 @@ export default function OccupancyCanvas({
     const ctx = canvas.getContext("2d")
     if (!ctx) return
     ctx.clearRect(0, 0, w, h)
-    if (!enabled || !grid) return
+    if (!enabled) return
+    const walls = zonePolygons ?? []
+    if (!grid) {
+      strokeZoneOutlines(ctx, map, walls)
+      return
+    }
 
     ctx.globalAlpha = opacity
     for (let row = 0; row < grid.rows; row++) {
@@ -99,7 +108,9 @@ export default function OccupancyCanvas({
       }
     }
     ctx.globalAlpha = 1
-  }, [map, grid, toLatLon, opacity, enabled, unknownBand])
+    // Walls last, over the cells -- see lib/zone-outline.ts.
+    strokeZoneOutlines(ctx, map, walls)
+  }, [map, grid, toLatLon, opacity, enabled, unknownBand, zonePolygons])
 
   useEffect(() => {
     if (!map || !enabled) return

@@ -1,6 +1,7 @@
 "use client"
 
 import { useEffect, useRef, useCallback } from "react"
+import { strokeZoneOutlines } from "@/lib/zone-outline"
 
 // ── Types ──────────────────────────────────────────────────────
 
@@ -131,110 +132,117 @@ export default function HeatmapCanvas({
     const ctx = canvas.getContext("2d")
     if (!ctx) return
     ctx.clearRect(0, 0, w, h)
-    if (!enabled || points.length === 0) return
+    if (!enabled) return
+    paintHeat()
+    // Walls last, over the heat -- see lib/zone-outline.ts for why the canvas owns them.
+    strokeZoneOutlines(ctx, map, zonePolygons)
 
-    const radiusPxFull = Math.max(8, Math.round(metersToPixels(map, radiusMeters)))
+    function paintHeat() {
+      if (!ctx || points.length === 0) return
 
-    // ── Performance: downscale if radius is large (zoom 20+) ──
-    // At high zoom, radiusPx can be 1000+ px. Working at full res would be
-    // O(n * radiusPx^2) per point which freezes the browser.
-    // We compute on a smaller buffer and then upscale.
-    const MAX_RADIUS_PX = 80
-    const scale = radiusPxFull > MAX_RADIUS_PX ? MAX_RADIUS_PX / radiusPxFull : 1
-    const sw = Math.max(1, Math.round(w * scale))  // small width
-    const sh = Math.max(1, Math.round(h * scale))  // small height
-    const radiusPx = Math.round(radiusPxFull * scale)
+      const radiusPxFull = Math.max(8, Math.round(metersToPixels(map, radiusMeters)))
 
-    // Find max weight for intensity scaling
-    let maxW = 1
-    for (const pt of points) if (pt.weight > maxW) maxW = pt.weight
+      // ── Performance: downscale if radius is large (zoom 20+) ──
+      // At high zoom, radiusPx can be 1000+ px. Working at full res would be
+      // O(n * radiusPx^2) per point which freezes the browser.
+      // We compute on a smaller buffer and then upscale.
+      const MAX_RADIUS_PX = 80
+      const scale = radiusPxFull > MAX_RADIUS_PX ? MAX_RADIUS_PX / radiusPxFull : 1
+      const sw = Math.max(1, Math.round(w * scale))  // small width
+      const sh = Math.max(1, Math.round(h * scale))  // small height
+      const radiusPx = Math.round(radiusPxFull * scale)
 
-    // ── Phase 1: Accumulate intensity in a downscaled Float32 buffer ──
-    const intensity = new Float32Array(sw * sh)
+      // Find max weight for intensity scaling
+      let maxW = 1
+      for (const pt of points) if (pt.weight > maxW) maxW = pt.weight
 
-    for (const pt of points) {
-      const px = map.latLngToContainerPoint([pt.lat, pt.lon])
-      const cx = px.x * scale
-      const cy = px.y * scale
-      if (cx < -radiusPx || cy < -radiusPx || cx > sw + radiusPx || cy > sh + radiusPx) continue
+      // ── Phase 1: Accumulate intensity in a downscaled Float32 buffer ──
+      const intensity = new Float32Array(sw * sh)
 
-      const strength = pt.weight / maxW
+      for (const pt of points) {
+        const px = map.latLngToContainerPoint([pt.lat, pt.lon])
+        const cx = px.x * scale
+        const cy = px.y * scale
+        if (cx < -radiusPx || cy < -radiusPx || cx > sw + radiusPx || cy > sh + radiusPx) continue
 
-      const x0 = Math.max(0, Math.floor(cx - radiusPx))
-      const x1 = Math.min(sw - 1, Math.ceil(cx + radiusPx))
-      const y0 = Math.max(0, Math.floor(cy - radiusPx))
-      const y1 = Math.min(sh - 1, Math.ceil(cy + radiusPx))
-      const rSq = radiusPx * radiusPx
+        const strength = pt.weight / maxW
 
-      for (let py = y0; py <= y1; py++) {
-        const dy = py - cy
-        const dySq = dy * dy
-        for (let px2 = x0; px2 <= x1; px2++) {
-          const dx = px2 - cx
-          const distSq = dx * dx + dySq
-          if (distSq > rSq) continue
-          // Softer gaussian falloff (factor 2 instead of 3) for wider spread
-          const g = Math.exp(-2 * distSq / rSq)
-          intensity[py * sw + px2] += g * strength
+        const x0 = Math.max(0, Math.floor(cx - radiusPx))
+        const x1 = Math.min(sw - 1, Math.ceil(cx + radiusPx))
+        const y0 = Math.max(0, Math.floor(cy - radiusPx))
+        const y1 = Math.min(sh - 1, Math.ceil(cy + radiusPx))
+        const rSq = radiusPx * radiusPx
+
+        for (let py = y0; py <= y1; py++) {
+          const dy = py - cy
+          const dySq = dy * dy
+          for (let px2 = x0; px2 <= x1; px2++) {
+            const dx = px2 - cx
+            const distSq = dx * dx + dySq
+            if (distSq > rSq) continue
+            // Softer gaussian falloff (factor 2 instead of 3) for wider spread
+            const g = Math.exp(-2 * distSq / rSq)
+            intensity[py * sw + px2] += g * strength
+          }
         }
       }
-    }
 
-    // ── Phase 2: Clip to zone polygons (at downscaled resolution) ──
-    const offscreen = document.createElement("canvas")
-    offscreen.width = sw
-    offscreen.height = sh
-    const octx = offscreen.getContext("2d")
-    if (!octx) return
+      // ── Phase 2: Clip to zone polygons (at downscaled resolution) ──
+      const offscreen = document.createElement("canvas")
+      offscreen.width = sw
+      offscreen.height = sh
+      const octx = offscreen.getContext("2d")
+      if (!octx) return
 
-    if (zonePolygons.length > 0) {
-      octx.fillStyle = "#fff"
-      octx.beginPath()
-      for (const poly of zonePolygons) {
-        for (let i = 0; i < poly.length; i++) {
-          const pp = map.latLngToContainerPoint([poly[i][0], poly[i][1]])
-          if (i === 0) octx.moveTo(pp.x * scale, pp.y * scale)
-          else octx.lineTo(pp.x * scale, pp.y * scale)
+      if (zonePolygons.length > 0) {
+        octx.fillStyle = "#fff"
+        octx.beginPath()
+        for (const poly of zonePolygons) {
+          for (let i = 0; i < poly.length; i++) {
+            const pp = map.latLngToContainerPoint([poly[i][0], poly[i][1]])
+            if (i === 0) octx.moveTo(pp.x * scale, pp.y * scale)
+            else octx.lineTo(pp.x * scale, pp.y * scale)
+          }
+          octx.closePath()
         }
-        octx.closePath()
+        octx.fill()
+        const maskData = octx.getImageData(0, 0, sw, sh).data
+        for (let i = 0; i < sw * sh; i++) {
+          if (maskData[i * 4] === 0) intensity[i] = 0
+        }
       }
-      octx.fill()
-      const maskData = octx.getImageData(0, 0, sw, sh).data
+
+      // ── Phase 3: Normalize intensity and map to thermal palette ──
+      let maxI = 0
+      for (let i = 0; i < sw * sh; i++) if (intensity[i] > maxI) maxI = intensity[i]
+      if (maxI < 0.001) return
+
+      // Create the colorized image at small resolution
+      const smallImg = octx.createImageData(sw, sh)
+      const out = smallImg.data
+      // Lower noise floor (1%) to show more of the gradient/dissipation
+      const noiseFloor = maxI * 0.01
+
       for (let i = 0; i < sw * sh; i++) {
-        if (maskData[i * 4] === 0) intensity[i] = 0
+        const v = intensity[i]
+        if (v < noiseFloor) continue
+        const normalized = (v - noiseFloor) / (maxI - noiseFloor)
+        // Start palette earlier (index 15) for more visible low-intensity areas
+        const paletteIdx = Math.min(255, Math.round(15 + normalized * 240))
+        const idx = paletteIdx * 4
+        const oi = i * 4
+        out[oi]     = PALETTE[idx]
+        out[oi + 1] = PALETTE[idx + 1]
+        out[oi + 2] = PALETTE[idx + 2]
+        out[oi + 3] = Math.round(PALETTE[idx + 3] * opacity)
       }
+
+      // ── Phase 4: Upscale to full resolution with smoothing ──
+      octx.putImageData(smallImg, 0, 0)
+      ctx.imageSmoothingEnabled = true
+      ctx.imageSmoothingQuality = "high"
+      ctx.drawImage(offscreen, 0, 0, sw, sh, 0, 0, w, h)
     }
-
-    // ── Phase 3: Normalize intensity and map to thermal palette ──
-    let maxI = 0
-    for (let i = 0; i < sw * sh; i++) if (intensity[i] > maxI) maxI = intensity[i]
-    if (maxI < 0.001) return
-
-    // Create the colorized image at small resolution
-    const smallImg = octx.createImageData(sw, sh)
-    const out = smallImg.data
-    // Lower noise floor (1%) to show more of the gradient/dissipation
-    const noiseFloor = maxI * 0.01
-
-    for (let i = 0; i < sw * sh; i++) {
-      const v = intensity[i]
-      if (v < noiseFloor) continue
-      const normalized = (v - noiseFloor) / (maxI - noiseFloor)
-      // Start palette earlier (index 15) for more visible low-intensity areas
-      const paletteIdx = Math.min(255, Math.round(15 + normalized * 240))
-      const idx = paletteIdx * 4
-      const oi = i * 4
-      out[oi]     = PALETTE[idx]
-      out[oi + 1] = PALETTE[idx + 1]
-      out[oi + 2] = PALETTE[idx + 2]
-      out[oi + 3] = Math.round(PALETTE[idx + 3] * opacity)
-    }
-
-    // ── Phase 4: Upscale to full resolution with smoothing ──
-    octx.putImageData(smallImg, 0, 0)
-    ctx.imageSmoothingEnabled = true
-    ctx.imageSmoothingQuality = "high"
-    ctx.drawImage(offscreen, 0, 0, sw, sh, 0, 0, w, h)
   }, [map, points, radiusMeters, opacity, enabled, zonePolygons])
 
   // Redraw on map events
