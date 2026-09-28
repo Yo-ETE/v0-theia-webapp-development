@@ -273,7 +273,10 @@ function generateZoneGrid(polygon: [number, number][]): {
 const BASEMAP_OSM = "Plan (OSM)"
 const BASEMAP_ESRI = "Satellite (Esri)"
 const BASEMAP_IGN = "Satellite (IGN)"
-const OVERLAY_CADASTRE = "Cadastre (IGN)"
+// The cadastre and the IGN photo share one georeferencing; Esri imagery and OSM buildings are
+// offset from both by a few metres (checked on the Forcene area 2026-09-28: cadastre outlines
+// sit on the roofs of the IGN photo, beside them on Esri). The label says which to read it on.
+const OVERLAY_CADASTRE = "Cadastre (IGN) · à lire sur Satellite IGN"
 const BASEMAPS = [BASEMAP_OSM, BASEMAP_ESRI, BASEMAP_IGN]
 const BASEMAP_PREF = "theia.map.basemap"
 const CADASTRE_PREF = "theia.map.cadastre"
