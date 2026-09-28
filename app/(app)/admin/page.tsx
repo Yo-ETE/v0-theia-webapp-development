@@ -1285,6 +1285,14 @@ export default function AdminPage() {
                       ou saisissez-le pour le remplacer.
                     </p>
                   ) : null}
+                  {!activeDeviceFor(selectedNetwork) && hotspotStatus?.active &&
+                    (wifiStatus?.interfaces?.length ?? 1) <= 1 && (
+                    <p className="text-xs text-warning">
+                      Une seule carte Wi-Fi : se connecter arretera le hotspot. Si vous etes connecte
+                      a ce hotspot, cette page ne repondra plus -- rejoignez {selectedNetwork} pour
+                      retrouver le hub.
+                    </p>
+                  )}
                   {!activeDeviceFor(selectedNetwork) && (
                     <div className="flex flex-col gap-2">
                       <Label htmlFor="wifi-password" className="text-xs">

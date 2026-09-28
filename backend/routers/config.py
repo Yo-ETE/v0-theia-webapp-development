@@ -253,30 +253,38 @@ def _nm_active_ssids(devices: list) -> dict:
 
 
 def _pick_client_device(devices: list):
-    """The card a new client connection should use, or None.
+    """The card a new client connection should use: (device, stops_hotspot).
 
-    Never a card running a hotspot. With more than one usable card, the one the hotspot would
-    take (`_get_ap_capable_interface`) is left alone, so joining a network never steals it.
-    Among what remains, a free card beats one that is already connected elsewhere.
+    A card running a hotspot is avoided. With more than one usable card, the one the hotspot
+    would take (`_get_ap_capable_interface`) is left alone, so joining a network never steals
+    it. Among what remains, a free card beats one that is already connected elsewhere.
+
+    With a single card that IS the hotspot, that card is returned anyway, flagged. This is
+    the recovery flow the hotspot exists for -- boot offline, the hotspot comes up, the
+    operator joins it and picks a network -- and refusing here would strand them. The first
+    version of this function did refuse, which was never noticed on a two-card hub.
     """
-    usable = []
+    usable, hotspot_cards = [], []
     for d in devices:
         if d["state"].startswith(("unavailable", "unmanaged")):
             continue
         if d["uuid"]:
             info = _nm_profile_info(d["uuid"])
             if info and info["mode"] == "ap":
+                hotspot_cards.append(d)
                 continue
         usable.append(d)
     if not usable:
-        return None
+        if hotspot_cards:
+            return hotspot_cards[0]["device"], True
+        return None, False
     if len(usable) > 1:
         reserved = _get_ap_capable_interface()
         others = [d for d in usable if d["device"] != reserved]
         if others:
             usable = others
     free = [d for d in usable if d["state"] == "disconnected"]
-    return (free or usable)[0]["device"]
+    return (free or usable)[0]["device"], False
 
 
 def _explain_nmcli_failure(result, ssid: str, device: str) -> str:
@@ -474,7 +482,10 @@ async def wifi_connect(body: dict):
                 # duplicate has TIMESTAMP 0.
                 profile = max(profiles, key=lambda p: p["timestamp"])
                 # A profile pinned to a card (netplan does this) only runs there.
-                device = profile["interface"] or _pick_client_device(devices)
+                if profile["interface"]:
+                    device, stops_hotspot = profile["interface"], False
+                else:
+                    device, stops_hotspot = _pick_client_device(devices)
                 if not device:
                     return {"status": "error", "message": "Aucune carte Wi-Fi libre pour se connecter"}
                 if password:
@@ -492,7 +503,7 @@ async def wifi_connect(body: dict):
                 cmd = ["sudo", "nmcli", "-w", "30", "connection", "up", "uuid", profile["uuid"],
                        "ifname", device]
             else:
-                device = _pick_client_device(devices)
+                device, stops_hotspot = _pick_client_device(devices)
                 if not device:
                     return {"status": "error", "message": "Aucune carte Wi-Fi libre pour se connecter"}
                 cmd = ["sudo", "nmcli", "-w", "30", "device", "wifi", "connect", ssid, "ifname", device]
@@ -501,7 +512,9 @@ async def wifi_connect(body: dict):
 
             result = subprocess.run(cmd, capture_output=True, text=True, timeout=45)
             if result.returncode == 0:
-                return {"status": "success", "message": f"Connecte a {ssid} sur {device}", "device": device}
+                note = " (le hotspot a ete arrete)" if stops_hotspot else ""
+                return {"status": "success", "message": f"Connecte a {ssid} sur {device}{note}",
+                        "device": device}
             return {"status": "error", "message": _explain_nmcli_failure(result, ssid, device)}
         return await asyncio.get_event_loop().run_in_executor(None, _connect)
     except subprocess.TimeoutExpired:
