@@ -339,7 +339,7 @@ export function UserManagement() {
   return (
     <Card>
       <CardHeader className="cursor-default">
-        <div className="flex items-center justify-between">
+        <div className="flex min-w-0 items-center justify-between">
           <CardTitle className="text-base flex items-center gap-2">
             <Users className="h-4 w-4 text-primary" />
             Comptes utilisateurs

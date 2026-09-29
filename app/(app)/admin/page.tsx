@@ -754,7 +754,7 @@ export default function AdminPage() {
           {/* ── Connection Status ── */}
           <Card className="border-border/50 bg-card">
             <CardHeader>
-              <div className="flex items-center justify-between gap-2">
+              <div className="flex min-w-0 items-center justify-between gap-2">
                 <div className="flex items-center gap-3 min-w-0">
                   <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-primary/10">
                     <Globe className="h-5 w-5 text-primary" />
@@ -1331,7 +1331,7 @@ export default function AdminPage() {
           {/* ── THEIA Update ── */}
           <Card className="border-border/50 bg-card">
             <CardHeader>
-              <div className="flex items-center justify-between gap-2">
+              <div className="flex min-w-0 items-center justify-between gap-2">
                 <div className="flex items-center gap-3 min-w-0">
                   <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-success/10">
                     <GitBranch className="h-5 w-5 text-success" />
@@ -1594,15 +1594,16 @@ export default function AdminPage() {
           {/* ── Timezone ── */}
           <Card className="border-border/50 bg-card">
             <CardHeader>
-              <div className="flex items-center gap-3">
-                <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-primary/10">
+              <div className="flex min-w-0 items-center gap-3">
+                <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-primary/10">
                   <Clock className="h-5 w-5 text-primary" />
                 </div>
                 <div className="flex-1 min-w-0">
                   <CardTitle className="text-base">Fuseau horaire</CardTitle>
-                  <CardDescription className="truncate">
-                    {currentTz || "---"} {currentLocalTime ? `- ${currentLocalTime}` : ""}
-                  </CardDescription>
+                  <CardDescription className="truncate">{currentTz || "---"}</CardDescription>
+                  {currentLocalTime && (
+                    <CardDescription className="truncate font-mono text-xs">{currentLocalTime}</CardDescription>
+                  )}
                 </div>
                 <Button variant="outline" size="sm" onClick={fetchTimezone} className="bg-transparent shrink-0">
                   <RefreshCw className="h-4 w-4" />
@@ -1668,8 +1669,8 @@ export default function AdminPage() {
           {/* ── Backups ── */}
           <Card className="border-border/50 bg-card">
             <CardHeader>
-              <div className="flex items-center gap-3">
-                <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-primary/10">
+              <div className="flex min-w-0 items-center gap-3">
+                <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-primary/10">
                   <Archive className="h-5 w-5 text-primary" />
                 </div>
                 <div>
@@ -1761,8 +1762,8 @@ export default function AdminPage() {
           {/* ── Power Controls ── */}
           <Card className="border-border/50 bg-card lg:col-span-2">
             <CardHeader>
-              <div className="flex items-center gap-3">
-                <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-destructive/10">
+              <div className="flex min-w-0 items-center gap-3">
+                <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-destructive/10">
                   <Power className="h-5 w-5 text-destructive" />
                 </div>
                 <div>
@@ -1859,17 +1860,17 @@ CONTACT : theiahub.contact@gmail.com`}
           {/* ── Guide d'utilisation ── */}
           <Card className="border-border/50 bg-card lg:col-span-2">
             <CardHeader>
-              <div className="flex items-center justify-between">
-                <div className="flex items-center gap-3">
-                  <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-primary/10">
+              <div className="flex min-w-0 flex-wrap items-center justify-between gap-2">
+                <div className="flex min-w-0 items-center gap-3">
+                  <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-primary/10">
                     <BookOpen className="h-5 w-5 text-primary" />
                   </div>
-                  <div>
+                  <div className="min-w-0">
                     <CardTitle className="text-base">{"Guide d'utilisation"}</CardTitle>
                     <CardDescription>Notice complete de chaque page et fonctionnalite</CardDescription>
                   </div>
                 </div>
-                <Button variant="outline" size="sm" onClick={() => setShowGuide(!showGuide)} className="bg-transparent gap-2">
+                <Button variant="outline" size="sm" onClick={() => setShowGuide(!showGuide)} className="bg-transparent gap-2 shrink-0">
                   <ChevronRight className={cn("h-4 w-4 transition-transform", showGuide && "rotate-90")} />
                   {showGuide ? "Masquer" : "Ouvrir le guide"}
                 </Button>

@@ -153,7 +153,7 @@ export function FirmwareManager() {
     <>
       <Card className="border-border/50">
         <CardHeader className="pb-3">
-          <div className="flex items-center justify-between">
+          <div className="flex min-w-0 items-center justify-between">
             <CardTitle className="text-sm font-semibold flex items-center gap-2">
               <Cpu className="h-4 w-4 text-primary" />
               Firmwares ({sketches.length})
